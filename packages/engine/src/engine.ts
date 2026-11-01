@@ -9,6 +9,7 @@ import type { WriteError } from './writes.js'
 // Named apart from the `own` URL each write builds, which would shadow it.
 import { own as member } from './own.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
+import { clone } from './clone.js'
 
 export interface DrupalOptions {
   /** The origin the server answers for, written into every link. Default `https://drupal.invalid`. */
@@ -271,7 +272,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const filters = (query.filter || {}) as Record<string, unknown>
     const known = new Set(['enabled', 'menu_name', 'parent', 'min_depth', 'max_depth'])
     if (Object.keys(filters).some((name) => !known.has(name)) || Object.keys(query).some((name) => !['filter', 'fields'].includes(name))) return undefined
-    const document = structuredClone(base.body) as { data?: Resource[] }
+    const document = clone(base.body) as { data?: Resource[] }
     let items = document.data || []
     const parentOf = new Map(items.map((item) => [item.id, String((item.attributes as { parent?: string } | undefined)?.parent || '')]))
     const depthOf = (id: string): number => { let depth = 1; let parent = parentOf.get(id) || ''; while (parent) { depth++; parent = parentOf.get(parent) || '' } return depth }
@@ -528,7 +529,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if ((upper === 'POST' || upper === 'DELETE') && !Array.isArray(relationship.data)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', 'Invalid body payload for the relationship.', via) }
       const given = Array.isArray(document.data) ? document.data as unknown as ResourceIdentifier[] : document.data ? [document.data as unknown as ResourceIdentifier] : []
       const current = Array.isArray(relationship.data) ? relationship.data : relationship.data ? [relationship.data] : []
-      const updated = structuredClone(resource)
+      const updated = clone(resource)
       const target = updated.relationships![name]!
       if (upper === 'PATCH') target.data = writes.withMeta(Array.isArray(relationship.data) ? given : (given[0] ?? null))
       else if (upper === 'POST') target.data = writes.withMeta([...current, ...given.filter((item) => !current.some((held) => held.id === item.id))])
@@ -612,7 +613,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const move = 'moderation_state' in attributes ? writes.refusedTransition(session, entityType, bundle, (resource.attributes as { moderation_state?: string } | undefined)?.moderation_state, attributes.moderation_state) : undefined
       if (move) invalid.push(move)
       if (invalid.length) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: invalid.map((problem) => ({ title: problem.title, status: '422', detail: problem.detail, source: { pointer: problem.pointer } })) } }
-      const updated: Resource = structuredClone(resource)
+      const updated: Resource = clone(resource)
       updated.attributes = merged
       if ('moderation_state' in attributes) {
         const published = writes.publishedFor(entityType, bundle, String(attributes.moderation_state))

@@ -23,17 +23,34 @@
     "./recorded-writes": {
       "types": "./dist/recorded-writes.d.ts",
       "import": "./dist/recorded-writes.js"
+    },
+    "./axios": {
+      "types": "./dist/axios.d.ts",
+      "import": "./dist/axios.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    },
+    "./jest": {
+      "types": "./dist/runner.d.ts",
+      "default": "./dist/runner.cjs"
+    },
+    "./cypress": {
+      "types": "./dist/runner.d.ts",
+      "default": "./dist/runner.cjs"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && esbuild src/runner.ts --bundle --platform=node --format=cjs --target=node16 --outfile=dist/runner.cjs --log-level=warning",
     "prepack": "yarn build"
   },
   "license": "GPL-2.0-or-later",
   "devDependencies": {
+    "esbuild": "^0.25.0",
     "typescript": "^5.9.0"
   },
   "bin": "./dist/cli.js"

@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
 import { extname, join, normalize } from 'node:path'
+import { CONTROL_PATH } from './control.js'
 import type { Drupal } from './engine.js'
 
 export interface ListenOptions {
@@ -9,6 +10,8 @@ export interface ListenOptions {
   files?: string
   /** CORS for a browser-side client, on unless told otherwise: any origin, the usual headers, a preflight answered. */
   cors?: boolean
+  /** The routes a test uses from another process, to reset the writes and to sign in. Off unless asked for, and only for a test's server. */
+  control?: boolean
 }
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.avif': 'image/avif', '.pdf': 'application/pdf', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.txt': 'text/plain', '.json': 'application/json', '.css': 'text/css', '.js': 'text/javascript' }
@@ -45,6 +48,21 @@ export const publicFile = (dir: string, pathname: string): { path: string, mime:
  * @param host - The interface to listen on: `0.0.0.0` for a devpod with the port forwarded.
  * @param options - The public files directory and CORS.
  */
+/** A test's order to a server: reset, or a token for a user. */
+const control = (drupal: Drupal, order: string, body: string | undefined): { status: number, text: string } => {
+  if (order === 'reset') {
+    drupal.reset()
+    return { status: 200, text: '{}' }
+  }
+  if (order !== 'token') return { status: 404, text: JSON.stringify({ message: `No order named ${order}.` }) }
+  const { name, scopes } = JSON.parse(body || '{}') as { name?: string, scopes?: string[] }
+  try {
+    return { status: 200, text: JSON.stringify(drupal.tokenFor(name || '', scopes)) }
+  } catch (error) {
+    return { status: 400, text: JSON.stringify({ message: (error as Error).message }) }
+  }
+}
+
 /** A host as a URL names it: an IPv6 address goes in brackets. */
 const urlHost = (host: string): string => (host.includes(':') && !host.startsWith('[') ? `[${host}]` : host)
 
@@ -77,6 +95,12 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
       // A request target no URL can be made of fails this request and not the server.
       try {
         const requestBody = chunks.length ? Buffer.concat(chunks).toString('utf8') : undefined
+        if (options.control && method === 'POST' && request.url?.startsWith(`${CONTROL_PATH}/`)) {
+          const answer = control(drupal, request.url.slice(CONTROL_PATH.length + 1), requestBody)
+          response.writeHead(answer.status, { ...cors, 'content-type': 'application/json' })
+          response.end(answer.text)
+          return
+        }
         const { status, headers: responseHeaders, body } = drupal.handle(method, `http://${urlHost(host)}:${port}${request.url || '/'}`, headers, requestBody)
         const text = status === 204 || body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body)
         response.writeHead(status, { ...cors, ...responseHeaders, ...(status === 204 ? {} : { 'content-length': Buffer.byteLength(text) }) })

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { http } from 'msw'
 import { setupServer } from 'msw/node'
 import { createDrupal, handlers } from '../src'
+import { connectMock } from '../src/control'
 import { listen } from '../src/serve'
 import { dump } from './dump'
 
@@ -22,6 +23,26 @@ const bind = async (host = '127.0.0.1') => {
 }
 
 describe('serving', () => {
+  it('takes a test\'s orders only when asked to', async () => {
+    const off = await bind()
+    try {
+      await expect(connectMock(off.url).reset()).rejects.toThrow('start it with --control')
+    } finally {
+      await off.close()
+    }
+    const drupal = createDrupal(dump, { baseUrl: 'http://127.0.0.1' })
+    const on = await listen(drupal, 0, '127.0.0.1', { control: true })
+    try {
+      const client = connectMock(on.url)
+      await client.reset()
+      await expect(client.tokenFor('nobody-at-all')).rejects.toThrow('No user named')
+      const accounts = (dump.resources.en?.['user--user'] || []).map((user) => (user.attributes as { name?: string, display_name?: string }).name).filter(Boolean) as string[]
+      if (accounts[0]) expect((await client.tokenFor(accounts[0])).access.split('.')).toHaveLength(3)
+    } finally {
+      await on.close()
+    }
+  })
+
   it('answers CORS for a browser-side client and a preflight, unless told not to', async () => {
     const { url, close } = await bind()
     try {

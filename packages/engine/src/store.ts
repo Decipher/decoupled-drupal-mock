@@ -1,4 +1,5 @@
 import type { Dump, Resource } from './types.js'
+import { clone } from './clone.js'
 
 /**
  * The resources of a dump with a copy-on-write layer over them: a type is cloned the first time it is written, the
@@ -27,7 +28,7 @@ export class Store {
     const key = this.key(langcode, type)
     let list = this.written.get(key)
     if (!list) {
-      list = (this.dump.resources[langcode]?.[type] || []).map((resource) => structuredClone(resource))
+      list = (this.dump.resources[langcode]?.[type] || []).map((resource) => clone(resource))
       this.written.set(key, list)
     }
     return list

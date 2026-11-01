@@ -6,7 +6,8 @@
   "packageManager": "yarn@4.18.1",
   "workspaces": [
     "packages/*",
-    "presets/*"
+    "presets/*",
+    "examples/*"
   ],
   "scripts": {
     "build": "yarn workspaces foreach -A -pt run build",

@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
+    "target": "ES2021",
     "rootDir": "src",
     "declaration": true,
     "noEmit": false,

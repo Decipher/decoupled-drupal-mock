@@ -26,6 +26,71 @@ A client that takes a `fetch` gets `drupal.fetch`. One that intercepts with msw 
 npx decoupled-drupal-mock serve decoupled-drupal-mock-umami --port 3005
 ```
 
+## In a test runner
+
+Every runner gets the same engine. Reset between tests, because a write stays until then. Each section has a working copy under [`examples/`](examples), run in CI.
+
+**Jest**, on CommonJS and Node 16 or later, in jsdom or node. Answer axios spies from the engine, so the assertions on their calls keep working:
+
+```js
+import mockAxios from 'jest-mock-axios';
+const { axiosVerbs, loadPreset } = require('decoupled-drupal-mock/jest');
+
+const baseUrl = 'https://drupal.test';
+const drupal = loadPreset('umami', { baseUrl });
+const verbs = axiosVerbs(drupal, baseUrl);
+
+mockAxios.get = jest.fn(verbs.get);
+mockAxios.post = jest.fn(verbs.post);
+mockAxios.patch = jest.fn(verbs.patch);
+afterEach(() => drupal.reset());
+```
+
+A client that takes an adapter gets `axios.create({ adapter: axiosAdapter(drupal) })`. For a server shared by the whole run, `globalSetup('umami')` and `globalTeardown` go in the files Jest's config names, and a test reaches it with `connectMock()`.
+
+**Vitest**, or anything else that imports ESM:
+
+```ts
+import { startMock } from 'decoupled-drupal-mock/testing';
+
+const mock = await startMock('umami');
+afterEach(() => mock.reset());
+afterAll(() => mock.close());
+// mock.url, await mock.tokenFor('admin'), mock.drupal
+```
+
+**Playwright** gets a `drupal` fixture, with a server per worker, reset after each test:
+
+```js
+import { test as base } from '@playwright/test';
+import { withDrupal } from 'decoupled-drupal-mock/testing';
+
+const test = withDrupal(base, 'umami');
+test('a recipe', async ({ page, drupal }) => {
+  await page.goto(`${drupal.url}/en/jsonapi/node/recipe`);
+});
+```
+
+**Cypress** gets tasks, in `setupNodeEvents`:
+
+```js
+const { cypressTasks, spawnMock } = require('decoupled-drupal-mock/cypress');
+
+const mock = await spawnMock('umami');
+on('task', cypressTasks(mock.url));
+on('after:run', () => mock.close());
+```
+
+A test then calls `cy.task('drupal:reset')` and `cy.task('drupal:token', { name: 'admin' })`.
+
+**A frontend the runner does not start** points at a server on a port you choose, for example from `start-server-and-test`:
+
+```sh
+npx decoupled-drupal-mock serve umami --port 3005 --control
+```
+
+Set `DECOUPLED_DRUPAL_MOCK_URL` to its URL and `connectMock()` or `withDrupal` use it. Run one test worker at a time against a shared server, or their writes meet. `--control` opens `POST /__decoupled-drupal-mock/reset` and `/token`. It lets anyone who reaches the port sign in as anyone, so it is for a test's server only.
+
 ## Writes and sign-in
 
 The engine answers POST, PATCH and DELETE on JSON:API resources and relationships with Drupal's own validation, permission and moderation answers, and Simple OAuth's token grants, userinfo and authorize beside Drupal's cookie sign-in. Each `createDrupal()` keeps its own copy of what it writes, so one test's writes never reach another's, and `reset()` restores the preset. `tokenFor('editor')` is a test's shortcut past the grant.

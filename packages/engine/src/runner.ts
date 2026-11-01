@@ -1,0 +1,111 @@
+import { spawn } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
+import { get } from 'node:http'
+import { createServer } from 'node:net'
+import { join } from 'node:path'
+import { connectMock, URL_VARIABLE } from './control.js'
+import type { MockClient } from './control.js'
+import { createDrupal } from './engine.js'
+import type { Drupal, DrupalOptions } from './engine.js'
+import { loadDump } from './load.js'
+import { presetDir } from './preset.js'
+
+export { answerAxios, axiosAdapter, axiosVerbs } from './axios.js'
+export { connectMock, URL_VARIABLE } from './control.js'
+export type { MockClient } from './control.js'
+export { createDrupal } from './engine.js'
+export { loadDump } from './load.js'
+export { presetDir } from './preset.js'
+
+/**
+ * The engine over a preset, in this process: synchronous, and no port to manage. Reading the dump is the slow part, so
+ * a suite does it once and calls `reset()` between tests.
+ *
+ * @param preset - A directory, a preset package or its short name.
+ * @param options - The base URL the links name, and the identities.
+ * @returns The engine.
+ */
+export const loadPreset = (preset: string, options: DrupalOptions = {}): Drupal => createDrupal(loadDump(presetDir(preset)), options)
+
+const freePort = (): Promise<number> => new Promise((resolve, reject) => {
+  const probe = createServer()
+  probe.on('error', reject)
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address()
+    probe.close(() => resolve(typeof address === 'object' && address ? address.port : 0))
+  })
+})
+
+const answers = (url: string): Promise<boolean> => new Promise((resolve) => {
+  get(`${url}/jsonapi`, (response) => {
+    response.resume()
+    resolve(true)
+  }).on('error', () => resolve(false))
+})
+
+/** A server in a process of its own, for a runner whose tests and browser live elsewhere. */
+export interface SpawnedMock extends MockClient {
+  /** Stops it. */
+  close: () => Promise<void>
+}
+
+/**
+ * Starts the CLI's server in a child process, with its test controls on, and waits until it answers.
+ *
+ * @param preset - A directory, a preset package or its short name.
+ * @param options - The port, or a free one when not named.
+ * @returns The running server.
+ */
+export const spawnMock = async (preset: string, options: { port?: number } = {}): Promise<SpawnedMock> => {
+  const port = options.port || await freePort()
+  const url = `http://127.0.0.1:${port}`
+  const child: ChildProcess = spawn(process.execPath, [join(__dirname, 'cli.js'), 'serve', preset, '--port', String(port), '--control'], { stdio: ['ignore', 'ignore', 'pipe'] })
+  let errors = ''
+  child.stderr!.on('data', (chunk: Buffer) => { errors += chunk.toString('utf8') })
+  let exited = false
+  child.on('exit', () => { exited = true })
+  for (let attempt = 0; attempt < 300 && !exited; attempt++) {
+    if (await answers(url)) {
+      return { ...connectMock(url), close: () => new Promise((resolve) => { child.on('exit', () => resolve()); child.kill() }) }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  child.kill()
+  throw new Error(`The mock did not start. ${errors}`)
+}
+
+let running: SpawnedMock | undefined
+
+/**
+ * A Jest `globalSetup`: a server for the whole run, its URL left in the environment for the tests and the workers.
+ * `module.exports = globalSetup('umami')` in the file Jest is pointed at.
+ *
+ * @param preset - A directory, a preset package or its short name.
+ * @returns The function Jest calls.
+ */
+export const globalSetup = (preset: string) => async (): Promise<void> => {
+  running = await spawnMock(preset)
+  process.env[URL_VARIABLE] = running.url
+}
+
+/** A Jest `globalTeardown`: stops what `globalSetup` started. */
+export const globalTeardown = async (): Promise<void> => {
+  await running?.close()
+  running = undefined
+}
+
+/**
+ * Cypress tasks over a running server: `drupal:reset` and `drupal:token`. In `setupNodeEvents`,
+ * `on('task', cypressTasks(url))`.
+ *
+ * @param url - The server's URL, started with `--control`.
+ * @returns The tasks.
+ */
+export const cypressTasks = (url?: string) => {
+  const mock = connectMock(url)
+  return {
+    // Cypress tasks must answer something other than undefined.
+    'drupal:reset': async () => { await mock.reset(); return null },
+    'drupal:token': ({ name, scopes }: { name: string, scopes?: string[] }) => mock.tokenFor(name, scopes),
+  }
+}
