@@ -1,14 +1,18 @@
 #!/usr/bin/env -S node --experimental-strip-types
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { crawl } from './crawl.ts'
 
 /**
  * `node --experimental-strip-types cli.ts <config.json>`: the crawl options as JSON, with `oracleFile` a path of one
  * request per line, and `drush` as `{ bin, cwd }` to read what JSON:API refuses every user.
  */
-const config = JSON.parse(readFileSync(process.argv[2]!, 'utf8')) as Parameters<typeof crawl>[0] & { oracleFile?: string, writesFile?: string, drush?: { bin: string, cwd: string }, excludeUsers?: string[] }
+const config = JSON.parse(readFileSync(process.argv[2]!, 'utf8')) as Parameters<typeof crawl>[0] & { oracleFile?: string, writesFile?: string, graphqlFile?: string, drush?: { bin: string, cwd: string }, excludeUsers?: string[] }
 const scripts = config.writesFile ? JSON.parse(readFileSync(config.writesFile, 'utf8')) as Parameters<typeof crawl>[0]['writes'] : undefined
+
+/** The GraphQL oracle's queries, and the schema's mapping onto Drupal through drush. */
+const graphqlQueries = config.graphqlFile ? JSON.parse(readFileSync(config.graphqlFile, 'utf8')) as NonNullable<Parameters<typeof crawl>[0]['graphql']>['queries'] : undefined
 
 const drush = (script: string): string => {
   try {
@@ -18,8 +22,22 @@ const drush = (script: string): string => {
     throw new Error(`drush php-eval failed:\n${(failure.stderr || '').slice(-1500)}\n${(failure.stdout || '').slice(-500)}\nscript: ${script.slice(0, 400)}`)
   }
 }
+/** A drush `php:script`, for a file of PHP. */
+const drushScript = (path: string): string => {
+  try {
+    return execFileSync(config.drush!.bin, ['php:script', path], { cwd: config.drush!.cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  } catch (err) {
+    const failure = err as { stderr?: string }
+    throw new Error(`drush php:script ${path} failed:\n${(failure.stderr || '').slice(-1500)}`)
+  }
+}
+
 /** A value as a PHP expression: JSON decoded into arrays, so a string, a list and a map all read as PHP writes them. */
 const php = (value: unknown): string => `json_decode('${JSON.stringify(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', TRUE)`
+
+// The scenarios fail sign-ins on purpose, and Drupal's flood control would answer the next build's with 403 instead
+// of 400: the build starts with a clean slate.
+if (config.drush) drush(`\\Drupal::database()->truncate('flood')->execute(); print 'ok';`)
 
 // The accounts and consumers the preset signs in, created in the Drupal before the crawl so the oracle is real.
 if (config.identities && config.drush) {
@@ -61,5 +79,6 @@ const exclude = excludeUsers.size
   ? (resource: Parameters<NonNullable<Parameters<typeof crawl>[0]['exclude']>>[0]): boolean => resource.type === 'user--user' && excludeUsers.has(String((resource.attributes as { name?: string } | undefined)?.name))
   : undefined
 
-const manifest = await crawl({ ...config, ...(oracle ? { oracle } : {}), ...(scripts ? { writes: scripts } : {}), ...(phantomData ? { phantomData } : {}), ...(exclude ? { exclude } : {}) })
+const graphql = config.graphql || graphqlQueries ? { ...(config.graphql || {}), ...(graphqlQueries ? { queries: graphqlQueries } : {}), ...(config.drush ? { meta: JSON.parse(drushScript(fileURLToPath(new URL('./compose-meta.php', import.meta.url)))) as Record<string, unknown> } : {}) } : undefined
+const manifest = await crawl({ ...config, ...(oracle ? { oracle } : {}), ...(scripts ? { writes: scripts } : {}), ...(graphql ? { graphql } : {}), ...(phantomData ? { phantomData } : {}), ...(exclude ? { exclude } : {}) })
 console.log(`built ${manifest.preset} from Drupal ${manifest.drupal.core}: ${Object.keys(manifest.files).length} files`)

@@ -23,6 +23,27 @@ export interface DrupalOptions {
   now?: () => number
 }
 
+/** What the engine shares with another answerer over the same dump, such as the GraphQL layer. */
+export interface Internals {
+  dump: Dump
+  baseUrl: string
+  /** A request's session from its headers, or the reason its credentials were refused. */
+  session: (headers: Record<string, string>) => Session | { invalid: string }
+  permissions: (session: Session) => { admin: boolean, has: (permission: string) => boolean }
+  /** The resources of a type in a language, as stored: a visitor sees those `visible` says, minus the phantoms. */
+  stored: (langcode: string, type: string) => Resource[]
+  /** A resource in a language, or its default translation, as Drupal falls back. */
+  find: (langcode: string, identifier: ResourceIdentifier) => Resource | undefined
+  /** Whether the anonymous user may read a resource. */
+  visible: (langcode: string, resource: Resource) => boolean
+  /** Whether a resource is one no user reads, held for filtering and sorting alone. */
+  phantom: (langcode: string, resource: Resource) => boolean
+  /** A recorded answer, the default language's prefix tried as Drupal does. */
+  recorded: (method: string, path: string, search?: string) => Recorded | undefined
+  /** The language and the path after its prefix. */
+  language: (path: string) => { langcode: string, prefix: string, rest: string }
+}
+
 export interface Drupal {
   /** A `fetch` answering as Drupal would. */
   fetch: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
@@ -33,6 +54,21 @@ export interface Drupal {
   /** Drops every write and every token, back to the preset as built. */
   reset: () => void
   readonly manifest: Dump['manifest']
+  /** For another answerer over the same dump. */
+  readonly internals: Internals
+}
+
+/** A `fetch` over a `handle`, the way the engine's own is built. */
+export const fetchOver = (handle: Drupal['handle']): Drupal['fetch'] => async (input, init = {}) => {
+  // `init` applies to a Request too, as it does in the browser's fetch.
+  const request = new Request(input instanceof URL ? input.toString() : input, init)
+  const requestHeaders: Record<string, string> = {}
+  request.headers.forEach((value, name) => { requestHeaders[name] = value })
+  const requestBody = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.text()
+  const { status, headers, body } = handle(request.method, request.url, requestHeaders, requestBody)
+  const text = typeof body === 'string' ? body : JSON.stringify(body)
+  // A HEAD response carries no body, nor does a 204 or a 304.
+  return new Response(request.method === 'HEAD' || status === 204 || status === 304 ? null : text, { status, statusText: STATUS_TEXT[status] ?? '', headers })
 }
 
 /** The entity types JSON:API writes; a config entity type answers 405. */
@@ -642,17 +678,18 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: ${allow}, HEAD)`, via) }
   }
 
-  const fetch: Drupal['fetch'] = async (input, init = {}) => {
-    // `init` applies to a Request too, as it does in the browser's fetch.
-    const request = new Request(input instanceof URL ? input.toString() : input, init)
-    const requestHeaders: Record<string, string> = {}
-    request.headers.forEach((value, name) => { requestHeaders[name] = value })
-    const requestBody = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.text()
-    const { status, headers, body } = handle(request.method, request.url, requestHeaders, requestBody)
-    const text = typeof body === 'string' ? body : JSON.stringify(body)
-    // A HEAD response carries no body, nor does a 204 or a 304.
-    return new Response(request.method === 'HEAD' || status === 204 || status === 304 ? null : text, { status, statusText: STATUS_TEXT[status] ?? '', headers })
+  const internals: Internals = {
+    dump,
+    baseUrl,
+    session: (headers) => identity.session(headers),
+    permissions: (session) => identity.permissions(session),
+    stored: (langcode, type) => store.get(langcode, type) || [],
+    find,
+    visible,
+    phantom: isPhantom,
+    recorded: (method, path, search = '') => recorded(method, path, search),
+    language,
   }
 
-  return { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset(); identity.reset() } }
+  return { fetch: fetchOver(handle), handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset(); identity.reset() }, internals }
 }

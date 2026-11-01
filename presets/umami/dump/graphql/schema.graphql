@@ -1,0 +1,1295 @@
+"""The schema's entry-point for queries."""
+type Query {
+  """Load a Media entity by id."""
+  media(
+    """The id of the Media to load."""
+    id: ID!
+
+    """Optionally set the response language. Eg en, ja, fr."""
+    langcode: String
+
+    """
+    Optionally set the revision of the entity. Eg current, latest, or an ID.
+    """
+    revision: ID
+  ): MediaUnion
+
+  """Load a Node entity by id."""
+  node(
+    """The id of the Node to load."""
+    id: ID!
+
+    """Optionally set the response language. Eg en, ja, fr."""
+    langcode: String
+
+    """
+    Optionally set the revision of the entity. Eg current, latest, or an ID.
+    """
+    revision: ID
+  ): NodeUnion
+
+  """Load a Term entity by id."""
+  term(
+    """The id of the Term to load."""
+    id: ID!
+
+    """Optionally set the response language. Eg en, ja, fr."""
+    langcode: String
+
+    """
+    Optionally set the revision of the entity. Eg current, latest, or an ID.
+    """
+    revision: ID
+  ): TermUnion
+
+  """Load a Menu by name."""
+  menu(
+    """Internal menu name. Eg MAIN"""
+    name: MenuAvailable!
+
+    """
+    Optionally set the response language. Eg en, ja, fr. Setting this langcode
+    will change the current language of the entire response.
+    """
+    langcode: String
+  ): Menu
+
+  """Schema information."""
+  info: SchemaInformation!
+
+  """List of all MediaAudio on the platform."""
+  mediaAudioItems(
+    """Returns the elements that come after the specified cursor."""
+    after: Cursor
+
+    """Returns the elements that come before the specified cursor."""
+    before: Cursor
+
+    """Returns up to the first n elements from the list."""
+    first: Int
+
+    """Returns up to the last n elements from the list."""
+    last: Int
+
+    """Reverse the order of the underlying list."""
+    reverse: Boolean = false
+
+    """Sort the underlying list by the given key."""
+    sortKey: ConnectionSortKeys
+
+    """Filter the results by language. Eg en, ja, fr."""
+    langcode: String
+  ): MediaAudioConnection!
+
+  """List of all MediaDocument on the platform."""
+  mediaDocuments(
+    """Returns the elements that come after the specified cursor."""
+    after: Cursor
+
+    """Returns the elements that come before the specified cursor."""
+    before: Cursor
+
+    """Returns up to the first n elements from the list."""
+    first: Int
+
+    """Returns up to the last n elements from the list."""
+    last: Int
+
+    """Reverse the order of the underlying list."""
+    reverse: Boolean = false
+
+    """Sort the underlying list by the given key."""
+    sortKey: ConnectionSortKeys
+
+    """Filter the results by language. Eg en, ja, fr."""
+    langcode: String
+  ): MediaDocumentConnection!
+
+  """List of all MediaImage on the platform."""
+  mediaImages(
+    """Returns the elements that come after the specified cursor."""
+    after: Cursor
+
+    """Returns the elements that come before the specified cursor."""
+    before: Cursor
+
+    """Returns up to the first n elements from the list."""
+    first: Int
+
+    """Returns up to the last n elements from the list."""
+    last: Int
+
+    """Reverse the order of the underlying list."""
+    reverse: Boolean = false
+
+    """Sort the underlying list by the given key."""
+    sortKey: ConnectionSortKeys
+
+    """Filter the results by language. Eg en, ja, fr."""
+    langcode: String
+  ): MediaImageConnection!
+
+  """List of all MediaRemoteVideo on the platform."""
+  mediaRemoteVideos(
+    """Returns the elements that come after the specified cursor."""
+    after: Cursor
+
+    """Returns the elements that come before the specified cursor."""
+    before: Cursor
+
+    """Returns up to the first n elements from the list."""
+    first: Int
+
+    """Returns up to the last n elements from the list."""
+    last: Int
+
+    """Reverse the order of the underlying list."""
+    reverse: Boolean = false
+
+    """Sort the underlying list by the given key."""
+    sortKey: ConnectionSortKeys
+
+    """Filter the results by language. Eg en, ja, fr."""
+    langcode: String
+  ): MediaRemoteVideoConnection!
+
+  """List of all MediaVideo on the platform."""
+  mediaVideos(
+    """Returns the elements that come after the specified cursor."""
+    after: Cursor
+
+    """Returns the elements that come before the specified cursor."""
+    before: Cursor
+
+    """Returns up to the first n elements from the list."""
+    first: Int
+
+    """Returns up to the last n elements from the list."""
+    last: Int
+
+    """Reverse the order of the underlying list."""
+    reverse: Boolean = false
+
+    """Sort the underlying list by the given key."""
+    sortKey: ConnectionSortKeys
+
+    """Filter the results by language. Eg en, ja, fr."""
+    langcode: String
+  ): MediaVideoConnection!
+
+  """List of all NodeArticle on the platform."""
+  nodeArticles(
+    """Returns the elements that come after the specified cursor."""
+    after: Cursor
+
+    """Returns the elements that come before the specified cursor."""
+    before: Cursor
+
+    """Returns up to the first n elements from the list."""
+    first: Int
+
+    """Returns up to the last n elements from the list."""
+    last: Int
+
+    """Reverse the order of the underlying list."""
+    reverse: Boolean = false
+
+    """Sort the underlying list by the given key."""
+    sortKey: ConnectionSortKeys
+
+    """Filter the results by language. Eg en, ja, fr."""
+    langcode: String
+  ): NodeArticleConnection!
+
+  """List of all NodePage on the platform."""
+  nodePages(
+    """Returns the elements that come after the specified cursor."""
+    after: Cursor
+
+    """Returns the elements that come before the specified cursor."""
+    before: Cursor
+
+    """Returns up to the first n elements from the list."""
+    first: Int
+
+    """Returns up to the last n elements from the list."""
+    last: Int
+
+    """Reverse the order of the underlying list."""
+    reverse: Boolean = false
+
+    """Sort the underlying list by the given key."""
+    sortKey: ConnectionSortKeys
+
+    """Filter the results by language. Eg en, ja, fr."""
+    langcode: String
+  ): NodePageConnection!
+
+  """List of all NodeRecipe on the platform."""
+  nodeRecipes(
+    """Returns the elements that come after the specified cursor."""
+    after: Cursor
+
+    """Returns the elements that come before the specified cursor."""
+    before: Cursor
+
+    """Returns up to the first n elements from the list."""
+    first: Int
+
+    """Returns up to the last n elements from the list."""
+    last: Int
+
+    """Reverse the order of the underlying list."""
+    reverse: Boolean = false
+
+    """Sort the underlying list by the given key."""
+    sortKey: ConnectionSortKeys
+
+    """Filter the results by language. Eg en, ja, fr."""
+    langcode: String
+  ): NodeRecipeConnection!
+
+  """List of all TermRecipeCategory on the platform."""
+  termRecipeCategories(
+    """Returns the elements that come after the specified cursor."""
+    after: Cursor
+
+    """Returns the elements that come before the specified cursor."""
+    before: Cursor
+
+    """Returns up to the first n elements from the list."""
+    first: Int
+
+    """Returns up to the last n elements from the list."""
+    last: Int
+
+    """Reverse the order of the underlying list."""
+    reverse: Boolean = false
+
+    """Sort the underlying list by the given key."""
+    sortKey: ConnectionSortKeys
+
+    """Filter the results by language. Eg en, ja, fr."""
+    langcode: String
+  ): TermRecipeCategoryConnection!
+
+  """List of all TermTag on the platform."""
+  termTags(
+    """Returns the elements that come after the specified cursor."""
+    after: Cursor
+
+    """Returns the elements that come before the specified cursor."""
+    before: Cursor
+
+    """Returns up to the first n elements from the list."""
+    first: Int
+
+    """Returns up to the last n elements from the list."""
+    last: Int
+
+    """Reverse the order of the underlying list."""
+    reverse: Boolean = false
+
+    """Sort the underlying list by the given key."""
+    sortKey: ConnectionSortKeys
+
+    """Filter the results by language. Eg en, ja, fr."""
+    langcode: String
+  ): TermTagConnection!
+
+  """Load a Route by path."""
+  route(
+    """Internal path to load. Eg /about"""
+    path: String!
+
+    """
+    Optionally set the revision of the entity. Eg current, latest, or an ID.
+    """
+    revision: ID
+
+    """
+    Optionally set the response language. Eg en, ja, fr. Setting this langcode
+    will change the current language of the entire response.
+    """
+    langcode: String
+  ): RouteUnion
+}
+
+"""Entity type media."""
+union MediaUnion = MediaAudio | MediaDocument | MediaImage | MediaRemoteVideo | MediaVideo
+
+"""A locally hosted audio file."""
+type MediaAudio implements MediaInterface & EdgeNode {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The time the media item was last edited."""
+  changed: DateTime!
+
+  """The time the media item was created."""
+  created: DateTime!
+
+  """Language"""
+  langcode: Language!
+
+  """Audio file"""
+  mediaAudioFile: File
+
+  """Name"""
+  name: String!
+
+  """URL alias"""
+  path: String
+
+  """Published"""
+  status: Boolean!
+}
+
+"""Entity type media."""
+interface MediaInterface {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The time the media item was last edited."""
+  changed: DateTime!
+
+  """The time the media item was created."""
+  created: DateTime!
+
+  """Language"""
+  langcode: Language!
+
+  """Name"""
+  name: String!
+
+  """URL alias"""
+  path: String
+
+  """Published"""
+  status: Boolean!
+}
+
+"""A DateTime object."""
+type DateTime {
+  """
+  Type represents date and time as number of milliseconds from start of the UNIX epoch.
+  """
+  timestamp: Timestamp!
+
+  """A field whose value exists in the standard IANA Time Zone Database."""
+  timezone: TimeZone!
+
+  """A string that will have a value of format ±hh:mm"""
+  offset: UtcOffset!
+
+  """RFC 3339 compliant time string."""
+  time: Time!
+}
+
+"""
+Type represents date and time as number of milliseconds from start of the UNIX epoch.
+"""
+scalar Timestamp
+
+"""A field whose value exists in the standard IANA Time Zone Database."""
+scalar TimeZone
+
+"""A string that will have a value of format ±hh:mm"""
+scalar UtcOffset
+
+"""RFC 3339 compliant time string."""
+scalar Time
+
+"""A language definition provided by the CMS."""
+type Language {
+  """The language code."""
+  id: ID
+
+  """The language name."""
+  name: String
+
+  """The language direction."""
+  direction: String
+}
+
+"""This entity is accessible over an Edge connection."""
+interface EdgeNode {
+  id: ID!
+}
+
+"""A file object to represent an managed file."""
+type File {
+  """The name of the file."""
+  name: String
+
+  """The URL of the file."""
+  url: String!
+
+  """The size of the file in bytes."""
+  size: Int!
+
+  """The mime type of the file."""
+  mime: String
+
+  """The description of the file."""
+  description: String
+}
+
+"""A locally hosted document, such as a PDF file."""
+type MediaDocument implements MediaInterface & EdgeNode {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The time the media item was last edited."""
+  changed: DateTime!
+
+  """The time the media item was created."""
+  created: DateTime!
+
+  """Language"""
+  langcode: Language!
+
+  """Document"""
+  mediaDocument: File
+
+  """Name"""
+  name: String!
+
+  """URL alias"""
+  path: String
+
+  """Published"""
+  status: Boolean!
+}
+
+"""A locally hosted image file."""
+type MediaImage implements MediaInterface & EdgeNode {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The time the media item was last edited."""
+  changed: DateTime!
+
+  """The time the media item was created."""
+  created: DateTime!
+
+  """Language"""
+  langcode: Language!
+
+  """Image"""
+  mediaImage: Image
+
+  """Name"""
+  name: String!
+
+  """URL alias"""
+  path: String
+
+  """Published"""
+  status: Boolean!
+
+  """Available translations for content."""
+  translations: [Translation!]!
+}
+
+"""A image object to represent an managed file."""
+type Image {
+  """The URL of the image."""
+  url: String!
+
+  """The width of the image."""
+  width: Int!
+
+  """The height of the image."""
+  height: Int!
+
+  """The alt text of the image."""
+  alt: String
+
+  """The title text of the image."""
+  title: String
+
+  """The size of the image in bytes."""
+  size: Int!
+
+  """The mime type of the image."""
+  mime: String
+}
+
+"""Available translations for content."""
+type Translation {
+  """The title of the translation."""
+  title: String
+
+  """The language of the translation."""
+  langcode: Language!
+
+  """The path to the translated content."""
+  path: String
+}
+
+"""A video hosted on an external site (for example, YouTube or Vimeo)."""
+type MediaRemoteVideo implements MediaInterface & EdgeNode {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The time the media item was last edited."""
+  changed: DateTime!
+
+  """The time the media item was created."""
+  created: DateTime!
+
+  """Language"""
+  langcode: Language!
+
+  """Video URL"""
+  mediaOembedVideo: String
+
+  """Name"""
+  name: String!
+
+  """URL alias"""
+  path: String
+
+  """Published"""
+  status: Boolean!
+}
+
+"""A locally hosted video file."""
+type MediaVideo implements MediaInterface & EdgeNode {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The time the media item was last edited."""
+  changed: DateTime!
+
+  """The time the media item was created."""
+  created: DateTime!
+
+  """Language"""
+  langcode: Language!
+
+  """Video file"""
+  mediaVideoFile: File
+
+  """Name"""
+  name: String!
+
+  """URL alias"""
+  path: String
+
+  """Published"""
+  status: Boolean!
+}
+
+"""Entity type node."""
+union NodeUnion = NodeArticle | NodePage | NodeRecipe
+
+"""
+Use <em>articles</em> for time-sensitive content like news, press releases or blog posts.
+"""
+type NodeArticle implements NodeInterface & EdgeNode {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """Body"""
+  body: Text
+
+  """The time that the node was last edited."""
+  changed: DateTime!
+
+  """The date and time that the content was created."""
+  created: DateTime!
+
+  """Language"""
+  langcode: Language!
+
+  """Media Image"""
+  mediaImage: MediaUnion
+
+  """URL alias"""
+  path: String
+
+  """Promoted to front page"""
+  promote: Boolean!
+
+  """Published"""
+  status: Boolean!
+
+  """Sticky at top of lists"""
+  sticky: Boolean!
+
+  """
+  Enter a comma-separated list. For example: Vegetarian, Chocolate brownies, Appetizers
+  """
+  tags: [TermUnion!]
+
+  """Title"""
+  title: String!
+
+  """Available translations for content."""
+  translations: [Translation!]!
+}
+
+"""Entity type node."""
+interface NodeInterface {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The time that the node was last edited."""
+  changed: DateTime!
+
+  """The date and time that the content was created."""
+  created: DateTime!
+
+  """Language"""
+  langcode: Language!
+
+  """URL alias"""
+  path: String
+
+  """Promoted to front page"""
+  promote: Boolean!
+
+  """Published"""
+  status: Boolean!
+
+  """Sticky at top of lists"""
+  sticky: Boolean!
+
+  """Title"""
+  title: String!
+}
+
+"""A processed text format defined by the CMS."""
+type Text {
+  """The raw text value."""
+  value: String
+
+  """The processed text value."""
+  processed: Html
+
+  """The text format used to process the text value."""
+  format: String
+}
+
+"""
+An HTML string
+
+Content of this type is deemed safe by the server for raw output given the
+origin and the context of its usage. The HTML can still contain scripts or style
+tags where the creating user had permission to input these.
+"""
+scalar Html
+
+"""Entity type taxonomy_term."""
+union TermUnion = TermRecipeCategory | TermTag
+
+"""Use this taxonomy to group recipes of the same type together."""
+type TermRecipeCategory implements TermInterface & EdgeNode {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The time that the term was last edited."""
+  changed: DateTime!
+
+  """Description"""
+  description: Text!
+
+  """The term language code."""
+  langcode: Language!
+
+  """Name"""
+  name: String!
+
+  """The parents of this term."""
+  parent: TermUnion
+
+  """URL alias"""
+  path: String
+
+  """Published"""
+  status: Boolean!
+
+  """The weight of this term in relation to other terms."""
+  weight: Int!
+
+  """Available translations for content."""
+  translations: [Translation!]!
+}
+
+"""Entity type taxonomy_term."""
+interface TermInterface {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The time that the term was last edited."""
+  changed: DateTime!
+
+  """Description"""
+  description: Text!
+
+  """The term language code."""
+  langcode: Language!
+
+  """Name"""
+  name: String!
+
+  """The parents of this term."""
+  parent: TermUnion
+
+  """URL alias"""
+  path: String
+
+  """Published"""
+  status: Boolean!
+
+  """The weight of this term in relation to other terms."""
+  weight: Int!
+}
+
+"""Use tags to group articles on similar topics into categories."""
+type TermTag implements TermInterface & EdgeNode {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The time that the term was last edited."""
+  changed: DateTime!
+
+  """Description"""
+  description: Text!
+
+  """The term language code."""
+  langcode: Language!
+
+  """Name"""
+  name: String!
+
+  """The parents of this term."""
+  parent: TermUnion
+
+  """URL alias"""
+  path: String
+
+  """Published"""
+  status: Boolean!
+
+  """The weight of this term in relation to other terms."""
+  weight: Int!
+
+  """Available translations for content."""
+  translations: [Translation!]!
+}
+
+"""
+Use <em>basic pages</em> for your static content, such as an 'About us' page.
+"""
+type NodePage implements NodeInterface & EdgeNode {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """Body"""
+  body: Text
+
+  """The time that the node was last edited."""
+  changed: DateTime!
+
+  """The date and time that the content was created."""
+  created: DateTime!
+
+  """Language"""
+  langcode: Language!
+
+  """URL alias"""
+  path: String
+
+  """Promoted to front page"""
+  promote: Boolean!
+
+  """Published"""
+  status: Boolean!
+
+  """Sticky at top of lists"""
+  sticky: Boolean!
+
+  """Title"""
+  title: String!
+
+  """Available translations for content."""
+  translations: [Translation!]!
+}
+
+"""Add a new recipe to the site."""
+type NodeRecipe implements NodeInterface & EdgeNode {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The time that the node was last edited."""
+  changed: DateTime!
+
+  """Cooking time"""
+  cookingTime: Int
+
+  """The date and time that the content was created."""
+  created: DateTime!
+
+  """Difficulty"""
+  difficulty: String
+
+  """List the ingredients required for this recipe, one per item."""
+  ingredients: [String!]
+
+  """Language"""
+  langcode: Language!
+
+  """Media Image"""
+  mediaImage: MediaUnion
+
+  """Number of servings"""
+  numberOfServings: Int
+
+  """URL alias"""
+  path: String
+
+  """Preparation time"""
+  preparationTime: Int
+
+  """Promoted to front page"""
+  promote: Boolean!
+
+  """Recipe category"""
+  recipeCategory: [TermUnion!]
+
+  """Directions"""
+  recipeInstruction: Text
+
+  """Published"""
+  status: Boolean!
+
+  """Sticky at top of lists"""
+  sticky: Boolean!
+
+  """Provide a short overview of this recipe."""
+  summary: Text
+
+  """
+  Enter a comma-separated list. For example: Vegetarian, Chocolate brownies, Appetizers
+  """
+  tags: [TermUnion!]
+
+  """Title"""
+  title: String!
+
+  """Available translations for content."""
+  translations: [Translation!]!
+}
+
+"""List of menus available to load."""
+enum MenuAvailable {
+  """User account menu"""
+  ACCOUNT
+
+  """Administration"""
+  ADMIN
+
+  """Content"""
+  CONTENT
+
+  """Footer"""
+  FOOTER
+
+  """Main navigation"""
+  MAIN
+
+  """Navigation user links"""
+  NAVIGATION_USER_LINKS
+
+  """Tools"""
+  TOOLS
+}
+
+"""Entity type menu."""
+type Menu implements MenuInterface {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The menu items."""
+  items: [MenuItem!]!
+
+  """The menu name."""
+  name: String!
+}
+
+"""Entity type menu."""
+interface MenuInterface {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The menu items."""
+  items: [MenuItem!]!
+
+  """The menu name."""
+  name: String!
+}
+
+"""A menu item defined in the CMS."""
+type MenuItem {
+  """The Universally Unique IDentifier (UUID)."""
+  id: ID!
+
+  """The title of the menu item."""
+  title: String!
+
+  """The description of the menu item."""
+  description: String
+
+  """The URL of the menu item."""
+  url: String
+
+  """The language of the menu item."""
+  langcode: Language!
+
+  """Whether this menu item links to an internal route."""
+  internal: Boolean!
+
+  """Whether this menu item is intended to be expanded."""
+  expanded: Boolean!
+
+  """Attributes of this menu item."""
+  attributes: MenuItemAttributes!
+
+  """Child menu items of this menu item."""
+  children: [MenuItem!]!
+
+  """
+  The route this menu item uses. Route loading can be disabled per menu type.
+  """
+  route: RouteUnion
+}
+
+"""Menu item options set within the CMS."""
+type MenuItemAttributes {
+  """Menu item attribute class."""
+  class: String
+}
+
+"""Route types that can exist in the system."""
+union RouteUnion = RouteInternal | RouteExternal
+
+"""Route within this website."""
+type RouteInternal implements Route {
+  """URL of this route."""
+  url: String!
+
+  """Whether this route is internal or external."""
+  internal: Boolean!
+
+  """Breadcrumb links for this route."""
+  breadcrumbs: [Link!]
+
+  """Content assigned to this route."""
+  entity: RouteEntityUnion
+}
+
+"""Routes represent incoming requests that resolve to content."""
+interface Route {
+  """URL of this route."""
+  url: String!
+
+  """Whether this route is internal or external."""
+  internal: Boolean!
+}
+
+"""A link."""
+type Link {
+  """The title of the link."""
+  title: String
+
+  """The URL of the link."""
+  url: String
+
+  """Whether the link is internal to this website."""
+  internal: Boolean!
+}
+
+"""A list of possible entities that can be returned by URL."""
+union RouteEntityUnion = MediaAudio | MediaDocument | MediaImage | MediaRemoteVideo | MediaVideo | NodeArticle | NodePage | NodeRecipe | TermRecipeCategory | TermTag
+
+"""Route outside of this website."""
+type RouteExternal implements Route {
+  """URL of this route."""
+  url: String!
+
+  """Whether this route is internal or external."""
+  internal: Boolean!
+}
+
+"""Schema information provided by the system."""
+type SchemaInformation {
+  """The schema description."""
+  description: String
+
+  """The internal path to the front page."""
+  home: String
+
+  """The schema version."""
+  version: String
+
+  """List of languages available."""
+  languages: [Language!]!
+}
+
+"""A cursor for use in pagination."""
+scalar Cursor
+
+"""Choose how your sorts will occur and on which field."""
+enum ConnectionSortKeys {
+  """Sort by creation date"""
+  CREATED_AT
+
+  """Sort by updated date"""
+  UPDATED_AT
+
+  """Sort by entity title."""
+  TITLE
+
+  """Sort by sticky status."""
+  STICKY
+
+  """Sort by promoted status."""
+  PROMOTED
+
+  """Sort by term weight."""
+  WEIGHT
+}
+
+"""A paginated set of results for MediaAudio."""
+type MediaAudioConnection implements Connection {
+  edges: [MediaAudioEdge!]!
+  nodes: [MediaAudio!]!
+  pageInfo: ConnectionPageInfo!
+}
+
+"""A paginated set of results."""
+interface Connection {
+  """The edges of this connection."""
+  edges: [Edge!]!
+
+  """The nodes of the edges of this connection."""
+  nodes: [EdgeNode!]!
+
+  """Information to aid in pagination."""
+  pageInfo: ConnectionPageInfo!
+}
+
+"""
+An edge in a connection.
+Provides the cursor to fetch data based on the position of the associated
+node. Specific edge implementations may provide more information about the
+relationship they represent.
+"""
+interface Edge {
+  cursor: Cursor!
+  node: EdgeNode!
+}
+
+"""Information about the page in a connection."""
+type ConnectionPageInfo {
+  """Whether there are more pages in this connection."""
+  hasNextPage: Boolean!
+
+  """Whether there are previous pages in this connection."""
+  hasPreviousPage: Boolean!
+
+  """The cursor for the first element in this page."""
+  startCursor: Cursor
+
+  """The cursor for the last element in this page."""
+  endCursor: Cursor
+}
+
+"""Edge for MediaAudio."""
+type MediaAudioEdge implements Edge {
+  cursor: Cursor!
+  node: MediaAudio!
+}
+
+"""A paginated set of results for MediaDocument."""
+type MediaDocumentConnection implements Connection {
+  edges: [MediaDocumentEdge!]!
+  nodes: [MediaDocument!]!
+  pageInfo: ConnectionPageInfo!
+}
+
+"""Edge for MediaDocument."""
+type MediaDocumentEdge implements Edge {
+  cursor: Cursor!
+  node: MediaDocument!
+}
+
+"""A paginated set of results for MediaImage."""
+type MediaImageConnection implements Connection {
+  edges: [MediaImageEdge!]!
+  nodes: [MediaImage!]!
+  pageInfo: ConnectionPageInfo!
+}
+
+"""Edge for MediaImage."""
+type MediaImageEdge implements Edge {
+  cursor: Cursor!
+  node: MediaImage!
+}
+
+"""A paginated set of results for MediaRemoteVideo."""
+type MediaRemoteVideoConnection implements Connection {
+  edges: [MediaRemoteVideoEdge!]!
+  nodes: [MediaRemoteVideo!]!
+  pageInfo: ConnectionPageInfo!
+}
+
+"""Edge for MediaRemoteVideo."""
+type MediaRemoteVideoEdge implements Edge {
+  cursor: Cursor!
+  node: MediaRemoteVideo!
+}
+
+"""A paginated set of results for MediaVideo."""
+type MediaVideoConnection implements Connection {
+  edges: [MediaVideoEdge!]!
+  nodes: [MediaVideo!]!
+  pageInfo: ConnectionPageInfo!
+}
+
+"""Edge for MediaVideo."""
+type MediaVideoEdge implements Edge {
+  cursor: Cursor!
+  node: MediaVideo!
+}
+
+"""A paginated set of results for NodeArticle."""
+type NodeArticleConnection implements Connection {
+  edges: [NodeArticleEdge!]!
+  nodes: [NodeArticle!]!
+  pageInfo: ConnectionPageInfo!
+}
+
+"""Edge for NodeArticle."""
+type NodeArticleEdge implements Edge {
+  cursor: Cursor!
+  node: NodeArticle!
+}
+
+"""A paginated set of results for NodePage."""
+type NodePageConnection implements Connection {
+  edges: [NodePageEdge!]!
+  nodes: [NodePage!]!
+  pageInfo: ConnectionPageInfo!
+}
+
+"""Edge for NodePage."""
+type NodePageEdge implements Edge {
+  cursor: Cursor!
+  node: NodePage!
+}
+
+"""A paginated set of results for NodeRecipe."""
+type NodeRecipeConnection implements Connection {
+  edges: [NodeRecipeEdge!]!
+  nodes: [NodeRecipe!]!
+  pageInfo: ConnectionPageInfo!
+}
+
+"""Edge for NodeRecipe."""
+type NodeRecipeEdge implements Edge {
+  cursor: Cursor!
+  node: NodeRecipe!
+}
+
+"""A paginated set of results for TermRecipeCategory."""
+type TermRecipeCategoryConnection implements Connection {
+  edges: [TermRecipeCategoryEdge!]!
+  nodes: [TermRecipeCategory!]!
+  pageInfo: ConnectionPageInfo!
+}
+
+"""Edge for TermRecipeCategory."""
+type TermRecipeCategoryEdge implements Edge {
+  cursor: Cursor!
+  node: TermRecipeCategory!
+}
+
+"""A paginated set of results for TermTag."""
+type TermTagConnection implements Connection {
+  edges: [TermTagEdge!]!
+  nodes: [TermTag!]!
+  pageInfo: ConnectionPageInfo!
+}
+
+"""Edge for TermTag."""
+type TermTagEdge implements Edge {
+  cursor: Cursor!
+  node: TermTag!
+}
+
+"""The schema's entry-point for mutations."""
+type Mutation {
+  """Placeholder for mutation extension."""
+  _: Boolean!
+}
+
+"""The schema's entry-point for subscriptions."""
+type Subscription {
+  """Placeholder for subscription extension."""
+  _: Boolean!
+}
+
+"""An email address."""
+scalar Email
+
+"""Generic input for key-value pairs."""
+input KeyValueInput {
+  key: String!
+  value: String
+}
+
+"""Entity type menu."""
+union MenuUnion = Menu
+
+"""A field whose value conforms to the standard E.164"""
+scalar PhoneNumber
+
+"""Sort direction."""
+enum SortDirection {
+  """Ascending"""
+  ASC
+
+  """Descending"""
+  DESC
+}
+
+"""A processed text format with summary defined by the CMS."""
+type TextSummary {
+  """The raw text value."""
+  value: String
+
+  """The processed text value."""
+  processed: Html
+
+  """The text format used to process the text value."""
+  format: String
+
+  """The processed text summary."""
+  summary: Html
+}
+
+"""
+Unsupported entity or field type in the schema.
+This entity may not have been enabled in the schema yet and is being referenced via entity reference.
+"""
+type UnsupportedType {
+  """Unsupported type, always TRUE."""
+  unsupported: Boolean
+}
+
+"""Untyped structured data. Eg JSON, configuration, settings, attributes."""
+scalar UntypedStructuredData

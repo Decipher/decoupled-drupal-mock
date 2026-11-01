@@ -41,8 +41,31 @@ export interface Manifest {
 }
 
 /** A preset build, in memory. */
+/** A field of a GraphQL Compose type: its SDL name maps onto a Drupal field. */
+export interface ComposeField { field: string, fieldType: string, type: string, multiple: boolean, required: boolean, base: boolean }
+
+/** A GraphQL Compose type for a bundle, with its query names and its fields. */
+export interface ComposeType { type: string, single: string, plural: string, interfaces: string[], queryLoad: boolean, routes: boolean, edges: boolean, fields: Record<string, ComposeField> }
+
+/** The GraphQL Compose schema's mapping onto Drupal, as the build recorded it. */
+export interface ComposeMeta {
+  endpoint: string
+  server?: string
+  settings?: Record<string, unknown>
+  timezone?: string
+  types: Record<string, ComposeType>
+  /** The site's front page path, such as `/node`. */
+  front?: string
+  /** Menu machine names to their `MenuAvailable` enum values and their labels per language. */
+  menus?: Record<string, { enum: string, labels: Record<string, string> }>
+  /** Language labels, per language of the request then language labelled. */
+  languages?: Record<string, Record<string, string>>
+}
+
 export interface Dump {
   manifest: Manifest
+  /** The GraphQL Compose schema as Drupal serves it, and its mapping onto Drupal, when the build's Drupal had one. */
+  graphql?: { schema: string, compose: ComposeMeta }
   /** The JSON:API index per langcode, as Drupal serves it. */
   index: Record<string, Document>
   /** Every resource per langcode, by resource type, as its individual response's `data`. */

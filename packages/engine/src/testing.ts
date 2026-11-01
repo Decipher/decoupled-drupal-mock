@@ -37,10 +37,12 @@ const freePort = (): Promise<number> => new Promise((resolve, reject) => {
 export const startMock = async (preset: string, options: { extensions?: Extension[] } = {}): Promise<Mock> => {
   const dir = presetDir(preset)
   const dump = loadDump(dir)
+  // With the graphql package installed, the schema's endpoint answers too.
+  const { createDrupal: create } = await import('./graphql.js').catch(() => ({ createDrupal: undefined }))
   for (let attempt = 0; ; attempt++) {
     const port = await freePort()
     const url = `http://127.0.0.1:${port}`
-    const drupal = createMock(dump, { baseUrl: url, extensions: options.extensions || [] })
+    const drupal = createMock(dump, { baseUrl: url, extensions: options.extensions || [], ...(create ? { create } : {}) })
     try {
       const { close } = await listen(drupal, port, '127.0.0.1', { files: dir, control: true })
       return { ...connectMock(url), reset: async () => drupal.reset(), tokenFor: async (name, scopes) => drupal.tokenFor(name, scopes), scenario: async (name) => drupal.scenario(name), requests: async () => drupal.requests(), sent: async () => drupal.sent(), advanceTime: async (seconds) => drupal.advanceTime(seconds), drupal, close }

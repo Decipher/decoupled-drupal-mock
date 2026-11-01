@@ -6,6 +6,8 @@ import type { Answer, RecordedWrite, WriteScript } from 'decoupled-drupal-mock/r
 import type { Document, Dump, Manifest, Recorded, Resource } from 'decoupled-drupal-mock'
 import { sortedSearch } from 'decoupled-drupal-mock'
 import { KEPT_HEADERS, resolve } from 'decoupled-drupal-mock/recorded-writes'
+import { buildClientSchema, getIntrospectionQuery, printSchema } from 'graphql'
+import type { IntrospectionQuery } from 'graphql'
 
 export interface CrawlOptions {
   /** The Drupal to crawl, such as `http://127.0.0.1:8888`. */
@@ -36,6 +38,8 @@ export interface CrawlOptions {
   writes?: WriteScript[]
   /** Where the oracle's recordings go: the evidence for the engine's tests, which a consumer has no use for. Beside the dump by default, as `<out>.oracle`. */
   oracleOut?: string
+  /** The GraphQL Compose schema to record, with its mapping onto Drupal and the queries of its oracle. */
+  graphql?: GraphqlOptions
   /**
    * Reads a resource no user may read through JSON:API, such as a block whose visibility denies every request, so
    * the dump can place it in a collection and report it omitted as Drupal does. The CLI reads it through drush.
@@ -48,6 +52,18 @@ export interface CrawlOptions {
 const UNREADABLE = -1
 
 const PLACEHOLDER = 'https://drupal.invalid'
+
+/** A query of the GraphQL oracle; `{node--recipe:0}` in its text or variables is the first resource of that type. */
+export interface GraphqlQuery { name: string, query: string, variables?: Record<string, unknown> }
+
+export interface GraphqlOptions {
+  /** The endpoint, `/graphql` by default. */
+  endpoint?: string
+  /** The queries to record with Drupal's answers. */
+  queries?: GraphqlQuery[]
+  /** The schema's mapping onto Drupal, as `compose-meta.php` prints it through drush. Written to `graphql/compose.json`. */
+  meta?: Record<string, unknown>
+}
 
 /** The resource types the crawl leaves out: they hold secrets or vary per install. */
 const SKIP = new Set(['consumer--consumer', 'oauth2_scope--oauth2_scope', 'oauth2_token_type--oauth2_token_type', 'action--action'])
@@ -113,9 +129,9 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     writeFileSync(join(oracleOut, file), bytes)
     oracleFiles[file] = createHash('sha256').update(bytes).digest('hex')
   }
+  const writeText = (file: string, text: string): void => writeBytes(file, file.endsWith('.gz') ? gzipSync(Buffer.from(relink(text)), { level: 9 }) : Buffer.from(relink(text)))
   const write = (file: string, body: unknown): void => {
-    const text = relink(JSON.stringify(body))
-    writeBytes(file, file.endsWith('.gz') ? gzipSync(Buffer.from(text), { level: 9 }) : Buffer.from(text))
+    writeText(file, JSON.stringify(body))
   }
 
   let token: string | undefined
@@ -404,6 +420,31 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       log(`script "${script.name}": ${answers.map((answer) => answer.status).join(' ')}`)
     }
     recordOracle('writes.json.gz', recorded)
+  }
+
+  // GraphQL Compose: the schema as Drupal serves it, its mapping onto Drupal, and the oracle's queries with Drupal's
+  // answers, each run as the visitor.
+  if (options.graphql) {
+    const endpoint = options.graphql.endpoint || '/graphql'
+    const ask = async (body: unknown) => {
+      const response = await fetch(`${base}${endpoint}`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) })
+      return { status: response.status, answer: await response.json() as unknown }
+    }
+    const introspected = (await ask({ query: getIntrospectionQuery() })).answer as { data?: IntrospectionQuery, errors?: unknown }
+    if (!introspected.data) throw new Error(`The GraphQL schema at ${endpoint} could not be introspected: ${JSON.stringify(introspected.errors)}`)
+    writeText('graphql/schema.graphql', printSchema(buildClientSchema(introspected.data)))
+    write('graphql/compose.json', { endpoint, ...(options.graphql.meta || {}) })
+    if (options.graphql.queries?.length) {
+      const resourceId = (type: string, index: number) => all[options.defaultLanguage]?.[type]?.[index]?.id
+      const recorded = []
+      for (const entry of options.graphql.queries) {
+        const resolved = resolve(entry, [], resourceId)
+        const { status, answer } = await ask({ query: resolved.query, ...(resolved.variables ? { variables: resolved.variables } : {}) })
+        recorded.push({ ...resolved, status, answer })
+        log(`graphql "${entry.name}": ${status}${(answer as { errors?: unknown[] }).errors ? ' with errors' : ''}`)
+      }
+      write('graphql/oracle.json.gz', recorded)
+    }
   }
 
   if (options.identities) {
