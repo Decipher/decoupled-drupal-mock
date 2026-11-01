@@ -16,7 +16,12 @@
   },
   "customizations": {
     "vscode": {
-      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "streetsidesoftware.code-spell-checker", "vitest.explorer"]
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "streetsidesoftware.code-spell-checker",
+        "vitest.explorer"
+      ]
     }
   }
 }
