@@ -7,19 +7,10 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
-    "types": [
-      "node"
-    ],
-    "lib": [
-      "ES2023",
-      "DOM"
-    ],
+    "types": ["node"],
+    "lib": ["ES2023", "DOM"],
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": [
-    "packages/*/src",
-    "packages/*/test",
-    "vitest.config.ts"
-  ]
+  "include": ["packages/*/src", "packages/*/test", "vitest.config.ts"]
 }
