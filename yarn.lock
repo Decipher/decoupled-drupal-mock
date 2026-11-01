@@ -2386,6 +2386,17 @@ __metadata:
   resolution: "decoupled-drupal-mock@workspace:packages/engine"
   dependencies:
     typescript: "npm:^5.9.0"
+  peerDependencies:
+    h3: "*"
+    msw: "*"
+    nitropack: "*"
+  peerDependenciesMeta:
+    h3:
+      optional: true
+    msw:
+      optional: true
+    nitropack:
+      optional: true
   bin:
     decoupled-drupal-mock: ./dist/cli.js
   languageName: unknown

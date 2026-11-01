@@ -19,6 +19,16 @@
     "./msw": {
       "types": "./dist/msw.d.ts",
       "import": "./dist/msw.js"
+    },
+    "./nuxt": {
+      "types": "./dist/nuxt.d.ts",
+      "import": "./dist/nuxt.js"
+    },
+    "./nitro-plugin": {
+      "import": "./dist/nitro-plugin.js"
+    },
+    "./nitro-handler": {
+      "import": "./dist/nitro-handler.js"
     }
   },
   "files": [
@@ -32,5 +42,21 @@
   "devDependencies": {
     "typescript": "^5.9.0"
   },
-  "bin": "./dist/cli.js"
+  "bin": "./dist/cli.js",
+  "peerDependencies": {
+    "h3": "*",
+    "msw": "*",
+    "nitropack": "*"
+  },
+  "peerDependenciesMeta": {
+    "h3": {
+      "optional": true
+    },
+    "msw": {
+      "optional": true
+    },
+    "nitropack": {
+      "optional": true
+    }
+  }
 }
