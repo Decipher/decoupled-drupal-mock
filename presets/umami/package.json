@@ -1,0 +1,22 @@
+{
+  "name": "decoupled-drupal-mock-umami",
+  "version": "1.0.0-alpha.0",
+  "description": "Drupal's Umami demo site as decoupled-drupal-mock fixtures, built from a real Drupal 11 install.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "dump",
+    "oracle.txt"
+  ],
+  "peerDependencies": {
+    "decoupled-drupal-mock": "workspace:^"
+  },
+  "license": "MIT"
+}
