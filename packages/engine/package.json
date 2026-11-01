@@ -20,7 +20,7 @@
     "build": "tsc -p tsconfig.build.json",
     "prepack": "yarn build"
   },
-  "license": "MIT",
+  "license": "GPL-2.0-or-later",
   "devDependencies": {
     "typescript": "^5.9.0"
   }
