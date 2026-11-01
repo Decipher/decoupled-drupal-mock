@@ -1,10 +1,15 @@
+import { UNSAFE_KEYS } from './own.js'
+
 /** Drupal's bracket query, `filter[a][b]=c`, parsed into nested objects, with repeated keys as arrays. */
 export type Query = Record<string, unknown>
+
+/** The most segments a key may have: Drupal's deepest, `filter[x][condition][value][]`, has five. */
+const MAX_DEPTH = 8
 
 const set = (target: Record<string, unknown>, path: string[], value: string): void => {
   const [head, ...rest] = path
   // A key that would reach the prototype is dropped, so no request writes into every later one.
-  if (head === undefined || head === '__proto__' || head === 'constructor' || head === 'prototype') return
+  if (head === undefined || UNSAFE_KEYS.has(head)) return
   // `value[]=a&value[]=b` appends; a repeated key does the same.
   if (!rest.length || (rest.length === 1 && rest[0] === '')) {
     const current = target[head]
@@ -21,7 +26,9 @@ const set = (target: Record<string, unknown>, path: string[], value: string): vo
 export const parseQuery = (search: string): Query => {
   const query: Query = {}
   for (const [key, value] of new URLSearchParams(search)) {
-    const path = key.replace(/\]/g, '').split('[')
+    const path = key.replace(/\]/g, '').split('[', MAX_DEPTH + 1)
+    // A key deeper than any Drupal reads is dropped, so no request can recurse the parser out of its stack.
+    if (path.length > MAX_DEPTH) continue
     set(query, path, value)
   }
   return query

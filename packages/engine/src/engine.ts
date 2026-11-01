@@ -1,6 +1,7 @@
 import { compare, createReader, FilterError, parseFilter, passes, phpBool } from './filter.js'
 import { pagedSearch, parseQuery, selfSearch, sortedSearch } from './query.js'
 import { keyOf } from './hash.js'
+import { own } from './own.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
 
 export interface DrupalOptions {
@@ -147,7 +148,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const next: Resource[] = []
       for (const resource of resources) {
         // A relationship the user may not read is walked as if it were not there, and a target of a forbidden type is omitted.
-        const relationship = readable(langcode, resource, all).relationships?.[head]
+        const relationship = own(readable(langcode, resource, all).relationships, head)
         if (!relationship) continue
         const identifiers = Array.isArray(relationship.data) ? relationship.data : relationship.data ? [relationship.data] : []
         for (const identifier of identifiers) {
@@ -231,7 +232,9 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const upper = method.toUpperCase()
     const headers = { 'content-type': 'application/vnd.api+json' }
 
-    const hit = recorded(upper, path, search) ?? menuItems(upper, path, search)
+    // A HEAD is answered as its GET is, as Drupal answers it; the transport leaves the body out.
+    const lookup = upper === 'HEAD' ? 'GET' : upper
+    const hit = recorded(lookup, path, search) ?? menuItems(lookup, path, search)
     if (hit) {
       const body = relink(hit.body)
       // A JSON:API answer names the request it answered.
@@ -282,7 +285,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (isPhantom(langcode, resource) || (!all && !visible(langcode, resource))) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', 'The current user is not allowed to GET the selected resource.', via) }
       const omitted: Resource[] = []
       if (related) {
-        const relationship = resource.relationships?.[related]
+        const relationship = own(resource.relationships, related)
         if (!relationship) return html404(path)
         // A relationship the user may not read is Drupal's 403, not a missing route.
         if (!all && accessOf(langcode, resource.type)?.hidden?.includes(related)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', 'The current user is not allowed to view this relationship.', via) }

@@ -223,3 +223,26 @@ describe('what the first review found', () => {
     expect((refused.body.errors![0]!.links as { via: { href: string } }).via.href).toBe('https://drupal.test/jsonapi/node/page?filter%5Bfield_code%5D=01')
   })
 })
+
+describe('what the second review found', () => {
+  it('answers a HEAD on a recorded route as its GET, with no body', async () => {
+    const route = await drupal.fetch('https://drupal.test/router/translate-path?path=%2Fabout-umami', { method: 'HEAD' })
+    expect(route.status).toBe(200)
+    expect(await route.text()).toBe('')
+    expect((await drupal.fetch('https://drupal.test/jsonapi/menu_items/main', { method: 'HEAD' })).status).toBe(200)
+  })
+
+  it('reads no inherited member as a relationship or a field', async () => {
+    for (const name of ['__proto__', 'constructor', 'toString']) {
+      expect((await get(`/jsonapi/node/page/p-1/${name}`)).status, name).toBe(404)
+      expect((await get(`/jsonapi/node/page/p-1?include=${name}`)).status, name).toBe(200)
+    }
+    // `constructor` never reaches the filter, as the parser drops it; an inherited name it keeps is refused.
+    expect((await get('/jsonapi/node/page?filter[toString]=1')).status).toBe(400)
+  })
+
+  it('drops a key deeper than any Drupal reads instead of recursing out of the stack', () => {
+    expect(parseQuery(`a${'['.repeat(50000)}=1`)).toEqual({})
+    expect(parseQuery('filter[x][condition][value][]=1')).toEqual({ filter: { x: { condition: { value: ['1'] } } } })
+  })
+})

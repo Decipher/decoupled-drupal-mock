@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { gunzipSync } from 'node:zlib'
+import { UNSAFE_KEYS } from './own.js'
 import type { Document, Dump, Manifest, Recorded, Resource } from './types.js'
 
 /** Every file under a directory, as paths relative to it. */
@@ -39,19 +40,21 @@ export const loadDump = (dir: string): Dump => {
       throw new Error(`${file} is in the manifest of ${manifest.preset} but missing from ${dir}.`)
     }
   }
-  const dump: Dump = { manifest, index: {}, resources: {}, recorded: {} }
+  // Maps with no prototype, and a file whose path names a prototype key refused, so no dump writes into Object.
+  const dump: Dump = { manifest, index: Object.create(null), resources: Object.create(null), recorded: Object.create(null) }
   const parsed = <T>(file: string): T => parseBytes<T>(file, bytes.get(file)!)
   for (const file of Object.keys(manifest.files)) {
     const [kind, ...rest] = file.split('/')
+    if (rest.some((segment) => UNSAFE_KEYS.has(segment.replace(/\.json(\.gz)?$/, '')))) throw new Error(`${file} names a key no dump may use.`)
     if (kind === 'index') {
       dump.index[rest[0]!.replace(/\.json(\.gz)?$/, '')] = parsed<Document>(file)
     } else if (kind === 'resources') {
       const [langcode, name] = rest as [string, string]
-      dump.resources[langcode] = dump.resources[langcode] || {}
+      dump.resources[langcode] = dump.resources[langcode] || Object.create(null)
       dump.resources[langcode]![name.replace(/\.json(\.gz)?$/, '')] = parsed<Resource[]>(file)
     } else if (kind === 'access') {
-      dump.access = dump.access || {}
-      dump.access[rest[0]!.replace(/\.json(\.gz)?$/, '')] = parsed<NonNullable<Dump['access']>[string]>(file)
+      const access: NonNullable<Dump['access']> = dump.access ?? (dump.access = Object.create(null) as NonNullable<Dump['access']>)
+      access[rest[0]!.replace(/\.json(\.gz)?$/, '')] = parsed<NonNullable<Dump['access']>[string]>(file)
     } else if (kind === 'recorded') {
       const entries = parsed<Record<string, Recorded>>(file)
       Object.assign(dump.recorded, entries)
