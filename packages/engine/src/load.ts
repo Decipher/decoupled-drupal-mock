@@ -55,6 +55,8 @@ export const loadDump = (dir: string): Dump => {
     } else if (kind === 'access') {
       const access: NonNullable<Dump['access']> = dump.access ?? (dump.access = Object.create(null) as NonNullable<Dump['access']>)
       access[rest[0]!.replace(/\.json(\.gz)?$/, '')] = parsed<NonNullable<Dump['access']>[string]>(file)
+    } else if (kind === 'identities.json') {
+      dump.identities = parsed<NonNullable<Dump['identities']>>(file)
     } else if (kind === 'recorded') {
       const entries = parsed<Record<string, Recorded>>(file)
       Object.assign(dump.recorded, entries)

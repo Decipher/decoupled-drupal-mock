@@ -128,9 +128,9 @@ describe('a collection', () => {
     expect(body.included!.map((resource) => resource.id)).toEqual(['t-1', 't-2'])
   })
 
-  it('refuses a method the route forbids', async () => {
-    const response = await drupal.fetch('https://drupal.test/jsonapi/node/page', { method: 'POST', body: '{}' })
-    expect(response.status).toBe(405)
+  it('refuses a method the route forbids, and a write without the permission', async () => {
+    expect((await drupal.fetch('https://drupal.test/jsonapi/block/block', { method: 'POST', body: '{}' })).status).toBe(405)
+    expect((await drupal.fetch('https://drupal.test/jsonapi/node/page', { method: 'POST', body: '{}' })).status).toBe(403)
   })
 })
 

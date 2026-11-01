@@ -102,6 +102,13 @@ describe('serving', () => {
       expect(document.data.attributes.title).toBe('About Umami')
       expect(document.links.self.href).toBe(`${url}/jsonapi/node/page/p-1`)
       expect((await fetch(`${url}/nope`)).status).toBe(404)
+      // A write over HTTP, with its body read.
+      const token = await (await fetch(`${url}/oauth/token`, { method: 'POST', body: new URLSearchParams({ grant_type: 'client_credentials', client_id: 'druxt', client_secret: 's3cret' }) })).json() as { access_token: string }
+      const created = await fetch(`${url}/jsonapi/node/page`, { method: 'POST', headers: { 'content-type': 'application/vnd.api+json', authorization: `Bearer ${token.access_token}` }, body: JSON.stringify({ data: { type: 'node--page', attributes: { title: 'Over HTTP' } } }) })
+      expect(created.status).toBe(201)
+      expect(created.headers.get('location')).toContain(`${url}/jsonapi/node/page/`)
+      const gone = await fetch(created.headers.get('location')!.split('?')[0]!, { method: 'DELETE', headers: { authorization: `Bearer ${token.access_token}` } })
+      expect(gone.status).toBe(204)
     } finally {
       await close()
     }
