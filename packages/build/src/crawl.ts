@@ -202,9 +202,9 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     if (langcode === options.defaultLanguage && lang) await record('/jsonapi')
 
     // Decoupled Router, for every resource's alias in this language, every node's and term's system path, and the front page.
-    const aliases = Object.values(all[langcode]!).flat().map((resource) => (resource.attributes as { path?: { alias?: string | null } }).path?.alias).filter((alias): alias is string => !!alias)
-    const nodes = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('node--')).flatMap(([, list]) => list.map((node) => `/node/${String((node.attributes as { drupal_internal__nid?: number }).drupal_internal__nid)}`))
-    const terms = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('taxonomy_term--')).flatMap(([, list]) => list.map((term) => `/taxonomy/term/${String((term.attributes as { drupal_internal__tid?: number }).drupal_internal__tid)}`))
+    const aliases = Object.values(all[langcode]!).flat().map((resource) => (resource.attributes as { path?: { alias?: string | null } } | undefined)?.path?.alias).filter((alias): alias is string => !!alias)
+    const nodes = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('node--')).flatMap(([, list]) => list.map((node) => `/node/${String((node.attributes as { drupal_internal__nid?: number } | undefined)?.drupal_internal__nid)}`))
+    const terms = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('taxonomy_term--')).flatMap(([, list]) => list.map((term) => `/taxonomy/term/${String((term.attributes as { drupal_internal__tid?: number } | undefined)?.drupal_internal__tid)}`))
     const systemPaths = [...nodes, ...terms]
     const prefixed = [lang || '/', `${lang}/node`, ...aliases.map((alias) => `${lang}${alias}`), ...systemPaths.map((path) => `${lang}${path}`)]
     // The default language answers unprefixed too, as a client asks for `/` or `/node/1`.
