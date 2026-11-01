@@ -240,7 +240,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     }
     const [entityType, bundle, id, related] = segments
     // A path no JSON:API route answers is Drupal's HTML 404, as is a type the index does not list.
-    if (!entityType || !bundle || segments.length > 4) return html404(path)
+    // Five segments are a relationship route, `.../relationships/{field}`; more than that is no route.
+    if (!entityType || !bundle || segments.length > 5 || (segments.length === 5 && segments[3] !== 'relationships')) return html404(path)
     const type = typeOf(entityType, bundle)
     const collection = resourcesOf(langcode, type)
     if (!collection) return html404(path)
@@ -283,9 +284,11 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (err instanceof FilterError) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', err.message, via, { parameter: 'filter' }) }
       throw err
     }
+    // A type with no resource to read its fields from takes any filter, as nothing can be known of its fields.
+    const fieldNames = fieldsOf(langcode, type)
     for (const condition of Object.values(filter.conditions)) {
       const [head] = condition.path.split('.')
-      if (head && !fieldsOf(langcode, type).has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, via, { parameter: 'filter' }) }
+      if (head && fieldNames.size > 2 && !fieldNames.has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, via, { parameter: 'filter' }) }
     }
     const reader = read(langcode, all)
     const view = (resource: Resource): Resource => readable(langcode, resource, all)
