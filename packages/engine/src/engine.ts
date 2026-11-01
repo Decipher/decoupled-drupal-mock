@@ -316,7 +316,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const hidden = all ? [] : accessOf(langcode, type)?.hidden || []
     for (const condition of Object.values(filter.conditions)) {
       const [head] = condition.path.split('.')
-      if (head && hidden.includes(head)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', `The current user is not authorized to filter by the \`${head}\` field, given in the path \`${condition.path}\`.`, via) }
+      // Drupal names the request in the sorted form here, as it names a collection's self link.
+      if (head && hidden.includes(head)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', `The current user is not authorized to filter by the \`${head}\` field, given in the path \`${condition.path}\`.`, self) }
       if (head && fieldNames.size > 2 && !fieldNames.has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, via, { parameter: 'filter' }) }
     }
     const reader = read(langcode)

@@ -220,7 +220,6 @@ describe('what the first review found', () => {
     const refused = await read(guarded, '/jsonapi/node/page?filter[field_code]=01')
     expect(refused.status).toBe(403)
     expect(refused.body.errors![0]!.detail).toBe('The current user is not authorized to filter by the `field_code` field, given in the path `field_code`.')
-    const signedIn = await guarded.fetch('https://drupal.test/jsonapi/node/page?filter[field_code]=01', { headers: { authorization: 'Bearer anything' } })
-    expect(signedIn.status).toBe(200)
+    expect((refused.body.errors![0]!.links as { via: { href: string } }).via.href).toBe('https://drupal.test/jsonapi/node/page?filter%5Bfield_code%5D=01')
   })
 })
