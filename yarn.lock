@@ -2348,7 +2348,7 @@ __metadata:
   dependencies:
     decoupled-drupal-mock: "workspace:^"
   bin:
-    decoupled-drupal-mock-crawl: ./src/crawl.ts
+    decoupled-drupal-mock-crawl: ./src/cli.ts
   languageName: unknown
   linkType: soft
 

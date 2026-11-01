@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import type { Document, Manifest, Recorded, Resource } from 'decoupled-drupal-mock'
@@ -43,8 +43,22 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   const base = options.baseUrl.replace(/\/+$/, '')
   const origin = (options.origin || PLACEHOLDER).replace(/\/+$/, '')
   const log = options.log || ((line: string) => console.log(line))
-  const relink = (text: string): string => text.split(base).join(origin)
+  // Only the origin itself: a host that merely begins with it is another site's.
+  const crawled = new RegExp(`${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w.:-])`, 'g')
+  const relink = (text: string): string => text.replace(crawled, origin)
+  /** A link as a path on the crawled site, whatever host the site wrote it with. */
+  const basePath = new URL(base).pathname.replace(/\/+$/, '')
+  const pathOf = (href: string): string => {
+    const url = new URL(href, `${base}/`)
+    return `${basePath && url.pathname.startsWith(basePath) ? url.pathname.slice(basePath.length) : url.pathname}${url.search}`
+  }
   const files: Record<string, string> = {}
+
+  // What an earlier build into this directory wrote and this one might not: the manifest refuses a file it does not list.
+  const previous = join(options.out, 'manifest.json')
+  if (existsSync(previous)) {
+    for (const file of Object.keys((JSON.parse(readFileSync(previous, 'utf8')) as Manifest).files)) rmSync(join(options.out, file), { force: true })
+  }
 
   const write = (file: string, body: unknown): void => {
     const path = join(options.out, file)
@@ -79,12 +93,22 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   const excluded = (resource: Resource): boolean => excludedIds.has(`${resource.type}:${resource.id}`) || !!options.exclude?.(resource)
   /** A recorded JSON:API document without the excluded resources, such as the build's own user in a "who's new" view. */
   const scrub = (entry: Recorded): Recorded => {
-    const body = entry.body as { data?: Resource[], meta?: { count?: number } } | null
+    const body = entry.body as { data?: Resource[], included?: Resource[], meta?: { count?: number } } | null
     if (!options.exclude || !body || typeof body !== 'object' || !Array.isArray(body.data)) return entry
-    const kept = body.data.filter((resource) => !excluded(resource))
-    if (kept.length === body.data.length) return entry
+    // A kept resource names no excluded one in its relationships either.
+    const gone = (identifier: { type: string, id: string }): boolean => excludedIds.has(`${identifier.type}:${identifier.id}`)
+    const unlinked = (resource: Resource): Resource => {
+      if (!resource.relationships) return resource
+      const relationships = Object.fromEntries(Object.entries(resource.relationships).map(([name, relationship]) => {
+        const { data } = relationship
+        if (Array.isArray(data)) return [name, { ...relationship, data: data.filter((identifier) => !gone(identifier)) }]
+        return [name, data && gone(data) ? { ...relationship, data: null } : relationship]
+      }))
+      return { ...resource, relationships }
+    }
+    const kept = body.data.filter((resource) => !excluded(resource)).map(unlinked)
     const meta = body.meta && typeof body.meta.count === 'number' ? { ...body.meta, count: body.meta.count - (body.data.length - kept.length) } : body.meta
-    return { ...entry, body: { ...body, data: kept, ...(meta ? { meta } : {}) } }
+    return { ...entry, body: { ...body, data: kept, ...(body.included ? { included: body.included.filter((resource) => !excluded(resource)).map(unlinked) } : {}), ...(meta ? { meta } : {}) } }
   }
   const record = async (path: string): Promise<Recorded> => {
     const [pathname, search = ''] = path.split('?') as [string, string?]
@@ -111,10 +135,15 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     /** Every resource of a type, page by page, as the given user reads it. */
     const collect = async (href: string, headers: Record<string, string>): Promise<Resource[] | number> => {
       const resources: Resource[] = []
-      let next: string | undefined = `${href.replace(base, '')}?page%5Blimit%5D=50`
+      let next: string | undefined = `${pathOf(href)}?page%5Blimit%5D=50`
+      let first = true
       while (next) {
-        const page = await get(next, headers)
+        let page = await get(next, headers)
+        // A server's failure is tried again; one that stays, or a later page refused, would leave a type half read.
+        for (let attempt = 0; attempt < 2 && page.status >= 500; attempt++) page = await get(next, headers)
+        if (page.status >= 500 || (!first && page.status !== 200)) throw new Error(`GET ${next} answered ${page.status}: the build would hold part of ${href}.`)
         if (page.status !== 200) return page.status
+        first = false
         const document = page.body as Document
         resources.push(...(document.data as Resource[]))
         if (headers.authorization) {
@@ -122,7 +151,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
           for (const [key, item] of Object.entries(left)) if (key !== 'help' && item?.href) (phantom[href] = phantom[href] || []).push(item.href.split('/').pop()!)
         }
         const link = document.links?.next
-        next = link ? link.href.replace(base, '') : undefined
+        next = link ? pathOf(link.href) : undefined
       }
       return resources
     }
@@ -142,11 +171,12 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         else {
           const entry: { visible?: string[], hidden?: string[] } = {}
           const seenByVisitor = anonymous.filter((resource) => !excluded(resource))
-          if (seenByVisitor.length !== full.length) entry.visible = seenByVisitor.map((resource) => resource.id)
+          const ids = new Set(seenByVisitor.map((resource) => resource.id))
+          if (full.some((resource) => !ids.has(resource.id))) entry.visible = [...ids]
           // A field the administrator reads and the visitor does not, such as revision_log.
-          const seen = fieldNames(anonymous)
+          const seen = fieldNames(seenByVisitor)
           const hidden = [...fieldNames(full)].filter((name) => !seen.has(name))
-          if (hidden.length && anonymous.length) entry.hidden = hidden
+          if (hidden.length && seenByVisitor.length) entry.hidden = hidden
           if (Object.keys(entry).length) access[type] = entry
         }
         const ids = [...new Set(phantom[link.href] || [])]
@@ -171,12 +201,14 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     // The default language also answers unprefixed, with the same index.
     if (langcode === options.defaultLanguage && lang) await record('/jsonapi')
 
-    // Decoupled Router, for every resource's alias in this language, every node's system path, and the front page.
+    // Decoupled Router, for every resource's alias in this language, every node's and term's system path, and the front page.
     const aliases = Object.values(all[langcode]!).flat().map((resource) => (resource.attributes as { path?: { alias?: string | null } }).path?.alias).filter((alias): alias is string => !!alias)
     const nodes = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('node--')).flatMap(([, list]) => list.map((node) => `/node/${String((node.attributes as { drupal_internal__nid?: number }).drupal_internal__nid)}`))
-    const prefixed = [lang || '/', `${lang}/node`, ...aliases.map((alias) => `${lang}${alias}`), ...nodes.map((path) => `${lang}${path}`)]
+    const terms = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('taxonomy_term--')).flatMap(([, list]) => list.map((term) => `/taxonomy/term/${String((term.attributes as { drupal_internal__tid?: number }).drupal_internal__tid)}`))
+    const systemPaths = [...nodes, ...terms]
+    const prefixed = [lang || '/', `${lang}/node`, ...aliases.map((alias) => `${lang}${alias}`), ...systemPaths.map((path) => `${lang}${path}`)]
     // The default language answers unprefixed too, as a client asks for `/` or `/node/1`.
-    const unprefixed = langcode === options.defaultLanguage && lang ? ['/', '/node', ...aliases, ...nodes] : []
+    const unprefixed = langcode === options.defaultLanguage && lang ? ['/', '/node', ...aliases, ...systemPaths] : []
     const paths = [...new Set([...prefixed, ...unprefixed])]
     log(`${langcode}: ${paths.length} router lookups`)
     for (const path of paths) await record(`/router/translate-path?path=${encodeURIComponent(path)}`)
@@ -203,15 +235,17 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   if (options.oracle?.length) {
     const entries: Array<{ request: string, status: number, headers: Record<string, string>, body: unknown }> = []
     // `{type:n}` is the nth resource of that type in the default language's dump.
-    const resolve = (request: string): string => request.replace(/\{([a-z_]+--[a-z_]+):(\d+)\}/g, (_whole, type: string, n: string) => all[options.defaultLanguage]?.[type]?.[Number(n)]?.id || `missing-${type}-${n}`)
+    const resolve = (request: string): string => request.replace(/\{([a-z0-9_]+--[a-z0-9_]+):(\d+)\}/g, (_whole, type: string, n: string) => all[options.defaultLanguage]?.[type]?.[Number(n)]?.id || `missing-${type}-${n}`)
     for (const request of options.oracle) {
       const resolved = resolve(request)
       const entry = await get(resolved)
       entries.push({ request: resolved, ...entry })
-      // A type that refuses reads is recorded by its path, so the engine refuses it as Drupal does.
+      // A type that refuses reads is recorded by its path, so the engine refuses it as Drupal does. A query refused
+      // for what it asks, such as a filter on a field, says nothing of the plain path, so that is asked too.
       if (entry.status === 403 || entry.status === 405) {
-        const [pathname] = resolved.split('?') as [string]
-        recorded[`GET ${pathname}`] = recorded[`GET ${pathname}`] || entry
+        const [pathname, search] = resolved.split('?') as [string, string?]
+        const plain = search ? await get(pathname) : entry
+        if (plain.status === 403 || plain.status === 405) recorded[`GET ${pathname}`] = recorded[`GET ${pathname}`] || plain
       }
     }
     write('oracle/queries.json.gz', entries)

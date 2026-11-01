@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Builds a preset dump by crawling a Drupal site's JSON:API.",
   "bin": {
-    "decoupled-drupal-mock-crawl": "./src/crawl.ts"
+    "decoupled-drupal-mock-crawl": "./src/cli.ts"
   },
   "dependencies": {
     "decoupled-drupal-mock": "workspace:^"

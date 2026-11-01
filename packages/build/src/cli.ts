@@ -15,9 +15,10 @@ const attributesOf = (entity: Record<string, unknown>): Record<string, unknown> 
   return { ...rest, ...(id !== undefined ? { drupal_internal__id: id } : {}) }
 }
 
+// Config entities only: a content entity's array holds its fields as lists of values, which is not JSON:API's shape.
 const phantomData = config.drush
   ? async (entityType: string, uuid: string): Promise<Record<string, unknown> | undefined> => {
-      const script = `$e = \\Drupal::service('entity.repository')->loadEntityByUuid('${entityType}', '${uuid}'); print json_encode($e ? $e->toArray() : null);`
+      const script = `$e = \\Drupal::service('entity.repository')->loadEntityByUuid('${entityType}', '${uuid}'); print json_encode($e instanceof \\Drupal\\Core\\Config\\Entity\\ConfigEntityInterface ? $e->toArray() : null);`
       const out = execFileSync(config.drush!.bin, ['php-eval', script], { cwd: config.drush!.cwd, encoding: 'utf8' }).trim().split('\n').pop() || 'null'
       const entity = JSON.parse(out) as Record<string, unknown> | null
       return entity ? attributesOf(entity) : undefined
