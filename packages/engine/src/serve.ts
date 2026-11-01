@@ -45,38 +45,6 @@ export const publicFile = (dir: string, pathname: string): { path: string, mime:
  * @param host - The interface to listen on: `0.0.0.0` for a devpod with the port forwarded.
  * @param options - The public files directory and CORS.
  */
-export interface ListenOptions {
-  /** The dump directory, whose `files/` answers `/sites/default/files/...` as Drupal's public files directory does. */
-  files?: string
-  /** CORS for a browser-side client, on unless told otherwise: any origin, the usual headers, a preflight answered. */
-  cors?: boolean
-}
-
-const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.avif': 'image/avif', '.pdf': 'application/pdf', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.txt': 'text/plain', '.json': 'application/json', '.css': 'text/css', '.js': 'text/javascript' }
-
-const CORS: Record<string, string> = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-  'access-control-allow-headers': 'Accept, Authorization, Content-Type, X-CSRF-Token',
-  'access-control-expose-headers': 'Location',
-  'access-control-max-age': '86400',
-}
-
-/**
- * The public file a request names, from the dump's `files/`: a path under `/sites/default/files/`, or an image style
- * derivative's path answered with the original, since no Drupal is there to derive one.
- */
-export const publicFile = (dir: string, pathname: string): { path: string, mime: string } | undefined => {
-  const prefix = '/sites/default/files/'
-  if (!pathname.startsWith(prefix)) return undefined
-  let rest = decodeURIComponent(pathname.slice(prefix.length))
-  const style = rest.match(/^styles\/[^/]+\/public\/(.+)$/)
-  if (style) rest = style[1]!
-  const path = normalize(join(dir, 'files', rest))
-  if (!path.startsWith(normalize(join(dir, 'files')) + '/') || !existsSync(path) || !statSync(path).isFile()) return undefined
-  return { path, mime: MIME[extname(path).toLowerCase()] || 'application/octet-stream' }
-}
-
 /** A host as a URL names it: an IPv6 address goes in brackets. */
 const urlHost = (host: string): string => (host.includes(':') && !host.startsWith('[') ? `[${host}]` : host)
 
