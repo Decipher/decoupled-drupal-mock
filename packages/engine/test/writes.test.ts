@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createDrupal } from '../src'
 import type { Document, Resource } from '../src'
 import { dump } from './dump'
@@ -174,3 +174,178 @@ describe('the relationship routes and inherited members', () => {
     }
   })
 })
+
+describe('what the review of the writes found', () => {
+  /** The Umami-shaped dump with the editor's role cut to drafting recipes, and a path alias type to create. */
+  const drafting = () => {
+    const copy = structuredClone(dump)
+    const en = copy.resources.en!
+    for (const role of en['user_role--user_role']!) {
+      if ((role.attributes as { drupal_internal__id?: string }).drupal_internal__id === 'editor') (role.attributes as { permissions: string[] }).permissions = ['edit any recipe content', 'create recipe content', 'use editorial transition create_new_draft']
+    }
+    en['path_alias--path_alias'] = []
+    return createDrupal(copy, { baseUrl: BASE })
+  }
+  const send = (d: ReturnType<typeof drupal>, method: string, path: string, headers: Record<string, string>, body?: unknown) => d.fetch(`${BASE}${path}`, { method, headers: { ...JSON_API, ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+  const details = async (response: Response) => ((await read(response)).errors || []).map((problem) => problem.detail)
+
+  it('requires a path and an alias of a path alias, each its own error', async () => {
+    const d = drafting()
+    const response = await send(d, 'POST', '/jsonapi/path_alias/path_alias', bearer(d.tokenFor('admin').access), { data: { type: 'path_alias--path_alias', attributes: {} } })
+    expect(response.status).toBe(422)
+    expect(await details(response)).toEqual(['path: This value should not be null.', 'alias: This value should not be null.'])
+  })
+
+  it('answers a malformed login as Drupal does, and does not throw', async () => {
+    const d = drupal()
+    const login = (body: string) => d.fetch(`${BASE}/user/login?_format=json`, { method: 'POST', headers: { 'content-type': 'application/json' }, body })
+    expect((await login('{nope')).status).toBe(500)
+    for (const body of ['null', '{}']) {
+      const response = await login(body)
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ message: 'Missing credentials.' })
+    }
+  })
+
+  it('checks the transition a moderated write asks for, and sets the published flag from it', async () => {
+    const d = drafting()
+    const editor = bearer(d.tokenFor('umami').access)
+    const draft = ((await read(await send(d, 'POST', '/jsonapi/node/recipe', editor, { data: { type: 'node--recipe', attributes: { title: 'Soup', field_cooking_time: 1 } } }))).data as Resource).id
+    const published = await send(d, 'PATCH', `/jsonapi/node/recipe/${draft}`, editor, { data: { type: 'node--recipe', id: draft, attributes: { moderation_state: 'published' } } })
+    expect(published.status).toBe(422)
+    expect(await details(published)).toEqual(['moderation_state: You do not have access to transition from Draft to Published'])
+    const created = await send(d, 'POST', '/jsonapi/node/recipe', editor, { data: { type: 'node--recipe', attributes: { title: 'Soup', field_cooking_time: 1, moderation_state: 'published' } } })
+    expect(await details(created)).toEqual(['moderation_state: You do not have access to transition from Draft to Published'])
+    const nowhere = await send(d, 'PATCH', `/jsonapi/node/recipe/${draft}`, editor, { data: { type: 'node--recipe', id: draft, attributes: { moderation_state: 'nowhere' } } })
+    expect((await details(nowhere))[0]).toContain('nowhere does not exist')
+    const admin = bearer(d.tokenFor('admin').access)
+    const live = await read(await send(d, 'POST', '/jsonapi/node/recipe', admin, { data: { type: 'node--recipe', attributes: { title: 'Soup', field_cooking_time: 1, moderation_state: 'published' } } }))
+    expect((live.data as Resource).attributes).toMatchObject({ moderation_state: 'published', status: true })
+  })
+
+  it('refuses a POST the generated fields, as Drupal does', async () => {
+    const d = drafting()
+    const admin = bearer(d.tokenFor('admin').access)
+    const post = (attributes: Record<string, unknown>) => send(d, 'POST', '/jsonapi/node/recipe', admin, { data: { type: 'node--recipe', attributes: { title: 'Soup', field_cooking_time: 1, ...attributes } } })
+    const id = await post({ drupal_internal__nid: 9999 })
+    expect(id.status).toBe(403)
+    expect(await details(id)).toEqual(['The current user is not allowed to POST the selected field (drupal_internal__nid). The entity ID cannot be changed.'])
+    expect(await details(await post({ status: true }))).toEqual(['The current user is not allowed to POST the selected field (status). Cannot edit the published field of moderated entities.'])
+  })
+
+  it('keeps a user\'s roles and a node\'s owner to those who may set them', async () => {
+    const d = drafting()
+    const editor = bearer(d.tokenFor('umami').access)
+    const self = await send(d, 'PATCH', '/jsonapi/user/user/u-1', editor, { data: { type: 'user--user', id: 'u-1', relationships: { roles: { data: [{ type: 'user_role--user_role', id: 'r-admin' }] } } } })
+    expect(self.status).toBe(403)
+    expect(await details(self)).toEqual(['The current user is not allowed to PATCH the selected field (roles).'])
+    const route = await send(d, 'PATCH', '/jsonapi/user/user/u-1/relationships/roles', editor, { data: [] })
+    expect(await details(route)).toEqual(['The current user is not allowed to edit this relationship.'])
+    const owner = await send(d, 'PATCH', '/jsonapi/node/recipe/r-1/relationships/uid', editor, { data: { type: 'user--user', id: 'u-1' } })
+    expect(await details(owner)).toEqual(["The current user is not allowed to edit this relationship. The 'administer nodes' permission is required."])
+  })
+
+  it('answers a to-one relationship\'s POST and DELETE with a 400, and refuses segments past a relationship', async () => {
+    const d = drupal()
+    const admin = bearer(d.tokenFor('admin').access)
+    for (const method of ['POST', 'DELETE']) {
+      const response = await send(d, method, '/jsonapi/node/recipe/r-1/relationships/uid', admin, { data: [{ type: 'user--user', id: 'u-1' }] })
+      expect(response.status).toBe(400)
+      expect(await details(response)).toEqual(['Invalid body payload for the relationship.'])
+    }
+    expect((await send(d, 'PATCH', '/jsonapi/node/recipe/r-1/relationships/field_tags/extra', admin, { data: [] })).status).toBe(404)
+    expect(((await read(await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`))).data as unknown[]).length).toBeGreaterThan(0)
+  })
+
+  it('refuses a cookie session\'s write without its CSRF token', async () => {
+    const d = drupal()
+    const login = await d.fetch(`${BASE}/user/login?_format=json`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'admin', pass: 'admin' }) })
+    const cookie = login.headers.get('set-cookie')!.split(';')[0]!
+    const { csrf_token: csrf } = await login.json() as { csrf_token: string }
+    const patch = (headers: Record<string, string>) => send(d, 'PATCH', '/jsonapi/node/page/p-1', { cookie, ...headers }, { data: { type: 'node--page', id: 'p-1', attributes: { title: 'New' } } })
+    expect(await details(await patch({}))).toEqual(['X-CSRF-Token request header is missing'])
+    expect(await details(await patch({ 'x-csrf-token': 'nope' }))).toEqual(['X-CSRF-Token request header is invalid'])
+    expect((await patch({ 'x-csrf-token': csrf })).status).toBe(200)
+  })
+
+  it('answers a delete under a translation\'s prefix with Drupal\'s 405', async () => {
+    const d = drupal()
+    const admin = bearer(d.tokenFor('admin').access)
+    const response = await send(d, 'DELETE', '/es/jsonapi/node/page/p-1', admin)
+    expect(response.status).toBe(405)
+    expect((await details(response))[0]).toContain('Deleting a resource object translation is not yet supported')
+    expect((await d.fetch(`${BASE}/jsonapi/node/page/p-1`)).status).toBe(200)
+  })
+
+  it('gives no one else\'s account in full to a signed-in user without the permission', async () => {
+    const copy = structuredClone(dump)
+    copy.access = { en: { 'user--user': { hidden: ['mail', 'status', 'roles'] } } }
+    const en = copy.resources.en!
+    en['user--user'] = en['user--user']!.map((account) => ({ ...account, attributes: { ...account.attributes, mail: 'm@example.com', status: true, login: 1 } }))
+    for (const role of en['user_role--user_role']!) (role.attributes as { permissions?: string[] }).permissions = []
+    const d = createDrupal(copy, { baseUrl: BASE })
+    const umami = bearer(d.tokenFor('umami').access)
+    const own = (await read(await d.fetch(`${BASE}/jsonapi/user/user/u-1`, { headers: umami }))).data as Resource
+    expect(own.attributes!.mail).toBe('m@example.com')
+    expect(own.attributes!.status).toBeUndefined()
+    expect(own.attributes!.login).toBeUndefined()
+    const admin = en['user--user']!.find((account) => account.id !== 'u-1')!
+    const other = (await read(await d.fetch(`${BASE}/jsonapi/user/user/${admin.id}`, { headers: umami }))).data as Resource
+    expect(other.attributes!.mail).toBeUndefined()
+    expect((await d.fetch(`${BASE}/jsonapi/user/user?filter[mail]=m`, { headers: umami })).status).toBe(403)
+    expect((await d.fetch(`${BASE}/jsonapi/user/user/${admin.id}/relationships/roles`, { headers: umami })).status).toBe(403)
+    expect((await d.fetch(`${BASE}/jsonapi/user/user/${admin.id}/relationships/roles`)).status).toBe(403)
+  })
+
+  it('forgets every token on reset, and never gives a deleted resource\'s id again', async () => {
+    const d = drupal()
+    const { access } = d.tokenFor('admin')
+    const admin = bearer(access)
+    const post = async () => ((await read(await send(d, 'POST', '/jsonapi/node/page', admin, { data: { type: 'node--page', attributes: { title: 'New' } } }))).data as Resource)
+    const first = await post()
+    await send(d, 'DELETE', `/jsonapi/node/page/${first.id}`, admin)
+    const second = await post()
+    expect((second.attributes as { drupal_internal__nid: number }).drupal_internal__nid).toBeGreaterThan((first.attributes as { drupal_internal__nid: number }).drupal_internal__nid)
+    d.reset()
+    expect((await d.fetch(`${BASE}/jsonapi/node/page`, { headers: admin })).status).toBe(401)
+  })
+
+  it('reads a scope through the consumer holding the token, and refuses a consumer bound to no user', async () => {
+    const copy = structuredClone(dump)
+    copy.identities!.consumers = [
+      { clientId: 'a', secret: 's', confidential: true, grants: ['client_credentials'], scopes: { shared: 'administrator' }, user: 'umami' },
+      { clientId: 'b', secret: 's', confidential: true, grants: ['client_credentials'], scopes: { shared: 'editor' }, user: 'umami' },
+      { clientId: 'c', secret: 's', confidential: true, grants: ['client_credentials'], scopes: { shared: 'editor' } },
+    ]
+    const d = createDrupal(copy, { baseUrl: BASE })
+    const granted = await token(d, { grant_type: 'client_credentials', client_id: 'b', client_secret: 's', scope: 'shared' })
+    const response = await d.fetch(`${BASE}/jsonapi/block/block`, { method: 'GET', headers: bearer(String(granted.body.access_token)) })
+    expect(response.status).toBe(200)
+    const denied = await send(d, 'DELETE', '/jsonapi/taxonomy_term/tags/t-1', bearer(String(granted.body.access_token)))
+    expect(denied.status).toBe(403)
+    expect((await token(d, { grant_type: 'client_credentials', client_id: 'c', client_secret: 's', scope: 'shared' })).status).toBe(401)
+  })
+
+  it('issues a code only to a registered redirect URI and for the consumer\'s scopes, and lets it expire', async () => {
+    const copy = structuredClone(dump)
+    copy.identities!.consumers[1]!.scopes = { editor: 'editor' }
+    const d = createDrupal(copy, { baseUrl: BASE })
+    const login = await d.fetch(`${BASE}/user/login?_format=json`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'umami', pass: 'secret' }) })
+    const cookie = login.headers.get('set-cookie')!.split(';')[0]!
+    const verifier = 'v'.repeat(43)
+    const challenge = createHash('sha256').update(verifier).digest('base64url')
+    const authorize = (redirect: string, scope = '') => d.fetch(`${BASE}/oauth/authorize?response_type=code&client_id=public&redirect_uri=${encodeURIComponent(redirect)}&code_challenge=${challenge}&code_challenge_method=S256${scope ? `&scope=${scope}` : ''}`, { headers: { cookie }, redirect: 'manual' })
+    expect((await authorize('https://evil.test/callback')).status).toBe(400)
+    expect((await authorize('https://site.test/callback', 'administrator')).status).toBe(400)
+    const issued = await authorize('https://site.test/callback', 'editor')
+    expect(issued.status).toBe(302)
+    const code = new URL(issued.headers.get('location')!).searchParams.get('code')!
+    vi.useFakeTimers({ now: Date.now() + 301_000 })
+    try {
+      expect((await token(d, { grant_type: 'authorization_code', client_id: 'public', code, code_verifier: verifier, redirect_uri: 'https://site.test/callback' })).status).toBe(400)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+

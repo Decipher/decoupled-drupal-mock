@@ -15,6 +15,8 @@ export interface Consumer {
   /** The user a client credentials grant acts as. */
   user?: string
   pkce?: boolean
+  /** The redirect URIs the consumer registered: an authorization request names one of them exactly. */
+  redirectUris?: string[]
 }
 
 /** The identities a preset knows, from its build's configuration. */
@@ -52,7 +54,7 @@ const mint = (): string => `${base64url(Buffer.from(JSON.stringify({ typ: 'JWT',
 export class Identity {
   private readonly tokens = new Map<string, Token>()
   private readonly refreshes = new Map<string, Token>()
-  private readonly codes = new Map<string, { clientId: string, name: string, scopes?: string[], challenge?: string, method?: string, redirectUri: string }>()
+  private readonly codes = new Map<string, { clientId: string, name: string, scopes?: string[], challenge?: string, method?: string, redirectUri: string, expires: number }>()
   private readonly cookies = new Map<string, { name: string, csrf: string }>()
 
   constructor(private readonly dump: Dump, private readonly identities: Identities, private readonly users: () => Resource[], private readonly roleIds: () => Map<string, Resource>) {}
@@ -62,15 +64,26 @@ export class Identity {
     return this.users().find((user) => (user.attributes as { name?: string } | undefined)?.name === name)
   }
 
-  private sessionFor(user: Resource, scopes?: string[]): Session {
+  /** Drops every token, code and cookie session, as the instance's `reset()` does. */
+  reset(): void {
+    this.tokens.clear()
+    this.refreshes.clear()
+    this.codes.clear()
+    this.cookies.clear()
+  }
+
+  private sessionFor(user: Resource, scopes?: string[], clientId?: string): Session {
     const roleIds = ((user.relationships?.roles?.data as Array<{ id: string }> | undefined) || []).map((identifier) => identifier.id)
     const byUuid = this.roleIds()
     const roles = roleIds.map((id) => (byUuid.get(id)?.attributes as { drupal_internal__id?: string } | undefined)?.drupal_internal__id).filter((role): role is string => !!role)
-    const scoped = scopes?.length ? scopes.map((scope) => this.scopeRole(scope)).filter((role): role is string => !!role) : undefined
+    const scoped = scopes?.length ? scopes.map((scope) => this.scopeRole(scope, clientId)).filter((role): role is string => !!role) : undefined
     return { user, uid: Number((user.attributes as { drupal_internal__uid?: number }).drupal_internal__uid), roles: ['authenticated', ...(scoped || roles)], ...(scopes ? { scopes } : {}) }
   }
 
-  private scopeRole(scope: string): string | undefined {
+  /** The role a scope gives, by the consumer holding the token; `tokenFor`'s tokens belong to no consumer, so any says. */
+  private scopeRole(scope: string, clientId?: string): string | undefined {
+    const holder = this.identities.consumers.find((consumer) => consumer.clientId === clientId)
+    if (holder) return holder.scopes?.[scope]
     for (const consumer of this.identities.consumers) if (consumer.scopes?.[scope]) return consumer.scopes[scope]
     return undefined
   }
@@ -85,7 +98,7 @@ export class Identity {
       if (!token) return { invalid: value.split('.').length === 3 ? 'The JWT string is invalid' : 'The JWT string must have two dots' }
       if (token.expires < Date.now()) return { invalid: 'The access token has expired' }
       const user = this.userNamed(token.name)
-      return user ? this.sessionFor(user, token.scopes) : ANONYMOUS
+      return user ? this.sessionFor(user, token.scopes, token.clientId) : ANONYMOUS
     }
     const cookie = Object.entries(headers).find(([name]) => name.toLowerCase() === 'cookie')?.[1]
     const session = cookie?.match(/(?:^|;\s*)SESS[0-9a-f]+=([^;]+)/)?.[1]
@@ -105,7 +118,7 @@ export class Identity {
 
   private issue({ clientId, name, scopes, refresh }: { clientId: string, name: string, scopes?: string[] | undefined, refresh: boolean }): Token {
     const user = this.userNamed(name)!
-    const roles = this.sessionFor(user, scopes).roles
+    const roles = this.sessionFor(user, scopes, clientId).roles
     const token: Token = { access: mint(), ...(refresh ? { refresh: mint() } : {}), name, roles, ...(scopes ? { scopes } : {}), clientId, issued: Date.now(), expires: Date.now() + 300_000 }
     this.tokens.set(token.access, token)
     if (token.refresh) this.refreshes.set(token.refresh, token)
@@ -125,7 +138,8 @@ export class Identity {
     const answer = (token: Token) => ({ status: 200, body: { token_type: 'Bearer', expires_in: 300, access_token: token.access, ...(token.refresh ? { refresh_token: token.refresh } : {}) } })
     switch (grantType) {
       case 'client_credentials': {
-        const name = consumer.user || this.identities.accounts[0]?.name
+        // A consumer bound to no user has nobody to act as.
+        const name = consumer.user
         if (!name || !this.userNamed(name)) return fail(401, 'invalid_client', 'Client authentication failed')
         return answer(this.issue({ clientId, name, scopes: scopes.length ? scopes : undefined, refresh: false }))
       }
@@ -144,7 +158,7 @@ export class Identity {
       }
       case 'authorization_code': {
         const code = this.codes.get(form.get('code') || '')
-        if (!code || code.clientId !== clientId) return fail(400, 'invalid_grant', 'Authorization code has expired', 'Cannot decrypt the authorization code')
+        if (!code || code.clientId !== clientId || code.expires < Date.now()) return fail(400, 'invalid_grant', 'Authorization code has expired', 'Cannot decrypt the authorization code')
         if (code.redirectUri !== form.get('redirect_uri')) return fail(400, 'invalid_request', 'The request is missing a required parameter, includes an invalid parameter value, includes a parameter more than once, or is otherwise malformed.', 'Check the `redirect_uri` parameter')
         if (code.challenge) {
           const verifier = form.get('code_verifier') || ''
@@ -166,10 +180,13 @@ export class Identity {
     const redirectUri = String(query.redirect_uri || '')
     if (!consumer || !consumer.grants.includes('authorization_code') || !redirectUri || query.response_type !== 'code') return { status: 400 }
     if (consumer.pkce && !query.code_challenge) return { status: 400 }
+    // Only a URI the consumer registered, and only scopes it may ask for.
+    if (!consumer.redirectUris?.includes(redirectUri)) return { status: 400 }
+    const scopes = String(query.scope || '').split(/\s+/).filter(Boolean)
+    if (scopes.some((scope) => !consumer.scopes?.[scope])) return { status: 400 }
     if (!session.user) return { status: 403 }
     const code = base64url(randomBytes(32))
-    const scopes = String(query.scope || '').split(/\s+/).filter(Boolean)
-    this.codes.set(code, { clientId, name: String((session.user.attributes as { name?: string }).name), ...(scopes.length ? { scopes } : {}), ...(query.code_challenge ? { challenge: String(query.code_challenge), method: String(query.code_challenge_method || 'plain') } : {}), redirectUri })
+    this.codes.set(code, { clientId, expires: Date.now() + 300_000, name: String((session.user.attributes as { name?: string }).name), ...(scopes.length ? { scopes } : {}), ...(query.code_challenge ? { challenge: String(query.code_challenge), method: String(query.code_challenge_method || 'plain') } : {}), redirectUri })
     const url = new URL(redirectUri)
     url.searchParams.set('code', code)
     if (query.state) url.searchParams.set('state', String(query.state))
@@ -202,6 +219,18 @@ export class Identity {
     this.cookies.set(id, { name, csrf })
     const attributes = user.attributes as Record<string, unknown>
     return { status: 200, body: { current_user: { uid: String(attributes.drupal_internal__uid), roles: ['authenticated'], name }, csrf_token: csrf, logout_token: base64url(randomBytes(32)) }, cookie: `SESS${createHash('sha256').update(name).digest('hex').slice(0, 32)}=${id}; path=/; HttpOnly; SameSite=Lax` }
+  }
+
+  /** Why a cookie session's write is refused: Drupal asks it for its token. A bearer token and a visitor are not asked. */
+  csrfRefusal(headers: Record<string, string>): string | undefined {
+    const header = (wanted: string) => Object.entries(headers).find(([name]) => name.toLowerCase() === wanted)?.[1]
+    if (header('authorization')) return undefined
+    const session = header('cookie')?.match(/(?:^|;\s*)SESS[0-9a-f]+=([^;]+)/)?.[1]
+    const signedIn = session ? this.cookies.get(session) : undefined
+    if (!signedIn) return undefined
+    const given = header('x-csrf-token')
+    if (!given) return 'X-CSRF-Token request header is missing'
+    return given === signedIn.csrf ? undefined : 'X-CSRF-Token request header is invalid'
   }
 
   /** The CSRF token of a cookie session, or a fresh one for none, as `GET /session/token` gives it. */

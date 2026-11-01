@@ -9,6 +9,9 @@ const attributesOf = (resource: Resource | undefined): Record<string, unknown> =
 /** The field definitions of a bundle, from the dump's `field_config` and `field_storage_config`. */
 export interface FieldDefinition { name: string, type: string, required: boolean, cardinality: number, reference?: boolean }
 
+/** A node's fields only someone who may administer nodes sets. */
+const OWNER_FIELDS = ['uid', 'revision_uid', 'created', 'status', 'promote', 'sticky', 'revision_timestamp', 'revision_log']
+
 /**
  * Drupal's rules for creating, updating and deleting content through JSON:API: which permissions, which fields are
  * required, which are read only, and what a new entity gets.
@@ -35,7 +38,7 @@ export class Writes {
 
   /** The base fields a bundle requires, as Drupal's entity types define them. */
   private requiredBase(entityType: string): string[] {
-    return ({ node: ['title'], taxonomy_term: ['name'], block_content: ['info'], menu_link_content: ['title', 'link'], user: ['name'], media: [], contact_message: ['name', 'mail', 'subject', 'message'] } as Record<string, string[]>)[entityType] || []
+    return ({ node: ['title'], taxonomy_term: ['name'], block_content: ['info'], menu_link_content: ['title', 'link'], user: ['name'], media: [], contact_message: ['name', 'mail', 'subject', 'message'], path_alias: ['path', 'alias'] } as Record<string, string[]>)[entityType] || []
   }
 
   /** The workflow moderating a bundle, if one does. */
@@ -107,14 +110,61 @@ export class Writes {
     }
   }
 
-  /** The 422 Drupal answers for a required field left empty, the first one. */
-  validate(entityType: string, bundle: string, attributes: Record<string, unknown>, relationships: Record<string, unknown>): WriteError | undefined {
+  /** The 422s Drupal answers for the required fields left empty, each its own error. */
+  validate(entityType: string, bundle: string, attributes: Record<string, unknown>, relationships: Record<string, unknown>): WriteError[] {
     const missing = (name: string): boolean => {
       const value = attributes[name] ?? (relationships[name] as { data?: unknown } | undefined)?.data
       return value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)
     }
-    for (const name of this.requiredBase(entityType)) if (missing(name)) return { status: 422, title: 'Unprocessable Content', detail: `${name}: This value should not be null.`, pointer: `/data/attributes/${name}` }
-    for (const field of this.fields(entityType, bundle)) if (field.required && missing(field.name)) return { status: 422, title: 'Unprocessable Content', detail: `${field.name}: This value should not be null.`, pointer: `/data/${field.reference ? 'relationships' : 'attributes'}/${field.name}` }
+    const invalid = (name: string, kind: string): WriteError => ({ status: 422, title: 'Unprocessable Content', detail: `${name}: This value should not be null.`, pointer: `/data/${kind}/${name}` })
+    return [
+      ...this.requiredBase(entityType).filter(missing).map((name) => invalid(name, 'attributes')),
+      ...this.fields(entityType, bundle).filter((field) => field.required && missing(field.name)).map((field) => invalid(field.name, field.reference ? 'relationships' : 'attributes')),
+    ]
+  }
+
+  /**
+   * Content moderation's answer to a move between states: the transition must exist and the session must hold it.
+   *
+   * @param session - Who asks.
+   * @param entityType - The entity type.
+   * @param bundle - The bundle.
+   * @param from - The state the entity is in, or the workflow's default for a new one.
+   * @param to - The state asked for.
+   * @returns The 422 Drupal answers, or nothing when the move is allowed or the bundle is not moderated.
+   */
+  refusedTransition(session: Session, entityType: string, bundle: string, from: string | undefined, to: unknown): WriteError | undefined {
+    const workflow = this.workflow(entityType, bundle)
+    if (!workflow) return undefined
+    const settings = attributesOf(workflow).type_settings as { default_moderation_state?: string, states?: Record<string, { label?: string }>, transitions?: Record<string, { from?: string[], to?: string }> } | undefined
+    const source = from ?? settings?.default_moderation_state ?? 'draft'
+    const refuse = (detail: string): WriteError => ({ status: 422, title: 'Unprocessable Content', detail: `moderation_state: ${detail}`, pointer: '/data/attributes/moderation_state' })
+    const label = (state: string): string => settings?.states?.[state]?.label || state
+    if (!settings?.states?.[String(to)]) return refuse(`State ${String(to)} does not exist on ${String(attributesOf(workflow).label || attributesOf(workflow).drupal_internal__id)} workflow`)
+    const moves = Object.entries(settings.transitions || {}).filter(([, transition]) => transition.to === to && transition.from?.includes(source))
+    if (!moves.length) return refuse(`Invalid state transition from ${label(source)} to ${label(String(to))}`)
+    const { has } = this.identity.permissions(session)
+    const id = String(attributesOf(workflow).drupal_internal__id)
+    if (!moves.some(([name]) => has(`use ${id} transition ${name}`))) return refuse(`You do not have access to transition from ${label(source)} to ${label(String(to))}`)
+    return undefined
+  }
+
+  /** A field a POST may not set, as Drupal answers it: an id, the published flag of a moderated bundle, an owner's field. */
+  refusedOnCreate(session: Session, entityType: string, bundle: string, name: string): WriteError | undefined {
+    const refuse = (explanation = ''): WriteError => ({ status: 403, title: 'Forbidden', detail: `The current user is not allowed to POST the selected field (${name}).${explanation}`, pointer: `/data/attributes/${name}` })
+    if (name in this.readOnly(entityType)) return refuse(name === 'uuid' ? ' The entity UUID cannot be changed.' : ' The entity ID cannot be changed.')
+    if (name === 'status' && this.workflow(entityType, bundle)) return refuse(' Cannot edit the published field of moderated entities.')
+    const { admin, has } = this.identity.permissions(session)
+    if (entityType === 'node' && !admin && !has('administer nodes') && OWNER_FIELDS.includes(name)) return refuse()
+    return undefined
+  }
+
+  /** Why a relationship may not be written through its own route, as Drupal says it. */
+  refusedRelationship(session: Session, resource: Resource, name: string): string | undefined {
+    const [entityType] = resource.type.split('--') as [string]
+    const { admin, has } = this.identity.permissions(session)
+    if (entityType === 'node' && OWNER_FIELDS.includes(name) && !admin && !has('administer nodes')) return "The current user is not allowed to edit this relationship. The 'administer nodes' permission is required."
+    if (entityType === 'user' && name === 'roles' && !admin && !has('administer users')) return 'The current user is not allowed to edit this relationship.'
     return undefined
   }
 
@@ -133,8 +183,12 @@ export class Writes {
       const explanation = readOnly[name] === 'uuid' ? ' The entity UUID cannot be changed.' : name.startsWith('drupal_internal__') && readOnly[name] !== (entityType === 'node' ? 'vid' : 'revision_id') ? ' The entity ID cannot be changed.' : ''
       return { status: 403, title: 'Forbidden', detail: `The current user is not allowed to PATCH the selected field (${readOnly[name]}).${explanation}`, pointer: `/data/attributes/${readOnly[name]}` }
     }
+    const [, bundle] = resource.type.split('--') as [string, string]
+    if (name === 'status' && this.workflow(entityType, bundle)) return { status: 403, title: 'Forbidden', detail: 'The current user is not allowed to PATCH the selected field (status). Cannot edit the published field of moderated entities.', pointer: '/data/attributes/status' }
     const { admin, has } = this.identity.permissions(session)
-    const owner = ['uid', 'revision_uid', 'created', 'status', 'promote', 'sticky', 'revision_timestamp', 'revision_log'].includes(name)
+    // A user's roles are the administrator's to give, or anyone could give themselves any.
+    if (entityType === 'user' && name === 'roles' && !admin && !has('administer users')) return { status: 403, title: 'Forbidden', detail: 'The current user is not allowed to PATCH the selected field (roles).', pointer: '/data/attributes/roles' }
+    const owner = OWNER_FIELDS.includes(name)
     if (owner && entityType === 'node' && !admin && !has('administer nodes')) return { status: 403, title: 'Forbidden', detail: `The current user is not allowed to PATCH the selected field (${name}).`, pointer: `/data/${name === 'uid' || name === 'revision_uid' ? 'relationships' : 'attributes'}/${name}` }
     return undefined
   }
@@ -207,6 +261,9 @@ export class Writes {
       else base[field.name] = field.cardinality === 1 ? null : []
     }
     for (const [name, value] of Object.entries(attributes)) if (!(name in rels)) base[name] = value
+    // A state asked for sets the published flag, as content moderation does.
+    const state = (attributesOf(workflow).type_settings as { states?: Record<string, { published?: boolean }> } | undefined)?.states?.[String(base.moderation_state)]
+    if (state?.published !== undefined) base.status = state.published
     for (const [name, value] of Object.entries(relationships)) if (value) rels[name] = { data: value.data }
     return { type, id: this.identity.uuid(), attributes: base, relationships: rels }
   }

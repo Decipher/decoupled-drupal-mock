@@ -6,6 +6,8 @@ import type { Dump, Resource } from './types.js'
  */
 export class Store {
   private written = new Map<string, Resource[]>()
+  /** The highest internal id given out, so a deleted resource's id is never given again. */
+  private issued = new Map<string, number>()
 
   constructor(private readonly dump: Dump) {}
 
@@ -61,10 +63,14 @@ export class Store {
         if (Number.isFinite(value) && value > max) max = value
       }
     }
-    return max + 1
+    const issuedKey = `${langcode}:${entityType}:${key}`
+    const next = Math.max(max, this.issued.get(issuedKey) || 0) + 1
+    this.issued.set(issuedKey, next)
+    return next
   }
 
   reset(): void {
     this.written = new Map()
+    this.issued = new Map()
   }
 }

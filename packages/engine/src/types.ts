@@ -52,7 +52,7 @@ export interface Dump {
    * A type not named is readable in full. A request with an Authorization header reads everything.
    */
   /** The accounts and consumers the mock signs in, from the build's configuration. */
-  identities?: { accounts: Array<{ name: string, password?: string, roles?: string[] }>, consumers: Array<{ clientId: string, secret?: string, confidential?: boolean, grants: Array<'client_credentials' | 'password' | 'authorization_code' | 'refresh_token'>, scopes?: Record<string, string>, user?: string, pkce?: boolean }>, passwordGrant?: boolean }
+  identities?: { accounts: Array<{ name: string, password?: string, roles?: string[] }>, consumers: Array<{ clientId: string, secret?: string, confidential?: boolean, grants: Array<'client_credentials' | 'password' | 'authorization_code' | 'refresh_token'>, scopes?: Record<string, string>, user?: string, pkce?: boolean, redirectUris?: string[] }>, passwordGrant?: boolean }
   access?: Record<string, Record<string, {
     visible?: string[]
     hidden?: string[]

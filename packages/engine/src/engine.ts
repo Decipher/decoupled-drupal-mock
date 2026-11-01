@@ -98,9 +98,23 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const access = accessOf(langcode, resource.type)
     return !access?.visible || access.visible.includes(resource.id)
   }
+  /** Who the request being answered is, as far as reading users goes. `handle` runs synchronously, so one is held. */
+  let viewer: { id?: string | undefined, administersUsers: boolean } = { administersUsers: false }
+  /** What a signed-in user reads of their own account: everything but these. */
+  const OWN_ACCOUNT_HIDDEN = ['status', 'access', 'login', 'init', 'roles']
+  /**
+   * The fields a request may not read of a resource. Signing in opens the dump, except other people's accounts, which
+   * only someone who administers users reads in full.
+   */
+  const hiddenFrom = (langcode: string, resource: { type: string, id?: string }, all: boolean): string[] | undefined => {
+    if (!all) return accessOf(langcode, resource.type)?.hidden
+    if (resource.type !== 'user--user' || viewer.administersUsers) return undefined
+    return resource.id && resource.id === viewer.id ? OWN_ACCOUNT_HIDDEN : accessOf(langcode, resource.type)?.hidden
+  }
+
   /** The resource without the fields the anonymous user may not read, which Drupal leaves out without a word. */
   const readable = (langcode: string, resource: Resource, all: boolean): Resource => {
-    const hidden = all ? undefined : accessOf(langcode, resource.type)?.hidden
+    const hidden = hiddenFrom(langcode, resource, all)
     if (!hidden?.length) return resource
     const out: Resource = { ...resource }
     const attributes = Object.fromEntries(Object.entries(resource.attributes || {}).filter(([key]) => !hidden.includes(key)))
@@ -282,6 +296,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const session: Session = resolved
     // A signed-in user reads the whole dump, as the administrator's crawl read it.
     const all = !!session.user
+    const held = identity.permissions(session)
+    viewer = { id: session.user?.id, administersUsers: held.admin || held.has('administer users') }
     const { langcode: lang0, prefix: prefix0 } = language(path)
 
     // Simple OAuth and the user module.
@@ -301,7 +317,14 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     }
     if (path === `${prefix0}/user/login` || path === '/user/login') {
       if (upper !== 'POST' || query._format !== 'json') return html(upper === 'POST' ? 400 : 200, 'Log in')
-      const credentials = JSON.parse(requestBody || '{}') as { name?: string, pass?: string }
+      let credentials: { name?: string, pass?: string } | null
+      try {
+        credentials = JSON.parse(requestBody || '{}') as typeof credentials
+      } catch {
+        // Drupal's serializer throws on it, and the request ends as its error page.
+        return { status: 500, headers: { 'content-type': 'text/plain; charset=UTF-8' }, body: 'The website encountered an unexpected error. Try again later.' }
+      }
+      if (!credentials || typeof credentials !== 'object' || !credentials.name || !credentials.pass) return { status: 400, headers: { 'content-type': 'application/json' }, body: { message: 'Missing credentials.' } }
       const answer = identity.login(String(credentials.name || ''), String(credentials.pass || ''))
       return { status: answer.status, headers: { 'content-type': 'application/json', ...(answer.cookie ? { 'set-cookie': answer.cookie } : {}) }, body: answer.body }
     }
@@ -337,6 +360,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const self = `${baseUrl}${prefix}${rest}${search ? `?${selfSearch(search)}` : ''}`
     if (upper !== 'GET' && upper !== 'HEAD') {
       if (rest === basePath) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: GET, HEAD)`, via) }
+      const refused = identity.csrfRefusal(requestHeaders)
+      if (refused) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', refused, via) }
       return write(upper, path, rest, prefix, langcode, session, requestBody, via, all)
     }
 
@@ -372,6 +397,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (related === 'relationships' && relationName) {
         const relationship = member(resource.relationships, relationName)
         if (!relationship) return html404(path)
+        if (hiddenFrom(langcode, resource, all)?.includes(relationName)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', resource.type === 'user--user' && resource.id !== viewer.id ? "The current user is not allowed to view this relationship. The 'access user profiles' permission is required." : 'The current user is not allowed to view this relationship.', via) }
         const revision = (resource.attributes as Record<string, unknown> | undefined)?.drupal_internal__vid ?? (resource.attributes as Record<string, unknown> | undefined)?.drupal_internal__revision_id
         const own = `${baseUrl}${prefix}${basePath}/${typePath(type)}/${id}`
         const document: Document = { jsonapi: JSONAPI, data: relationship.data, links: { related: { href: `${own}/${relationName}${revision !== undefined ? `?resourceVersion=id%3A${revision}` : ''}` }, self: { href: `${own}/relationships/${relationName}` } } }
@@ -381,7 +407,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
         const relationship = member(resource.relationships, related)
         if (!relationship) return html404(path)
         // A relationship the user may not read is Drupal's 403, not a missing route.
-        if (!all && accessOf(langcode, resource.type)?.hidden?.includes(related)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', 'The current user is not allowed to view this relationship.', via) }
+        if (hiddenFrom(langcode, resource, all)?.includes(related)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', resource.type === 'user--user' && resource.id !== viewer.id ? "The current user is not allowed to view this relationship. The 'access user profiles' permission is required." : 'The current user is not allowed to view this relationship.', via) }
         const identifiers = Array.isArray(relationship.data) ? relationship.data : relationship.data ? [relationship.data] : []
         const found = identifiers.map((identifier) => find(langcode, identifier)).filter((target): target is Resource => !!target)
         const targets = found.filter((target) => !isPhantom(langcode, target) && (all || (visible(langcode, target) && !forbidden(langcode, target.type))))
@@ -464,7 +490,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const forbidden = (detail: string, pointer?: string) => ({ status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', detail, via, pointer ? { pointer } : undefined) })
     const segments = rest.slice(basePath.length + 1).split('/').filter(Boolean)
     const [entityType, bundle, id, relation, name] = segments
-    if (!entityType || !bundle) return html404(path)
+    if (!entityType || !bundle || segments.length > 5) return html404(path)
     const type = `${entityType}--${bundle}`
     if (!listed.has(type) && !store.get(dump.manifest.defaultLanguage, type)) return html404(path)
     const allow = CONTENT_TYPES.has(entityType) ? (id ? 'GET, PATCH, DELETE' : 'GET, POST') : 'GET'
@@ -488,6 +514,10 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (!relationship) return html404(path)
       const may = writes.canUpdate(session, resource)
       if (!may.allowed) return forbidden(may.detail)
+      const closed = writes.refusedRelationship(session, resource, name)
+      if (closed) return forbidden(closed)
+      // A to-one relationship is replaced, never added to or taken from.
+      if ((upper === 'POST' || upper === 'DELETE') && !Array.isArray(relationship.data)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', 'Invalid body payload for the relationship.', via) }
       const given = Array.isArray(document.data) ? document.data as unknown as ResourceIdentifier[] : document.data ? [document.data as unknown as ResourceIdentifier] : []
       const current = Array.isArray(relationship.data) ? relationship.data : relationship.data ? [relationship.data] : []
       const updated = structuredClone(resource)
@@ -506,8 +536,14 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (!writes.canCreate(session, entityType, bundle)) return forbidden('The current user is not allowed to POST the selected resource.', '/data')
       const attributes = data?.attributes || {}
       const relationships = data?.relationships || {}
+      for (const field of [...Object.keys(attributes), ...Object.keys(relationships)]) {
+        const refused = writes.refusedOnCreate(session, entityType, bundle, field)
+        if (refused) return forbidden(refused.detail, refused.pointer)
+      }
       const invalid = writes.validate(entityType, bundle, attributes, relationships)
-      if (invalid) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: invalid.title, status: '422', detail: invalid.detail, source: { pointer: invalid.pointer } }] } }
+      const move = 'moderation_state' in attributes ? writes.refusedTransition(session, entityType, bundle, undefined, attributes.moderation_state) : undefined
+      if (move) invalid.push(move)
+      if (invalid.length) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: invalid.map((problem) => ({ title: problem.title, status: '422', detail: problem.detail, source: { pointer: problem.pointer } })) } }
       const created = writes.create(session, entityType, bundle, attributes, relationships as Record<string, NonNullable<Resource['relationships']>[string]>)
       const revision = (created.attributes as Record<string, unknown>).drupal_internal__vid ?? (created.attributes as Record<string, unknown>).drupal_internal__revision_id
       const own = `${baseUrl}${defaultPrefix}${basePath}/${typePath(type)}/${created.id}`
@@ -523,6 +559,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
 
     if (upper === 'DELETE') {
       if (!writes.canDelete(session, resource)) return forbidden('The current user is not allowed to DELETE the selected resource.')
+      if (langcode !== dump.manifest.defaultLanguage) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', 'Deleting a resource object translation is not yet supported. See https://www.drupal.org/docs/8/modules/jsonapi/translations.', via) }
       store.remove(langcode, type, id)
       return { status: 204, headers: {}, body: '' }
     }
@@ -545,7 +582,9 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       }
       const merged: Record<string, unknown> = { ...resource.attributes, ...attributes }
       const invalid = writes.validate(entityType, bundle, merged, { ...resource.relationships, ...relationships })
-      if (invalid) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: invalid.title, status: '422', detail: invalid.detail, source: { pointer: invalid.pointer } }] } }
+      const move = 'moderation_state' in attributes ? writes.refusedTransition(session, entityType, bundle, (resource.attributes as { moderation_state?: string } | undefined)?.moderation_state, attributes.moderation_state) : undefined
+      if (move) invalid.push(move)
+      if (invalid.length) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: invalid.map((problem) => ({ title: problem.title, status: '422', detail: problem.detail, source: { pointer: problem.pointer } })) } }
       const updated: Resource = structuredClone(resource)
       updated.attributes = merged
       updated.relationships = { ...updated.relationships, ...Object.fromEntries(Object.entries(relationships).map(([name, value]) => [name, { ...(updated.relationships?.[name] || {}), data: value.data }])) }
@@ -574,5 +613,5 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return new Response(request.method === 'HEAD' || status === 204 || status === 304 ? null : text, { status, statusText: STATUS_TEXT[status] ?? '', headers })
   }
 
-  return { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset() } }
+  return { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset(); identity.reset() } }
 }

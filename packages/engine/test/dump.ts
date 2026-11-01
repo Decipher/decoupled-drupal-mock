@@ -26,7 +26,7 @@ export const fieldStorages: Resource[] = [
   { type: 'field_storage_config--field_storage_config', id: 'fs-tags', attributes: { field_name: 'field_tags', entity_type: 'node', type: 'entity_reference', cardinality: -1 } },
 ]
 export const workflows: Resource[] = [
-  { type: 'workflow--workflow', id: 'wf-editorial', attributes: { drupal_internal__id: 'editorial', type_settings: { states: { draft: {}, published: {} }, transitions: { create_new_draft: {}, publish: {} }, default_moderation_state: 'draft', entity_types: { node: ['recipe'] } } } },
+  { type: 'workflow--workflow', id: 'wf-editorial', attributes: { drupal_internal__id: 'editorial', type_settings: { states: { draft: { label: 'Draft', published: false }, published: { label: 'Published', published: true } }, transitions: { create_new_draft: { from: ['draft', 'published'], to: 'draft' }, publish: { from: ['draft', 'published'], to: 'published' } }, default_moderation_state: 'draft', entity_types: { node: ['recipe'] } } } },
 ]
 export const file: Resource = { type: 'file--file', id: 'f-1', attributes: { filename: 'quiche.jpg', uri: { value: 'public://quiche.jpg', url: '/sites/default/files/quiche.jpg' } }, relationships: { uid: { data: { type: 'user--user', id: 'u-1' } } } }
 export const image: Resource = { type: 'media--image', id: 'm-1', attributes: { name: 'Quiche' }, relationships: { field_media_image: { data: { type: 'file--file', id: 'f-1', meta: { alt: 'A quiche', drupal_internal__target_id: 1 } } }, uid: { data: { type: 'user--user', id: 'u-1' } } } }
@@ -82,7 +82,7 @@ export const dump: Dump = {
     accounts: [{ name: 'umami', password: 'secret' }, { name: 'admin', password: 'admin' }],
     consumers: [
       { clientId: 'druxt', secret: 's3cret', confidential: true, grants: ['client_credentials', 'password', 'refresh_token'], scopes: { editor: 'editor', administrator: 'administrator' }, user: 'admin' },
-      { clientId: 'public', confidential: false, grants: ['authorization_code', 'refresh_token'], pkce: true },
+      { clientId: 'public', confidential: false, grants: ['authorization_code', 'refresh_token'], pkce: true, redirectUris: ['https://site.test/callback'] },
     ],
   },
   recorded: {
