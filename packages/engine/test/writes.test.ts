@@ -349,3 +349,18 @@ describe('what the review of the writes found', () => {
   })
 })
 
+describe('what a signed-in user reaches', () => {
+  it('reads what the anonymous user may not, and a token nobody issued reads nothing', async () => {
+    const d = createDrupal({ ...dump, access: { en: { 'node--recipe': { hidden: ['field_difficulty'], visible: ['r-1'] } } } }, { baseUrl: BASE })
+    const anonymous = await read(await d.fetch(`${BASE}/jsonapi/node/recipe`))
+    expect((anonymous.data as Resource[]).map((resource) => resource.id)).toEqual(['r-1'])
+    expect((anonymous.data as Resource[])[0]!.attributes).not.toHaveProperty('field_difficulty')
+    const name = (dump.identities?.accounts || [])[0]?.name || 'umami'
+    const headers = { authorization: `Bearer ${d.tokenFor(name).access}` }
+    const signedIn = await read(await d.fetch(`${BASE}/jsonapi/node/recipe`, { headers }))
+    expect((signedIn.data as Resource[]).map((resource) => resource.id)).toEqual(['r-1', 'r-2', 'r-3'])
+    expect((signedIn.data as Resource[])[0]!.attributes).toHaveProperty('field_difficulty')
+    expect((await d.fetch(`${BASE}/jsonapi/node/recipe`, { headers: { authorization: 'Bearer nobody-issued-this' } })).status).toBe(401)
+  })
+})
+

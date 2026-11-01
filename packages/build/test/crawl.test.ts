@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { afterEach, describe, expect, it } from 'vitest'
-import { crawl } from '../src/crawl'
+import { crawl, passwordGrantInstalled } from '../src/crawl'
 
 type Answer = { status?: number, body: unknown }
 
@@ -152,3 +152,16 @@ describe('a site that gets in the way', () => {
   })
 })
 
+
+describe('the password grant probe', () => {
+  it('reads an answer the grant gave as installed, and the refusal of a missing grant as not', () => {
+    expect(passwordGrantInstalled(200, '{"access_token":"t"}')).toBe(true)
+    expect(passwordGrantInstalled(400, '{"error":"invalid_grant"}')).toBe(true)
+    expect(passwordGrantInstalled(400, '{"error":"unsupported_grant_type","hint":"Grant type is not installed."}')).toBe(false)
+  })
+
+  it('stops the build on an answer that says neither', () => {
+    expect(() => passwordGrantInstalled(401, '{"error":"invalid_client"}')).toThrow('The password grant probe got 401')
+    expect(() => passwordGrantInstalled(500, '<html>')).toThrow('The password grant probe got 500')
+  })
+})
