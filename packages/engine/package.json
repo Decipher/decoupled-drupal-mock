@@ -11,6 +11,14 @@
     "./node": {
       "types": "./dist/load.d.ts",
       "import": "./dist/load.js"
+    },
+    "./serve": {
+      "types": "./dist/serve.d.ts",
+      "import": "./dist/serve.js"
+    },
+    "./msw": {
+      "types": "./dist/msw.d.ts",
+      "import": "./dist/msw.js"
     }
   },
   "files": [
@@ -23,5 +31,6 @@
   "license": "GPL-2.0-or-later",
   "devDependencies": {
     "typescript": "^5.9.0"
-  }
+  },
+  "bin": "./dist/cli.js"
 }
