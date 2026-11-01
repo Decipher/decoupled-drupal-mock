@@ -150,9 +150,13 @@ describe('recorded routes', () => {
     const route = await get('/router/translate-path?path=%2Fabout-umami')
     expect(route.status).toBe(200)
     expect((route.body as unknown as { resolved: string }).resolved).toBe('https://drupal.test/about-umami')
-    // A query the build did not record is not answered with the unqueried recording.
-    expect((await get('/jsonapi/menu_items/main')).status).toBe(200)
-    expect((await get('/jsonapi/menu_items/main?filter[max_depth]=2')).status).toBe(404)
+    // JSON:API Menu Items applies its own filters to the recording; a query with another is no recording's.
+    expect(ids((await get('/jsonapi/menu_items/main')).body)).toEqual(['ml-1', 'ml-2', 'ml-3', 'ml-4'])
+    expect(ids((await get('/jsonapi/menu_items/main?filter[enabled]=1&filter[menu_name]=main')).body)).toEqual(['ml-1', 'ml-2', 'ml-3'])
+    expect(ids((await get('/jsonapi/menu_items/main?filter[max_depth]=1')).body)).toEqual(['ml-1', 'ml-2', 'ml-4'])
+    expect(ids((await get('/jsonapi/menu_items/main?filter[parent]=ml-2')).body)).toEqual(['ml-3'])
+    expect(Object.keys(((await get('/jsonapi/menu_items/main?fields[menu_link_content--menu_link_content]=title')).body.data as Resource[])[0]!.attributes!)).toEqual(['title'])
+    expect((await get('/jsonapi/menu_items/main?filter[nope]=1')).status).toBe(404)
     expect((await get('/router/translate-path?path=%2Fnope')).status).toBe(404)
   })
 })
@@ -211,8 +215,10 @@ describe('what the first review found', () => {
     expect(ids((await get('/jsonapi/node/page?filter[b][condition][path]=body.value&filter[b][condition][operator]=%3C%3E&filter[b][condition][value]=nope')).body)).toEqual(['p-1'])
   })
 
-  it('filters on what the user may read, so a hidden field never matches', async () => {
+  it('filters on the stored value of a field the user may not read, as Drupal\'s filter access lets a visitor filter users by status', async () => {
     const guarded = createDrupal({ ...dump, access: { en: { 'node--page': { hidden: ['field_code'] } } } }, { baseUrl: 'https://drupal.test' })
-    expect(ids((await read(guarded, '/jsonapi/node/page?filter[field_code]=01')).body)).toEqual([])
+    const { body } = await read(guarded, '/jsonapi/node/page?filter[field_code]=01')
+    expect(ids(body)).toEqual(['p-1'])
+    expect((body.data as Resource[])[0]!.attributes!.field_code).toBeUndefined()
   })
 })

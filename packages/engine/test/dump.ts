@@ -58,6 +58,6 @@ export const dump: Dump = {
   },
   recorded: {
     'GET /router/translate-path?path=%2Fabout-umami': { status: 200, headers: { 'content-type': 'application/json' }, body: { resolved: `${ORIGIN}/about-umami`, isHomePath: false, entity: { canonical: `${ORIGIN}/about-umami`, type: 'node', bundle: 'page', id: '1', uuid: 'p-1' }, label: 'About Umami', jsonapi: { individual: `${ORIGIN}/jsonapi/node/page/p-1`, resourceName: 'node--page', basePath: '/jsonapi', entryPoint: `${ORIGIN}/jsonapi` } } },
-    'GET /jsonapi/menu_items/main': { status: 200, headers: { 'content-type': 'application/vnd.api+json' }, body: { jsonapi: { version: '1.0' }, data: [{ type: 'menu_link_content--menu_link_content', id: 'ml-1', attributes: { title: 'Home', url: '/' } }] } },
+    'GET /jsonapi/menu_items/main': { status: 200, headers: { 'content-type': 'application/vnd.api+json' }, body: { jsonapi: { version: '1.0' }, data: [{ type: 'menu_link_content--menu_link_content', id: 'ml-1', attributes: { title: 'Home', url: '/', enabled: true, menu_name: 'main', parent: '' } }, { type: 'menu_link_content--menu_link_content', id: 'ml-2', attributes: { title: 'Recipes', url: '/recipes', enabled: true, menu_name: 'main', parent: '' } }, { type: 'menu_link_content--menu_link_content', id: 'ml-3', attributes: { title: 'Soups', url: '/recipes/soups', enabled: true, menu_name: 'main', parent: 'ml-2' } }, { type: 'menu_link_content--menu_link_content', id: 'ml-4', attributes: { title: 'Old', url: '/old', enabled: false, menu_name: 'main', parent: '' } }] } },
   },
 }

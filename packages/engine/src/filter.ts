@@ -83,7 +83,7 @@ const asNumberOrString = (value: unknown): number | string => {
 }
 
 /** PHP's (bool) cast of a query value, which Drupal applies to a boolean field's condition. */
-const phpBool = (value: unknown): boolean => !(value === '' || value === '0' || value === 0 || value === false || value === null || value === undefined)
+export const phpBool = (value: unknown): boolean => !(value === '' || value === '0' || value === 0 || value === false || value === null || value === undefined)
 
 export const compare = (a: unknown, b: unknown): number => {
   if (typeof a === 'boolean') return Number(a) - Number(phpBool(b))

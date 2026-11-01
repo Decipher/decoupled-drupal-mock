@@ -1,4 +1,4 @@
-import { compare, createReader, FilterError, parseFilter, passes } from './filter.js'
+import { compare, createReader, FilterError, parseFilter, passes, phpBool } from './filter.js'
 import { pagedSearch, parseQuery, selfSearch, sortedSearch } from './query.js'
 import { keyOf } from './hash.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
@@ -171,8 +171,11 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return included
   }
 
-  /** A filter's reader, over what the user may read: a hidden field never matches, and never reveals itself by matching. */
-  const read = (langcode: string, all: boolean) => createReader((identifier) => { const target = find(langcode, identifier); return target ? readable(langcode, target, all) : undefined })
+  /**
+   * A filter's reader, over the stored values. Drupal filters by filter access, a rule of its own that lets a visitor
+   * filter users by `status` while never reading it, and the dump carries no record of it yet.
+   */
+  const read = (langcode: string) => createReader((identifier) => find(langcode, identifier))
 
   /** The field names a type has, from its resources: a filter on another is Drupal's 400. */
   const fieldsOf = (langcode: string, type: string): Set<string> => {
@@ -195,6 +198,32 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return undefined
   }
 
+  /**
+   * JSON:API Menu Items over its path's recording, with the filters the route takes applied as the module applies
+   * them: `enabled`, `menu_name`, `parent`, `min_depth` and `max_depth`. A query with another filter is no recording's.
+   */
+  const menuItems = (method: string, path: string, search: string): Recorded | undefined => {
+    if (!/\/menu_items\/[^/]+$/.test(path) || !search) return undefined
+    const base = recorded(method, path, '')
+    if (!base || base.status !== 200) return undefined
+    const query = parseQuery(search)
+    const filters = (query.filter || {}) as Record<string, unknown>
+    const known = new Set(['enabled', 'menu_name', 'parent', 'min_depth', 'max_depth'])
+    if (Object.keys(filters).some((name) => !known.has(name)) || Object.keys(query).some((name) => !['filter', 'fields'].includes(name))) return undefined
+    const document = structuredClone(base.body) as { data?: Resource[] }
+    let items = document.data || []
+    const parentOf = new Map(items.map((item) => [item.id, String((item.attributes as { parent?: string } | undefined)?.parent || '')]))
+    const depthOf = (id: string): number => { let depth = 1; let parent = parentOf.get(id) || ''; while (parent) { depth++; parent = parentOf.get(parent) || '' } return depth }
+    if (filters.enabled !== undefined) items = items.filter((item) => !!(item.attributes as { enabled?: boolean } | undefined)?.enabled === phpBool(filters.enabled))
+    if (filters.menu_name !== undefined) items = items.filter((item) => (item.attributes as { menu_name?: string } | undefined)?.menu_name === undefined || (item.attributes as { menu_name?: string }).menu_name === String(filters.menu_name))
+    if (filters.parent !== undefined) { const root = String(filters.parent); const under = (id: string): boolean => { let parent = parentOf.get(id) || ''; while (parent) { if (parent === root) return true; parent = parentOf.get(parent) || '' } return false }; items = items.filter((item) => under(item.id)) }
+    if (filters.min_depth !== undefined) items = items.filter((item) => depthOf(item.id) >= Number(filters.min_depth))
+    if (filters.max_depth !== undefined) items = items.filter((item) => depthOf(item.id) <= Number(filters.max_depth))
+    const fields = query.fields as Record<string, unknown> | undefined
+    document.data = items.map((item) => sparse(item, fields))
+    return { ...base, body: document }
+  }
+
   const handle: Drupal['handle'] = (method, input, requestHeaders = {}) => {
     // With credentials the whole dump is readable, as an administrator's token reads it from Drupal.
     const all = Object.keys(requestHeaders).some((name) => name.toLowerCase() === 'authorization')
@@ -205,7 +234,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const upper = method.toUpperCase()
     const headers = { 'content-type': 'application/vnd.api+json' }
 
-    const hit = recorded(upper, path, search)
+    const hit = recorded(upper, path, search) ?? menuItems(upper, path, search)
     if (hit) {
       const body = relink(hit.body)
       // A JSON:API answer names the request it answered.
@@ -290,16 +319,15 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const [head] = condition.path.split('.')
       if (head && fieldNames.size > 2 && !fieldNames.has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, via, { parameter: 'filter' }) }
     }
-    const reader = read(langcode, all)
-    const view = (resource: Resource): Resource => readable(langcode, resource, all)
-    let matched = collection.filter((resource) => passes(view(resource), filter, reader))
+    const reader = read(langcode)
+    let matched = collection.filter((resource) => passes(resource, filter, reader))
     const sort = typeof query.sort === 'string' ? query.sort.split(',').map((item) => item.trim()).filter(Boolean) : []
     if (sort.length) {
       const keys = sort.map((item) => ({ path: item.replace(/^-/, '').split('.'), direction: item.startsWith('-') ? -1 : 1 }))
       matched = [...matched].sort((a, b) => {
         for (const { path, direction } of keys) {
-          const x = reader(view(a), path)[0]
-          const y = reader(view(b), path)[0]
+          const x = reader(a, path)[0]
+          const y = reader(b, path)[0]
           const order = x === y ? 0 : x === undefined || x === null ? -1 : y === undefined || y === null ? 1 : compare(x, y)
           if (order) return order * direction
         }
