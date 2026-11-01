@@ -1,0 +1,8 @@
+# CodeRabbit reviews when asked, not on every push: the stack is restacked often, and each automatic review would
+# spend the review allowance on the same diff.
+reviews:
+  auto_review:
+    enabled: false
+  review_status: false
+chat:
+  auto_reply: false
