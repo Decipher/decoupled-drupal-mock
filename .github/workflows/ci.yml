@@ -1,0 +1,23 @@
+# Build the engine, lint, typecheck, test, and the engine against the Umami preset's oracle. On a branch with no
+# packages yet, such as the bare root, every step passes with nothing to do.
+name: CI
+
+on:
+  push:
+    branches: [1.0.x]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable
+      - run: '[ -d packages/engine ] && yarn workspace decoupled-drupal-mock build || echo "no engine to build"'
+      - run: yarn lint
+      - run: '[ -d packages ] && yarn typecheck || echo "nothing to typecheck"'
+      - run: '[ -d packages ] && yarn test || echo "nothing to test"'

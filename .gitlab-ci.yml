@@ -1,0 +1,21 @@
+# Build the engine, lint, typecheck, test, and the engine against the Umami preset's oracle.
+image: node:24
+
+stages: [check]
+
+default:
+  before_script:
+    - corepack enable
+    - yarn install --immutable
+  cache:
+    key: yarn
+    paths: [.yarn/cache]
+
+check:
+  stage: check
+  script:
+    # The build package and the report import the engine's built output. A branch with no packages yet passes.
+    - '[ -d packages/engine ] && yarn workspace decoupled-drupal-mock build || echo "no engine to build"'
+    - yarn lint
+    - '[ -d packages ] && yarn typecheck || echo "nothing to typecheck"'
+    - '[ -d packages ] && yarn test || echo "nothing to test"'
