@@ -11,7 +11,7 @@ import { diff } from './diff.ts'
 const dir = process.argv[2]!
 const dump = loadDump(dir)
 const scenarios = JSON.parse(gunzipSync(readFileSync(join(dir, 'oracle', 'writes.json.gz'))).toString('utf8')) as RecordedScenario[]
-let ok = 0, total = 0
+let ok = 0, total = 0, shallow = 0
 for (const scenario of scenarios) {
   const drupal = createDrupal(dump, { baseUrl: dump.manifest.origin })
   const resourceId = (type: string, index: number) => dump.resources[dump.manifest.defaultLanguage]?.[type]?.[index]?.id
@@ -43,9 +43,10 @@ for (const scenario of scenarios) {
     const got: Answer = { status: answer.status, headers: kept, body: answer.body }
     answers.push(got)
     const expected = scenario.answers[index]!
+    if ((typeof expected.body === 'string' && String(expected.headers['content-type']).includes('html')) || resolved.path === '/session/token') shallow++
     const d = got.status !== expected.status ? `status engine ${got.status} | drupal ${expected.status}` : diff(volatile(got.headers), volatile(expected.headers), 'headers') || ((typeof expected.body === 'string' && String(expected.headers['content-type']).includes('html')) || resolved.path === '/session/token' ? undefined : diff(volatile(got.body), volatile(expected.body)))
     if (d) console.log(`  step ${index + 1} ${resolved.method} ${resolved.path.slice(0, 70)}: ${d}`)
     else ok++
   })
 }
-console.log(`\n${ok}/${total} steps match`)
+console.log(`\n${ok}/${total} steps match, ${shallow} of them on status and headers only: a themed page or a new session token`)

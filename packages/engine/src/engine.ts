@@ -5,6 +5,7 @@ import { Identity } from './identity.js'
 import type { Identities, Session, Token } from './identity.js'
 import { Store } from './store.js'
 import { Writes } from './writes.js'
+import type { WriteError } from './writes.js'
 // Named apart from the `own` URL each write builds, which would shadow it.
 import { own as member } from './own.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
@@ -39,6 +40,12 @@ const JSONAPI_DEFAULT = { version: '1.0', meta: { links: { self: { href: 'http:/
 const PAGE_LIMIT = 50
 
 const INFO: Record<number, string> = { 400: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.1', 403: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.4', 404: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.5', 405: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.6' }
+
+/** Whether a PATCH leaves a value as it was. */
+const unchanged = (before: unknown, after: unknown): boolean => JSON.stringify(before) === JSON.stringify(after)
+
+/** A relationship's targets, without the meta a client does not send. */
+const identifiers = (data: unknown): unknown => (Array.isArray(data) ? data.map(identifiers) : data && typeof data === 'object' ? `${(data as ResourceIdentifier).type}:${(data as ResourceIdentifier).id}` : data ?? null)
 
 /** A JSON:API error document as Drupal writes one: `via` is the request, `info` the RFC section. */
 const error = (JSONAPI: NonNullable<Document['jsonapi']>, status: number, title: string, detail: string | undefined, via: string, source?: Record<string, string>): Document => ({
@@ -585,17 +592,20 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (data?.id && data.id !== id) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `The selected entity (${id}) does not match the ID in the payload (${data.id}).`, via) }
       const may = writes.canUpdate(session, resource)
       if (!may.allowed) return forbidden(may.detail)
+      // Both kinds of field are refused by one line of Drupal's: the error names the resource, not the request.
+      const refusedBody = (refused: WriteError) => ({ status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', refused.detail, own, refused.pointer ? { pointer: refused.pointer } : undefined) })
       const attributes = data?.attributes || {}
       const relationships = data?.relationships || {}
       for (const name of Object.keys(attributes)) {
         if (!Object.hasOwn(resource.attributes || {}, name)) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The attribute ${name} does not exist on the ${type} resource type.`, links: { via: { href: via } } }] } }
-        const refused = writes.refusedField(session, resource, name)
-        if (refused) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', refused.detail, own, refused.pointer ? { pointer: refused.pointer } : undefined) }
+        // Drupal lets a field the user may not edit through when its value does not change.
+        const refused = unchanged(resource.attributes?.[name], attributes[name]) ? undefined : writes.refusedField(session, resource, name)
+        if (refused) return refusedBody(refused)
       }
       for (const name of Object.keys(relationships)) {
         if (!Object.hasOwn(resource.relationships || {}, name)) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The relationship ${name} does not exist on the ${type} resource type.`, source: { pointer: `/data/relationships/${name}` } }] } }
-        const refused = writes.refusedField(session, resource, name)
-        if (refused) return forbidden(refused.detail, refused.pointer)
+        const refused = unchanged(identifiers(resource.relationships?.[name]?.data), identifiers((relationships[name] as { data?: unknown } | undefined)?.data)) ? undefined : writes.refusedField(session, resource, name)
+        if (refused) return refusedBody(refused)
       }
       const merged: Record<string, unknown> = { ...resource.attributes, ...attributes }
       const invalid = writes.validate(entityType, bundle, merged, { ...resource.relationships, ...relationships })

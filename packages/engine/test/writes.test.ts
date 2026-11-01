@@ -442,3 +442,27 @@ describe('the scenario helpers', () => {
     expect(volatile({ detail: `The selected entity (${uuid})` })).toEqual({ detail: 'The selected entity (<uuid>)' })
   })
 })
+
+describe('a PATCH of a field the user may not edit', () => {
+  const author = () => {
+    const d = createDrupal(dump, { baseUrl: BASE })
+    return { d, headers: { ...JSON_API, authorization: `Bearer ${d.tokenFor('umami', ['editor']).access}` } }
+  }
+  const patch = (d: ReturnType<typeof drupal>, headers: Record<string, string>, id: string, data: Record<string, unknown>, query = '') => d.fetch(`${BASE}/jsonapi/node/recipe/${id}${query}`, { method: 'PATCH', headers, body: JSON.stringify({ data: { type: 'node--recipe', id, ...data } }) })
+
+  it('goes through when the value does not change', async () => {
+    const { d, headers } = author()
+    const before = (await read(await d.fetch(`${BASE}/jsonapi/node/recipe/r-1`))).data as Resource
+    const response = await patch(d, headers, 'r-1', { relationships: { uid: { data: before.relationships!.uid!.data } } })
+    expect(response.status).toBe(200)
+  })
+
+  it('is refused naming the resource and not the request', async () => {
+    const { d, headers } = author()
+    const response = await patch(d, headers, 'r-1', { relationships: { uid: { data: { type: 'user--user', id: 'someone-else' } } } }, '?a=1')
+    expect(response.status).toBe(403)
+    const [refusal] = (await read(response)).errors as unknown as Array<{ links: { via: { href: string } }, source: { pointer: string } }>
+    expect(refusal!.links.via.href).toBe(`${BASE}/jsonapi/node/recipe/r-1`)
+  })
+})
+

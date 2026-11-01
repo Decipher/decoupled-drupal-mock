@@ -64,7 +64,7 @@ export const volatile = (value: unknown, key?: string): unknown => {
     if (key === 'detail') return value.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<uuid>')
     return value
   }
-  if (typeof value === 'number' && key && /^drupal_internal__(nid|vid|tid|mid|revision_id|id|fid)$/.test(key)) return '<id>'
+  if (typeof value === 'number' && key && /^drupal_internal__(nid|vid|tid|mid|revision_id|id|fid|target_id)$/.test(key)) return '<id>'
   if (typeof value === 'number' && key === 'updated_at') return '<time>'
   if (Array.isArray(value)) return value.map((item) => volatile(item))
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, item]) => [k, volatile(item, k)]))
