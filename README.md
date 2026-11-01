@@ -13,11 +13,11 @@ Built for [Druxt](https://druxtjs.org), the decoupled Drupal and Nuxt framework,
 ## In a test
 
 ```ts
-import { createDrupal } from 'decoupled-drupal-mock'
-import umami from 'decoupled-drupal-mock-umami'
+import { createDrupal } from 'decoupled-drupal-mock';
+import umami from 'decoupled-drupal-mock-umami';
 
-const drupal = createDrupal(umami(), { baseUrl: 'https://drupal.test' })
-const response = await drupal.fetch('https://drupal.test/jsonapi/node/recipe?filter[status]=1&page[limit]=5')
+const drupal = createDrupal(umami(), { baseUrl: 'https://drupal.test' });
+const response = await drupal.fetch('https://drupal.test/jsonapi/node/recipe?filter[status]=1&page[limit]=5');
 ```
 
 A client that takes a `fetch` gets `drupal.fetch`. One that intercepts with msw gets `handlers(drupal, http, baseUrl)` from `decoupled-drupal-mock/msw`. An end-to-end suite or a browser gets a server:
@@ -39,7 +39,7 @@ export default defineNuxtConfig({
   modules: ['decoupled-drupal-mock/nuxt', '@druxt/site'],
   decoupledDrupalMock: { preset: 'decoupled-drupal-mock-umami', reset: 3600 },
   druxt: { baseUrl: 'http://drupal.mock' },
-})
+});
 ```
 
 The preset ships as a server asset. Every server-side `fetch` to the mock's origin is answered in process, and the Drupal paths on the site's own origin, such as `/jsonapi` and `/router/translate-path`, answer for the browser. `reset` restores the preset on a timer, for a public sandbox that visitors write to.
