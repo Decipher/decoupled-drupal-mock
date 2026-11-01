@@ -7,7 +7,8 @@ import { crawl } from './crawl.ts'
  * `node --experimental-strip-types cli.ts <config.json>`: the crawl options as JSON, with `oracleFile` a path of one
  * request per line, and `drush` as `{ bin, cwd }` to read what JSON:API refuses every user.
  */
-const config = JSON.parse(readFileSync(process.argv[2]!, 'utf8')) as Parameters<typeof crawl>[0] & { oracleFile?: string, drush?: { bin: string, cwd: string }, excludeUsers?: string[] }
+const config = JSON.parse(readFileSync(process.argv[2]!, 'utf8')) as Parameters<typeof crawl>[0] & { oracleFile?: string, scenariosFile?: string, drush?: { bin: string, cwd: string }, excludeUsers?: string[] }
+const scenarios = config.scenariosFile ? JSON.parse(readFileSync(config.scenariosFile, 'utf8')) as Parameters<typeof crawl>[0]['scenarios'] : undefined
 
 const drush = (script: string): string => {
   try {
@@ -60,5 +61,5 @@ const exclude = excludeUsers.size
   ? (resource: Parameters<NonNullable<Parameters<typeof crawl>[0]['exclude']>>[0]): boolean => resource.type === 'user--user' && excludeUsers.has(String((resource.attributes as { name?: string } | undefined)?.name))
   : undefined
 
-const manifest = await crawl({ ...config, ...(oracle ? { oracle } : {}), ...(phantomData ? { phantomData } : {}), ...(exclude ? { exclude } : {}) })
+const manifest = await crawl({ ...config, ...(oracle ? { oracle } : {}), ...(scenarios ? { scenarios } : {}), ...(phantomData ? { phantomData } : {}), ...(exclude ? { exclude } : {}) })
 console.log(`built ${manifest.preset} from Drupal ${manifest.drupal.core}: ${Object.keys(manifest.files).length} files`)

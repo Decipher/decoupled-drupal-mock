@@ -139,6 +139,8 @@ export class Identity {
     const noUser = () => fail(400, 'invalid_grant', 'The provided authorization grant (e.g., authorization code, resource owner credentials) or refresh token is invalid, expired, revoked, does not match the redirection URI used in the authorization request, or was issued to another client.')
     switch (grantType) {
       case 'client_credentials': {
+        // Simple OAuth needs a scope, the request's or one of the consumer's.
+        if (!scopes.length && !Object.keys(consumer.scopes || {}).length) return fail(400, 'invalid_request', 'The request is missing a required parameter, includes an invalid parameter value, includes a parameter more than once, or is otherwise malformed.', 'Check the `scope` parameter')
         // A consumer bound to no user has nobody to act as.
         const name = consumer.user
         if (!name || !this.userNamed(name)) return fail(401, 'invalid_client', 'Client authentication failed')
@@ -208,6 +210,7 @@ export class Identity {
       preferred_username: attributes.name,
       ...(attributes.mail ? { email: attributes.mail, email_verified: true } : {}),
       profile: `${baseUrl}${prefix}/user/${session.uid}`,
+
       locale: attributes.preferred_langcode || attributes.langcode || 'en',
       zoneinfo: attributes.timezone || 'UTC',
       updated_at: Math.floor(new Date(String(attributes.changed || 0)).getTime() / 1000) || 0,
