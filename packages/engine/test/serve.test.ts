@@ -19,6 +19,27 @@ const bind = async (host = '127.0.0.1') => {
 }
 
 describe('serving', () => {
+  it('answers CORS for a browser-side client and a preflight, unless told not to', async () => {
+    const { url, close } = await bind()
+    try {
+      const preflight = await fetch(`${url}/jsonapi`, { method: 'OPTIONS', headers: { origin: 'http://localhost:3000', 'access-control-request-method': 'GET', 'access-control-request-headers': 'authorization' } })
+      expect(preflight.status).toBe(204)
+      expect(preflight.headers.get('access-control-allow-headers')).toContain('Authorization')
+      const answer = await fetch(`${url}/jsonapi/node/page/p-1`, { headers: { origin: 'http://localhost:3000' } })
+      expect(answer.headers.get('access-control-allow-origin')).toBe('*')
+      expect(answer.headers.get('content-type')).toBe('application/vnd.api+json')
+    } finally {
+      await close()
+    }
+    const quiet = await listen(createDrupal(dump), 0, '127.0.0.1', { cors: false })
+    try {
+      expect((await fetch(`${quiet.url}/jsonapi`)).headers.get('access-control-allow-origin')).toBeNull()
+      expect((await fetch(`${quiet.url}/jsonapi`, { method: 'OPTIONS' })).status).not.toBe(204)
+    } finally {
+      await quiet.close()
+    }
+  })
+
   it('survives a request target no URL can be made of, and listens on IPv6', async () => {
     const { url, close } = await bind()
     try {
@@ -63,7 +84,7 @@ describe('serving', () => {
 
   it('answers through msw handlers', async () => {
     const drupal = createDrupal(dump, { baseUrl: 'https://drupal.test' })
-    const server = setupServer(...(handlers(drupal, http, 'https://drupal.test') as Parameters<typeof setupServer>))
+    const server = setupServer(...handlers(drupal, http, 'https://drupal.test'))
     server.listen()
     try {
       const response = await fetch('https://drupal.test/jsonapi/node/recipe?filter[field_difficulty]=easy')

@@ -15,7 +15,7 @@ const option = (name: string, fallback: string): string => {
   return index >= 0 && rest[index + 1] ? rest[index + 1]! : fallback
 }
 if (command !== 'serve' || !target) {
-  console.error('Usage: decoupled-drupal-mock serve <preset or build dir> [--port 3005] [--host 127.0.0.1] [--base-url <url>]')
+  console.error('Usage: decoupled-drupal-mock serve <preset or build dir> [--port 3005] [--host 127.0.0.1] [--base-url <url>] [--no-cors]')
   process.exit(1)
 }
 const port = Number(option('port', '3005'))
@@ -30,10 +30,24 @@ const reachable = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host
 const baseUrl = option('base-url', `http://${reachable.includes(':') ? `[${reachable}]` : reachable}:${port}`)
 let dir = target
 // A directory on disk, else a package name such as decoupled-drupal-mock-umami.
-if (!target.startsWith('.') && !target.startsWith('/') && !existsSync(target)) {
-  dir = (await import(import.meta.resolve(target)) as { dir: string }).dir
+if (!existsSync(target)) {
+  // A path that is not there is a mistake to name, not a package to look for.
+  const isPackage = !target.startsWith('.') && !target.startsWith('/') && (target.startsWith('@') ? target.split('/').length === 2 : !target.includes('/'))
+  let found: string | undefined
+  if (isPackage) {
+    try {
+      found = (await import(import.meta.resolve(target)) as { dir: string }).dir
+    } catch {
+      // Reported below.
+    }
+  }
+  if (!found) {
+    console.error(`${target} is ${isPackage ? 'not an installed preset package' : 'not a directory'}. Name a preset package or a build directory holding manifest.json.`)
+    process.exit(1)
+  }
+  dir = found
 }
 const dump = loadDump(dir)
 const drupal = createDrupal(dump, { baseUrl })
-const { url } = await listen(drupal, port, host)
+const { url } = await listen(drupal, port, host, { cors: !rest.includes('--no-cors') })
 console.log(`${dump.manifest.preset} from Drupal ${dump.manifest.drupal.core}, listening on ${url}`)

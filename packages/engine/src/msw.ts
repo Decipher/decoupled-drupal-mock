@@ -1,8 +1,8 @@
 import type { Drupal } from './engine.js'
 
 /** The part of msw's `http` this needs, so msw stays a peer a consumer brings. */
-export interface MswHttp {
-  all: (predicate: string, resolver: (info: { request: Request }) => Promise<Response>) => unknown
+export interface MswHttp<Handler> {
+  all: (predicate: string, resolver: (info: { request: Request }) => Promise<Response>) => Handler
 }
 
 /**
@@ -13,6 +13,6 @@ export interface MswHttp {
  * import { setupServer } from 'msw/node'
  * const server = setupServer(...handlers(drupal, http, 'https://drupal.test'))
  */
-export const handlers = (drupal: Drupal, http: MswHttp, baseUrl: string): unknown[] => [
+export const handlers = <Handler>(drupal: Drupal, http: MswHttp<Handler>, baseUrl: string): Handler[] => [
   http.all(`${baseUrl.replace(/\/+$/, '')}/*`, ({ request }) => drupal.fetch(request)),
 ]
