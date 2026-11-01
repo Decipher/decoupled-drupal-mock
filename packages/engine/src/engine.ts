@@ -51,6 +51,30 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   /** Whether the anonymous user may read a resource, and whether it may list a type at all. */
   const accessOf = (langcode: string, type: string) => dump.access?.[langcode]?.[type] ?? dump.access?.[dump.manifest.defaultLanguage]?.[type]
   const forbidden = (langcode: string, type: string): boolean => !!accessOf(langcode, type)?.forbidden
+  /**
+   * The first field of a filter path the anonymous user may not read, on the collection's type or on a type a
+   * relationship in the path reaches, and the path as Drupal names it: `uid.entity:user.mail`.
+   */
+  const refusedFilter = (langcode: string, type: string, path: string): { field: string, path: string } | undefined => {
+    let types = new Set([type])
+    const named: string[] = []
+    for (const field of path.split('.')) {
+      named.push(field)
+      if ([...types].some((current) => accessOf(langcode, current)?.hidden?.includes(field))) return { field, path: named.join('.') }
+      const next = new Set<string>()
+      for (const current of types) {
+        for (const resource of dump.resources[langcode]?.[current] || []) {
+          const data = resource.relationships?.[field]?.data
+          for (const identifier of Array.isArray(data) ? data : data ? [data] : []) next.add(identifier.type)
+        }
+      }
+      if (!next.size) return undefined
+      types = next
+      named.push(...new Set([...next].map((target) => `entity:${target.split('--')[0]}`)))
+    }
+    return undefined
+  }
+
   const visible = (langcode: string, resource: Resource): boolean => {
     const access = accessOf(langcode, resource.type)
     return !access?.visible || access.visible.includes(resource.id)
@@ -316,11 +340,11 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     // A type with no resource to read its fields from takes any filter, as nothing can be known of its fields. A
     // field the visitor may not read is not one the visitor may filter by: Drupal's filter access refuses it.
     const fieldNames = fieldsOf(langcode, type)
-    const hidden = all ? [] : accessOf(langcode, type)?.hidden || []
     for (const condition of Object.values(filter.conditions)) {
       const [head] = condition.path.split('.')
       // Drupal names the request in the sorted form here, as it names a collection's self link.
-      if (head && hidden.includes(head)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', `The current user is not authorized to filter by the \`${head}\` field, given in the path \`${condition.path}\`.`, self) }
+      const refused = all ? undefined : refusedFilter(langcode, type, condition.path)
+      if (refused) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', `The current user is not authorized to filter by the \`${refused.field}\` field, given in the path \`${refused.path}\`.`, self) }
       if (head && fieldNames.size > 2 && !fieldNames.has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, via, { parameter: 'filter' }) }
     }
     const reader = read(langcode)
