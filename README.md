@@ -8,6 +8,8 @@ Built for [Druxt](https://druxtjs.org), the decoupled Drupal and Nuxt framework,
 
 Not released yet.
 
+The engine runs on Node, including under a test runner's jsdom environment. It needs `node:crypto` from its root entry, so it does not run in a browser or a service worker: a browser test reaches it over HTTP.
+
 ## Development
 
 The repository has a dev container, for VS Code or [DevPod](https://devpod.sh), with Node and Yarn set up:
