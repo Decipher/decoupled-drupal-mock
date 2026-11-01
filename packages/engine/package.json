@@ -1,0 +1,26 @@
+{
+  "name": "decoupled-drupal-mock",
+  "version": "1.0.0-alpha.0",
+  "description": "Drupal's decoupled APIs over a fixture dump: JSON:API, Decoupled Router, menu linksets and Simple OAuth, as Drupal answers them, without Drupal.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/load.d.ts",
+      "import": "./dist/load.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}
