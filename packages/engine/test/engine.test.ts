@@ -215,10 +215,12 @@ describe('what the first review found', () => {
     expect(ids((await get('/jsonapi/node/page?filter[b][condition][path]=body.value&filter[b][condition][operator]=%3C%3E&filter[b][condition][value]=nope')).body)).toEqual(['p-1'])
   })
 
-  it('filters on the stored value of a field the user may not read, as Drupal\'s filter access lets a visitor filter users by status', async () => {
+  it('refuses a filter on a field the visitor may not read, as Drupal\'s filter access does', async () => {
     const guarded = createDrupal({ ...dump, access: { en: { 'node--page': { hidden: ['field_code'] } } } }, { baseUrl: 'https://drupal.test' })
-    const { body } = await read(guarded, '/jsonapi/node/page?filter[field_code]=01')
-    expect(ids(body)).toEqual(['p-1'])
-    expect((body.data as Resource[])[0]!.attributes!.field_code).toBeUndefined()
+    const refused = await read(guarded, '/jsonapi/node/page?filter[field_code]=01')
+    expect(refused.status).toBe(403)
+    expect(refused.body.errors![0]!.detail).toBe('The current user is not authorized to filter by the `field_code` field, given in the path `field_code`.')
+    const signedIn = await guarded.fetch('https://drupal.test/jsonapi/node/page?filter[field_code]=01', { headers: { authorization: 'Bearer anything' } })
+    expect(signedIn.status).toBe(200)
   })
 })

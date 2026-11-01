@@ -171,10 +171,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return included
   }
 
-  /**
-   * A filter's reader, over the stored values. Drupal filters by filter access, a rule of its own that lets a visitor
-   * filter users by `status` while never reading it, and the dump carries no record of it yet.
-   */
+  /** A filter's reader, over the stored values: a field the visitor may not read was refused before any is read. */
   const read = (langcode: string) => createReader((identifier) => find(langcode, identifier))
 
   /** The field names a type has, from its resources: a filter on another is Drupal's 400. */
@@ -197,7 +194,6 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     for (const key of keys) if (dump.recorded[key]) return dump.recorded[key]
     return undefined
   }
-
   /**
    * JSON:API Menu Items over its path's recording, with the filters the route takes applied as the module applies
    * them: `enabled`, `menu_name`, `parent`, `min_depth` and `max_depth`. A query with another filter is no recording's.
@@ -223,6 +219,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     document.data = items.map((item) => sparse(item, fields))
     return { ...base, body: document }
   }
+
 
   const handle: Drupal['handle'] = (method, input, requestHeaders = {}) => {
     // With credentials the whole dump is readable, as an administrator's token reads it from Drupal.
@@ -313,10 +310,13 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (err instanceof FilterError) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', err.message, via, { parameter: 'filter' }) }
       throw err
     }
-    // A type with no resource to read its fields from takes any filter, as nothing can be known of its fields.
+    // A type with no resource to read its fields from takes any filter, as nothing can be known of its fields. A
+    // field the visitor may not read is not one the visitor may filter by: Drupal's filter access refuses it.
     const fieldNames = fieldsOf(langcode, type)
+    const hidden = all ? [] : accessOf(langcode, type)?.hidden || []
     for (const condition of Object.values(filter.conditions)) {
       const [head] = condition.path.split('.')
+      if (head && hidden.includes(head)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', `The current user is not authorized to filter by the \`${head}\` field, given in the path \`${condition.path}\`.`, via) }
       if (head && fieldNames.size > 2 && !fieldNames.has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, via, { parameter: 'filter' }) }
     }
     const reader = read(langcode)
