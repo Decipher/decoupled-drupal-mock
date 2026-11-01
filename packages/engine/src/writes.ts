@@ -1,0 +1,213 @@
+import type { Identity, Session } from './identity.js'
+import type { Store } from './store.js'
+import type { Resource, ResourceIdentifier } from './types.js'
+
+export interface WriteError { status: number, title: string, detail: string, pointer?: string }
+
+const attributesOf = (resource: Resource | undefined): Record<string, unknown> => (resource?.attributes || {}) as Record<string, unknown>
+
+/** The field definitions of a bundle, from the dump's `field_config` and `field_storage_config`. */
+export interface FieldDefinition { name: string, type: string, required: boolean, cardinality: number, reference?: boolean }
+
+/**
+ * Drupal's rules for creating, updating and deleting content through JSON:API: which permissions, which fields are
+ * required, which are read only, and what a new entity gets.
+ */
+export class Writes {
+  constructor(private readonly store: Store, private readonly identity: Identity, private readonly langcode: string) {}
+
+  private config(type: string): Resource[] {
+    return this.store.get(this.langcode, type) || []
+  }
+
+  /** A bundle's configured fields. */
+  fields(entityType: string, bundle: string): FieldDefinition[] {
+    const storages = new Map(this.config('field_storage_config--field_storage_config').map((storage) => [`${attributesOf(storage).entity_type}.${attributesOf(storage).field_name}`, storage]))
+    return this.config('field_config--field_config')
+      .filter((field) => attributesOf(field).entity_type === entityType && attributesOf(field).bundle === bundle)
+      .map((field) => {
+        const attributes = attributesOf(field)
+        const storage = attributesOf(storages.get(`${entityType}.${attributes.field_name}`))
+        const type = String(attributes.field_type || storage.type || 'string')
+        return { name: String(attributes.field_name), type, required: !!attributes.required, cardinality: Number(storage.cardinality ?? 1), reference: ['entity_reference', 'image', 'file', 'entity_reference_revisions'].includes(type) }
+      })
+  }
+
+  /** The base fields a bundle requires, as Drupal's entity types define them. */
+  private requiredBase(entityType: string): string[] {
+    return ({ node: ['title'], taxonomy_term: ['name'], block_content: ['info'], menu_link_content: ['title', 'link'], user: ['name'], media: [], contact_message: ['name', 'mail', 'subject', 'message'] } as Record<string, string[]>)[entityType] || []
+  }
+
+  /** The workflow moderating a bundle, if one does. */
+  private workflow(entityType: string, bundle: string): Resource | undefined {
+    return this.config('workflow--workflow').find((workflow) => {
+      const settings = attributesOf(workflow).type_settings as { entity_types?: Record<string, string[]> } | undefined
+      return settings?.entity_types?.[entityType]?.includes(bundle)
+    })
+  }
+
+  /** Whether the session may create a bundle. */
+  canCreate(session: Session, entityType: string, bundle: string): boolean {
+    const { admin, has } = this.identity.permissions(session)
+    if (admin) return true
+    switch (entityType) {
+      case 'node': return has('bypass node access') || has(`create ${bundle} content`)
+      case 'taxonomy_term': return has('administer taxonomy') || has(`create terms in ${bundle}`)
+      case 'media': return has('administer media') || has('create media')
+      case 'block_content': return has('administer block content') || has(`create ${bundle} block content`)
+      case 'menu_link_content': return has('administer menu')
+      case 'contact_message': return has('access site-wide contact form')
+      case 'comment': return has('post comments')
+      default: return false
+    }
+  }
+
+  private owns(session: Session, resource: Resource): boolean {
+    const owner = resource.relationships?.uid?.data as ResourceIdentifier | null | undefined
+    return !!session.user && !!owner && owner.id === session.user.id
+  }
+
+  /** Whether the session may update a resource, and the reason Drupal gives when it may not. */
+  canUpdate(session: Session, resource: Resource): { allowed: true } | { allowed: false, detail: string } {
+    const { admin, has } = this.identity.permissions(session)
+    if (admin) return { allowed: true }
+    const [entityType, bundle] = resource.type.split('--') as [string, string]
+    let allowed = false
+    switch (entityType) {
+      case 'node': allowed = has('bypass node access') || has(`edit any ${bundle} content`) || (has(`edit own ${bundle} content`) && this.owns(session, resource)); break
+      case 'taxonomy_term': allowed = has('administer taxonomy') || has(`edit terms in ${bundle}`); break
+      case 'media': allowed = has('administer media') || has('update any media') || (has('update media') && this.owns(session, resource)); break
+      case 'block_content': allowed = has('administer block content') || has(`edit any ${bundle} block content`); break
+      case 'menu_link_content': allowed = has('administer menu'); break
+      case 'user': allowed = has('administer users') || (!!session.user && session.user.id === resource.id); break
+      default: allowed = false
+    }
+    // A moderated bundle asks for a transition the user may use, and content moderation answers before node access does.
+    const workflow = this.workflow(entityType, bundle)
+    if (workflow) {
+      const id = String(attributesOf(workflow).drupal_internal__id)
+      const transitions = Object.keys(((attributesOf(workflow).type_settings as { transitions?: Record<string, unknown> } | undefined)?.transitions) || {})
+      if (!transitions.some((transition) => has(`use ${id} transition ${transition}`))) return { allowed: false, detail: 'No valid transitions exist for given account.' }
+    }
+    if (!allowed) return { allowed: false, detail: 'The current user is not allowed to PATCH the selected resource.' }
+    return { allowed: true }
+  }
+
+  canDelete(session: Session, resource: Resource): boolean {
+    const { admin, has } = this.identity.permissions(session)
+    if (admin) return true
+    const [entityType, bundle] = resource.type.split('--') as [string, string]
+    switch (entityType) {
+      case 'node': return has('bypass node access') || has(`delete any ${bundle} content`) || (has(`delete own ${bundle} content`) && this.owns(session, resource))
+      case 'taxonomy_term': return has('administer taxonomy') || has(`delete terms in ${bundle}`)
+      case 'media': return has('administer media') || has('delete any media') || (has('delete media') && this.owns(session, resource))
+      case 'block_content': return has('administer block content') || has(`delete any ${bundle} block content`)
+      case 'menu_link_content': return has('administer menu')
+      default: return false
+    }
+  }
+
+  /** The 422 Drupal answers for a required field left empty, the first one. */
+  validate(entityType: string, bundle: string, attributes: Record<string, unknown>, relationships: Record<string, unknown>): WriteError | undefined {
+    const missing = (name: string): boolean => {
+      const value = attributes[name] ?? (relationships[name] as { data?: unknown } | undefined)?.data
+      return value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)
+    }
+    for (const name of this.requiredBase(entityType)) if (missing(name)) return { status: 422, title: 'Unprocessable Content', detail: `${name}: This value should not be null.`, pointer: `/data/attributes/${name}` }
+    for (const field of this.fields(entityType, bundle)) if (field.required && missing(field.name)) return { status: 422, title: 'Unprocessable Content', detail: `${field.name}: This value should not be null.`, pointer: `/data/${field.reference ? 'relationships' : 'attributes'}/${field.name}` }
+    return undefined
+  }
+
+  /** The id and uuid fields a PATCH may not change, by the name Drupal uses in its answer. */
+  private readOnly(entityType: string): Record<string, string> {
+    const id = ({ node: 'nid', taxonomy_term: 'tid', media: 'mid', user: 'uid', block_content: 'id', menu_link_content: 'id', comment: 'cid' } as Record<string, string>)[entityType] || 'id'
+    const revision = ({ node: 'vid', media: 'vid', block_content: 'revision_id', taxonomy_term: 'revision_id', menu_link_content: 'revision_id' } as Record<string, string>)[entityType]
+    return { [`drupal_internal__${id}`]: id, ...(revision ? { [`drupal_internal__${revision}`]: revision } : {}), uuid: 'uuid' }
+  }
+
+  /** A field the session may not change, as Drupal answers a PATCH. */
+  refusedField(session: Session, resource: Resource, name: string): WriteError | undefined {
+    const [entityType] = resource.type.split('--') as [string]
+    const readOnly = this.readOnly(entityType)
+    if (name in readOnly) {
+      const explanation = readOnly[name] === 'uuid' ? ' The entity UUID cannot be changed.' : name.startsWith('drupal_internal__') && readOnly[name] !== (entityType === 'node' ? 'vid' : 'revision_id') ? ' The entity ID cannot be changed.' : ''
+      return { status: 403, title: 'Forbidden', detail: `The current user is not allowed to PATCH the selected field (${readOnly[name]}).${explanation}`, pointer: `/data/attributes/${readOnly[name]}` }
+    }
+    const { admin, has } = this.identity.permissions(session)
+    const owner = ['uid', 'revision_uid', 'created', 'status', 'promote', 'sticky', 'revision_timestamp', 'revision_log'].includes(name)
+    if (owner && entityType === 'node' && !admin && !has('administer nodes')) return { status: 403, title: 'Forbidden', detail: `The current user is not allowed to PATCH the selected field (${name}).`, pointer: `/data/${name === 'uid' || name === 'revision_uid' ? 'relationships' : 'attributes'}/${name}` }
+    return undefined
+  }
+
+  /** The bundle's config entity, such as `node_type--node_type` for a node. */
+  private bundleEntity(entityType: string, bundle: string): Resource | undefined {
+    const typeOf: Record<string, string> = { node: 'node_type--node_type', taxonomy_term: 'taxonomy_vocabulary--taxonomy_vocabulary', media: 'media_type--media_type', block_content: 'block_content_type--block_content_type', comment: 'comment_type--comment_type' }
+    const type = typeOf[entityType]
+    return type ? this.config(type).find((candidate) => attributesOf(candidate).drupal_internal__id === bundle) : undefined
+  }
+
+  /** A new resource of a bundle, as Drupal writes one from a POST. */
+  create(session: Session, entityType: string, bundle: string, attributes: Record<string, unknown>, relationships: Record<string, NonNullable<Resource['relationships']>[string]>, now = new Date()): Resource {
+    const type = `${entityType}--${bundle}`
+    const stamp = now.toISOString().replace(/\.\d{3}Z$/, '+00:00')
+    const user: ResourceIdentifier = session.user ? { type: 'user--user', id: session.user.id, meta: { drupal_internal__target_id: session.uid } } : { type: 'user--user', id: this.identity.userNamed('anonymous')?.id || '00000000-0000-0000-0000-000000000000', meta: { drupal_internal__target_id: 0 } }
+    const workflow = this.workflow(entityType, bundle)
+    const base: Record<string, unknown> = {}
+    const rels: NonNullable<Resource['relationships']> = {}
+    const bundleEntity = this.bundleEntity(entityType, bundle)
+    const bundleRelationship = (name: string) => {
+      if (bundleEntity) rels[name] = { data: { type: bundleEntity.type, id: bundleEntity.id, meta: { drupal_internal__target_id: bundle } } }
+    }
+    const moderation = workflow ? String(((attributesOf(workflow).type_settings as { default_moderation_state?: string } | undefined)?.default_moderation_state) || 'draft') : undefined
+    const published = workflow ? moderation === 'published' : true
+    switch (entityType) {
+      case 'node': {
+        const nid = this.store.nextId(this.langcode, 'node', 'drupal_internal__nid')
+        const vid = this.store.nextId(this.langcode, 'node', 'drupal_internal__vid')
+        Object.assign(base, { drupal_internal__nid: nid, drupal_internal__vid: vid, langcode: this.langcode, revision_timestamp: stamp, revision_log: null, status: published, title: attributes.title, created: stamp, changed: stamp, promote: attributes.promote ?? !!(attributesOf(bundleEntity).promote ?? false), sticky: false, default_langcode: true, revision_translation_affected: true, ...(moderation ? { moderation_state: moderation } : {}), path: { alias: null, pid: null, langcode: this.langcode }, content_translation_source: 'und', content_translation_outdated: false })
+        bundleRelationship('node_type')
+        rels.revision_uid = { data: user }
+        rels.uid = { data: user }
+        break
+      }
+      case 'taxonomy_term': {
+        const tid = this.store.nextId(this.langcode, 'taxonomy_term', 'drupal_internal__tid')
+        Object.assign(base, { drupal_internal__tid: tid, drupal_internal__revision_id: tid, langcode: this.langcode, revision_created: stamp, revision_log_message: null, status: true, name: attributes.name, description: null, weight: 0, changed: stamp, default_langcode: true, revision_translation_affected: true, path: { alias: null, pid: null, langcode: this.langcode } })
+        bundleRelationship('vid')
+        rels.revision_user = { data: null }
+        rels.parent = { data: [{ type: 'taxonomy_term--' + bundle, id: 'virtual', meta: { drupal_internal__target_id: 0 } }] }
+        break
+      }
+      case 'media': {
+        const mid = this.store.nextId(this.langcode, 'media', 'drupal_internal__mid')
+        Object.assign(base, { drupal_internal__mid: mid, drupal_internal__vid: mid, langcode: this.langcode, revision_created: stamp, revision_log_message: null, status: true, name: attributes.name, created: stamp, changed: stamp, default_langcode: true, revision_translation_affected: true, path: { alias: null, pid: null, langcode: this.langcode } })
+        bundleRelationship('bundle')
+        rels.revision_user = { data: user }
+        rels.uid = { data: user }
+        break
+      }
+      case 'contact_message': {
+        Object.assign(base, { langcode: this.langcode, name: attributes.name, mail: attributes.mail, subject: attributes.subject, message: attributes.message, copy: attributes.copy ?? false })
+        bundleRelationship('contact_form')
+        break
+      }
+      case 'menu_link_content': {
+        const id = this.store.nextId(this.langcode, 'menu_link_content', 'drupal_internal__id')
+        Object.assign(base, { drupal_internal__id: id, drupal_internal__revision_id: id, langcode: this.langcode, revision_created: stamp, enabled: true, title: attributes.title, description: null, menu_name: attributes.menu_name ?? 'main', link: attributes.link, external: false, rediscover: false, weight: 0, expanded: false, parent: null, changed: stamp, default_langcode: true, revision_translation_affected: true })
+        rels.revision_user = { data: user }
+        break
+      }
+      default: {
+        Object.assign(base, { langcode: this.langcode, status: true, changed: stamp })
+      }
+    }
+    // Every field of the bundle, empty, then what the request set.
+    for (const field of this.fields(entityType, bundle)) {
+      if (field.reference) rels[field.name] = { data: field.cardinality === 1 ? null : [] }
+      else base[field.name] = field.cardinality === 1 ? null : []
+    }
+    for (const [name, value] of Object.entries(attributes)) if (!(name in rels)) base[name] = value
+    for (const [name, value] of Object.entries(relationships)) if (value) rels[name] = { data: value.data }
+    return { type, id: this.identity.uuid(), attributes: base, relationships: rels }
+  }
+}

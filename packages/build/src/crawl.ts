@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
-import type { Document, Manifest, Recorded, Resource } from 'decoupled-drupal-mock'
+import type { Document, Dump, Manifest, Recorded, Resource } from 'decoupled-drupal-mock'
 import { sortedSearch } from 'decoupled-drupal-mock'
 
 export interface CrawlOptions {
@@ -26,6 +26,8 @@ export interface CrawlOptions {
   auth?: { tokenUrl: string, clientId: string, clientSecret: string, scope?: string }
   /** Resources the dump leaves out, such as the build's own user: a function of each resource. */
   exclude?: (resource: Resource) => boolean
+  /** The accounts and consumers the mock signs in, written to the dump. The CLI creates them in the Drupal first. */
+  identities?: NonNullable<Dump['identities']>
   /**
    * Reads a resource no user may read through JSON:API, such as a block whose visibility denies every request, so
    * the dump can place it in a collection and report it omitted as Drupal does. The CLI reads it through drush.
@@ -37,7 +39,7 @@ export interface CrawlOptions {
 const PLACEHOLDER = 'https://drupal.invalid'
 
 /** The resource types the crawl leaves out: they hold secrets or vary per install. */
-const SKIP = new Set(['consumer--consumer', 'oauth2_scope--oauth2_scope', 'oauth2_token_type--oauth2_token_type', 'user_role--user_role', 'action--action'])
+const SKIP = new Set(['consumer--consumer', 'oauth2_scope--oauth2_scope', 'oauth2_token_type--oauth2_token_type', 'action--action'])
 
 export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   const base = options.baseUrl.replace(/\/+$/, '')
@@ -218,6 +220,20 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     log(`${entries.length} oracle entries`)
   }
   write('recorded/routes.json.gz', recorded)
+
+  if (options.identities) {
+    // Simple OAuth 6 ships the password grant as its own module: a grant the Drupal refuses as not installed is recorded as such.
+    const consumer = options.identities.consumers.find((candidate) => candidate.grants.includes('password'))
+    const account = options.identities.accounts.find((candidate) => candidate.password !== undefined)
+    let passwordGrant = true
+    if (consumer && account) {
+      const response = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'password', client_id: consumer.clientId, ...(consumer.secret ? { client_secret: consumer.secret } : {}), username: account.name, password: account.password! }) })
+      const answer = await response.json() as { hint?: string }
+      passwordGrant = answer.hint !== 'Grant type is not installed.'
+      log(`the password grant is ${passwordGrant ? 'installed' : 'not installed'}`)
+    }
+    write('identities.json', { ...options.identities, passwordGrant })
+  }
 
   const manifest: Manifest = {
     preset: options.preset,

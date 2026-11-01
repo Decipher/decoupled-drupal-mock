@@ -1,6 +1,10 @@
 import { compare, createReader, FilterError, parseFilter, passes, phpBool } from './filter.js'
 import { pagedSearch, parseQuery, selfSearch, sortedSearch } from './query.js'
 import { keyOf } from './hash.js'
+import { Identity } from './identity.js'
+import type { Identities, Session, Token } from './identity.js'
+import { Store } from './store.js'
+import { Writes } from './writes.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
 
 export interface DrupalOptions {
@@ -8,15 +12,24 @@ export interface DrupalOptions {
   baseUrl?: string
   /** JSON:API's base path. Default `/jsonapi`. */
   basePath?: string
+  /** The accounts and consumers the mock signs in. A preset carries its own; these replace them. */
+  identities?: Identities
 }
 
 export interface Drupal {
   /** A `fetch` answering as Drupal would. */
   fetch: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
   /** Answers one request, for a transport of your own. */
-  handle: (method: string, url: string, headers?: Record<string, string>) => { status: number, headers: Record<string, string>, body: unknown }
+  handle: (method: string, url: string, headers?: Record<string, string>, body?: string) => { status: number, headers: Record<string, string>, body: unknown }
+  /** A token for a user of the preset, past the grant: a test's shortcut to a signed-in request. */
+  tokenFor: (name: string, scopes?: string[]) => Token
+  /** Drops every write and every token, back to the preset as built. */
+  reset: () => void
   readonly manifest: Dump['manifest']
 }
+
+/** The entity types JSON:API writes; a config entity type answers 405. */
+const CONTENT_TYPES = new Set(['node', 'taxonomy_term', 'media', 'block_content', 'contact_message', 'menu_link_content', 'comment', 'user', 'file', 'path_alias', 'shortcut'])
 
 const JSONAPI_DEFAULT = { version: '1.0', meta: { links: { self: { href: 'http://jsonapi.org/format/1.0/' } } } }
 
@@ -31,7 +44,7 @@ const error = (JSONAPI: NonNullable<Document['jsonapi']>, status: number, title:
   errors: [{ title, status: String(status), ...(detail ? { detail } : {}), links: { via: { href: via }, info: { href: INFO[status] || INFO[404]! } }, ...(source ? { source } : {}) }],
 })
 
-const STATUS_TEXT: Record<number, string> = { 200: 'OK', 400: 'Bad Request', 403: 'Forbidden', 404: 'Not Found', 405: 'Method Not Allowed', 500: 'Internal Server Error' }
+const STATUS_TEXT: Record<number, string> = { 200: 'OK', 201: 'Created', 204: 'No Content', 302: 'Found', 303: 'See Other', 400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found', 405: 'Method Not Allowed', 422: 'Unprocessable Content', 500: 'Internal Server Error' }
 
 /**
  * A Drupal JSON:API over a preset's dump.
@@ -45,6 +58,11 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   const basePath = (options.basePath || '/jsonapi').replace(/\/+$/, '') || '/jsonapi'
   const placeholder = dump.manifest.origin.replace(/\/+$/, '')
   const languages = dump.manifest.languages
+  const identities: Identities = options.identities || dump.identities || { accounts: [], consumers: [] }
+  const store = new Store(dump)
+  const rolesByUuid = () => new Map((store.get(dump.manifest.defaultLanguage, 'user_role--user_role') || []).map((role) => [role.id, role]))
+  const identity = new Identity(dump, identities, () => store.get(dump.manifest.defaultLanguage, 'user--user') || [], rolesByUuid)
+  const writes = new Writes(store, identity, dump.manifest.defaultLanguage)
   // The `jsonapi` object as the dump's Drupal writes it: the version it speaks.
   const JSONAPI = (dump.index[dump.manifest.defaultLanguage]?.jsonapi || JSONAPI_DEFAULT) as NonNullable<Document['jsonapi']>
   /** Whether the anonymous user may read a resource, and whether it may list a type at all. */
@@ -96,8 +114,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
 
   /** A type's resources in a language: a resource with no translation there is listed in its default language, as Drupal lists it. */
   const resourcesOf = (langcode: string, type: string): Resource[] | undefined => {
-    const translated = dump.resources[langcode]?.[type]
-    const defaults = dump.resources[dump.manifest.defaultLanguage]?.[type]
+    const translated = store.get(langcode, type)
+    const defaults = store.get(dump.manifest.defaultLanguage, type)
     if (!translated) return defaults ?? (listed.has(type) ? [] : undefined)
     if (!defaults || langcode === dump.manifest.defaultLanguage) return translated
     const byId = new Map(translated.map((resource) => [resource.id, resource]))
@@ -108,8 +126,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
 
   /** A resource in a language, or its default translation, as Drupal falls back. */
   const find = (langcode: string, identifier: ResourceIdentifier): Resource | undefined =>
-    dump.resources[langcode]?.[identifier.type]?.find((resource) => resource.id === identifier.id)
-    ?? dump.resources[dump.manifest.defaultLanguage]?.[identifier.type]?.find((resource) => resource.id === identifier.id)
+    store.get(langcode, identifier.type)?.find((resource) => resource.id === identifier.id)
+    ?? store.get(dump.manifest.defaultLanguage, identifier.type)?.find((resource) => resource.id === identifier.id)
 
   const typeOf = (entityType: string, bundle: string): string => `${entityType}--${bundle}`
 
@@ -220,23 +238,63 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return { ...base, body: document }
   }
 
+  const stampOf = (now = new Date()): string => now.toISOString().replace(/\.\d{3}Z$/, '+00:00')
+  const typePath = (type: string): string => type.replace('--', '/')
 
-  const handle: Drupal['handle'] = (method, input, requestHeaders = {}) => {
-    // With credentials the whole dump is readable, as an administrator's token reads it from Drupal.
-    const all = Object.keys(requestHeaders).some((name) => name.toLowerCase() === 'authorization')
+  const handle: Drupal['handle'] = (method, input, requestHeaders = {}, requestBody) => {
     const url = new URL(input, baseUrl)
     const path = url.pathname.replace(/\/+$/, '') || '/'
     const search = url.search.replace(/^\?/, '')
     const query = parseQuery(search)
     const upper = method.toUpperCase()
     const headers = { 'content-type': 'application/vnd.api+json' }
+    const html = (status: number, title: string) => ({ status, headers: { 'content-type': 'text/html; charset=UTF-8' }, body: `<!DOCTYPE html><html><body><h1>${title}</h1></body></html>` })
+
+    // Who asks. A token the mock did not issue is refused as Drupal refuses one.
+    const resolved = identity.session(requestHeaders)
+    if ('invalid' in resolved) return { status: 401, headers: { 'content-type': 'text/html; charset=UTF-8', 'www-authenticate': `Bearer realm="OAuth", error="access_denied", error_description="${resolved.invalid}"` }, body: '<!DOCTYPE html><html><body><h1>Unauthorized</h1></body></html>' }
+    const session: Session = resolved
+    // A signed-in user reads the whole dump, as the administrator's crawl read it.
+    const all = !!session.user
+    const { langcode: lang0, prefix: prefix0 } = language(path)
+
+    // Simple OAuth and the user module.
+    const form = () => new URLSearchParams(requestBody || '')
+    if (path === '/oauth/token') {
+      if (upper !== 'POST') return html(405, 'Method Not Allowed')
+      const { status, body } = identity.grant(form())
+      return { status, headers: { 'content-type': 'application/json; charset=UTF-8', 'cache-control': 'no-store, private' }, body }
+    }
+    if (path === '/oauth/userinfo') {
+      const claims = identity.userinfo(session, baseUrl, prefix0)
+      return claims ? { status: 200, headers: { 'content-type': 'application/json; charset=UTF-8' }, body: claims } : html(403, 'Access denied')
+    }
+    if (path === '/oauth/authorize') {
+      const answer = identity.authorize(query, session)
+      return answer.location ? { status: 302, headers: { location: answer.location }, body: '' } : html(answer.status, answer.status === 403 ? 'Access denied' : 'Bad Request')
+    }
+    if (path === `${prefix0}/user/login` || path === '/user/login') {
+      if (upper !== 'POST' || query._format !== 'json') return html(upper === 'POST' ? 400 : 200, 'Log in')
+      const credentials = JSON.parse(requestBody || '{}') as { name?: string, pass?: string }
+      const answer = identity.login(String(credentials.name || ''), String(credentials.pass || ''))
+      return { status: answer.status, headers: { 'content-type': 'application/json', ...(answer.cookie ? { 'set-cookie': answer.cookie } : {}) }, body: answer.body }
+    }
+    if (path === `${prefix0}/user/logout` || path === '/user/logout') {
+      identity.logout(requestHeaders)
+      return { status: upper === 'POST' && query._format === 'json' ? 204 : 303, headers: upper === 'POST' && query._format === 'json' ? {} : { location: `${baseUrl}${prefix0 || '/'}` }, body: '' }
+    }
+    if (path === '/session/token') return { status: 200, headers: { 'content-type': 'text/plain; charset=UTF-8' }, body: identity.csrf(requestHeaders) }
+    void lang0
 
     const hit = recorded(upper, path, search) ?? menuItems(upper, path, search)
     if (hit) {
       const body = relink(hit.body)
-      // A JSON:API answer names the request it answered.
+      // A JSON:API answer names the request it answered: the path as Drupal wrote it, under its language prefix, with the request's query.
       const document = body as { links?: { self?: { href?: string } } } | null
-      if (path !== basePath && !path.endsWith(basePath) && document && typeof document === 'object' && document.links?.self?.href && !Array.isArray(document)) document.links.self.href = `${baseUrl}${path}${search ? `?${selfSearch(search)}` : ''}`
+      if (document && typeof document === 'object' && !Array.isArray(document) && document.links?.self?.href) {
+        const recordedPath = new URL(document.links.self.href, baseUrl).pathname
+        document.links.self.href = `${baseUrl}${recordedPath}${search ? `?${selfSearch(search)}` : ''}`
+      }
       return { status: hit.status, headers: hit.headers, body }
     }
     // Decoupled Router answers for the paths the build recorded, and as itself for the rest.
@@ -250,7 +308,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const via = `${baseUrl}${prefix}${rest}${search ? `?${search}` : ''}`
     const self = `${baseUrl}${prefix}${rest}${search ? `?${selfSearch(search)}` : ''}`
     if (upper !== 'GET' && upper !== 'HEAD') {
-      return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: GET, POST, HEAD)`, via) }
+      if (rest === basePath) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: GET, HEAD)`, via) }
+      return write(upper, path, rest, prefix, langcode, session, requestBody, via, all)
     }
 
     // The index.
@@ -264,7 +323,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     if (segments[0] === 'menu_items') {
       return { status: 404, headers, body: error(JSONAPI, 404, 'Not Found', `The "menu" parameter was not converted for the path "${basePath}/menu_items/{menu}" (route name: "jsonapi_menu_items.menu")`, via) }
     }
-    const [entityType, bundle, id, related] = segments
+    const [entityType, bundle, id, related, relationName] = segments
     // A path no JSON:API route answers is Drupal's HTML 404, as is a type the index does not list.
     // Five segments are a relationship route, `.../relationships/{field}`; more than that is no route.
     if (!entityType || !bundle || segments.length > 5 || (segments.length === 5 && segments[3] !== 'relationships')) return html404(path)
@@ -281,6 +340,15 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (!resource) return { status: 404, headers, body: error(JSONAPI, 404, 'Not Found', `The "entity" parameter was not converted for the path "${basePath}/${entityType}/${bundle}/{entity}" (route name: "jsonapi.${type}.individual")`, via) }
       if (isPhantom(langcode, resource) || (!all && !visible(langcode, resource))) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', 'The current user is not allowed to GET the selected resource.', via) }
       const omitted: Resource[] = []
+      // A relationship's identifiers, with the related and self links Drupal writes.
+      if (related === 'relationships' && relationName) {
+        const relationship = resource.relationships?.[relationName]
+        if (!relationship) return html404(path)
+        const revision = (resource.attributes as Record<string, unknown> | undefined)?.drupal_internal__vid ?? (resource.attributes as Record<string, unknown> | undefined)?.drupal_internal__revision_id
+        const own = `${baseUrl}${prefix}${basePath}/${typePath(type)}/${id}`
+        const document: Document = { jsonapi: JSONAPI, data: relationship.data, links: { related: { href: `${own}/${relationName}${revision !== undefined ? `?resourceVersion=id%3A${revision}` : ''}` }, self: { href: `${own}/relationships/${relationName}` } } }
+        return { status: 200, headers, body: relink(document) }
+      }
       if (related) {
         const relationship = resource.relationships?.[related]
         if (!relationship) return html404(path)
@@ -356,16 +424,121 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return { status: 200, headers, body: relink(document) }
   }
 
+  /** POST, PATCH and DELETE on JSON:API, as Drupal answers them. */
+  const write = (upper: string, path: string, rest: string, prefix: string, langcode: string, session: Session, requestBody: string | undefined, via: string, all: boolean): { status: number, headers: Record<string, string>, body: unknown } => {
+    const headers = { 'content-type': 'application/vnd.api+json' }
+    const forbidden = (detail: string, pointer?: string) => ({ status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', detail, via, pointer ? { pointer } : undefined) })
+    const segments = rest.slice(basePath.length + 1).split('/').filter(Boolean)
+    const [entityType, bundle, id, relation, name] = segments
+    if (!entityType || !bundle) return html404(path)
+    const type = `${entityType}--${bundle}`
+    if (!listed.has(type) && !store.get(dump.manifest.defaultLanguage, type)) return html404(path)
+    const allow = CONTENT_TYPES.has(entityType) ? (id ? 'GET, PATCH, DELETE' : 'GET, POST') : 'GET'
+    if (!CONTENT_TYPES.has(entityType)) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: ${allow}, HEAD)`, via) }
+    let document: { data?: Record<string, unknown> | Array<Record<string, unknown>> | null } = {}
+    // A DELETE on a relationship names the members to remove in its body.
+    if (requestBody) {
+      try {
+        document = JSON.parse(requestBody) as typeof document
+      } catch {
+        return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', 'Syntax error', via) }
+      }
+    }
+    const data = (Array.isArray(document.data) ? undefined : document.data) as { id?: string, attributes?: Record<string, unknown>, relationships?: Record<string, { data: ResourceIdentifier | ResourceIdentifier[] | null }> } | undefined
+
+    // A relationship of a resource: /relationships/<name>.
+    if (id && relation === 'relationships' && name) {
+      const resource = find(langcode, { type, id })
+      if (!resource) return { status: 404, headers, body: error(JSONAPI, 404, 'Not Found', `The "entity" parameter was not converted for the path "${basePath}/${entityType}/${bundle}/{entity}/relationships/${name}" (route name: "jsonapi.${type}.${name}.relationship.${upper.toLowerCase()}")`, via) }
+      const relationship = resource.relationships?.[name]
+      if (!relationship) return html404(path)
+      const may = writes.canUpdate(session, resource)
+      if (!may.allowed) return forbidden(may.detail)
+      const given = Array.isArray(document.data) ? document.data as unknown as ResourceIdentifier[] : document.data ? [document.data as unknown as ResourceIdentifier] : []
+      const current = Array.isArray(relationship.data) ? relationship.data : relationship.data ? [relationship.data] : []
+      const updated = structuredClone(resource)
+      const target = updated.relationships![name]!
+      if (upper === 'PATCH') target.data = Array.isArray(relationship.data) ? given : (given[0] ?? null)
+      else if (upper === 'POST') target.data = [...current, ...given.filter((item) => !current.some((held) => held.id === item.id))]
+      else if (upper === 'DELETE') target.data = current.filter((item) => !given.some((gone) => gone.id === item.id))
+      else return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: GET, PATCH, POST, DELETE, HEAD)`, via) }
+      store.replace(langcode, type, updated)
+      return { status: 204, headers: {}, body: '' }
+    }
+    if (id && relation) return html404(path)
+
+    if (upper === 'POST') {
+      if (id) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: ${allow}, HEAD)`, via) }
+      if (!writes.canCreate(session, entityType, bundle)) return forbidden('The current user is not allowed to POST the selected resource.', '/data')
+      const attributes = data?.attributes || {}
+      const relationships = data?.relationships || {}
+      const invalid = writes.validate(entityType, bundle, attributes, relationships)
+      if (invalid) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: invalid.title, status: '422', detail: invalid.detail, source: { pointer: invalid.pointer } }] } }
+      const created = writes.create(session, entityType, bundle, attributes, relationships as Record<string, NonNullable<Resource['relationships']>[string]>)
+      const revision = (created.attributes as Record<string, unknown>).drupal_internal__vid ?? (created.attributes as Record<string, unknown>).drupal_internal__revision_id
+      const own = `${baseUrl}${defaultPrefix}${basePath}/${typePath(type)}/${created.id}`
+      const moderated = 'moderation_state' in (created.attributes || {})
+      created.links = { self: { href: revision !== undefined ? `${own}?resourceVersion=id%3A${revision}` : own }, ...(moderated ? { 'working-copy': { href: `${own}?resourceVersion=rel%3Aworking-copy` } } : {}) }
+      if (entityType !== 'contact_message') store.add(langcode, type, created)
+      return { status: 201, headers: { ...headers, location: created.links.self!.href }, body: relink({ jsonapi: JSONAPI, data: created, links: { self: { href: `${baseUrl}${prefix}${rest}` } } }) }
+    }
+
+    if (!id) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: ${allow}, HEAD)`, via) }
+    const resource = find(langcode, { type, id })
+    if (!resource || (!all && !visible(langcode, resource) && upper !== 'DELETE')) return { status: 404, headers, body: error(JSONAPI, 404, 'Not Found', `The "entity" parameter was not converted for the path "${basePath}/${entityType}/${bundle}/{entity}" (route name: "jsonapi.${type}.individual.${upper.toLowerCase()}")`, via) }
+
+    if (upper === 'DELETE') {
+      if (!writes.canDelete(session, resource)) return forbidden('The current user is not allowed to DELETE the selected resource.')
+      store.remove(langcode, type, id)
+      return { status: 204, headers: {}, body: '' }
+    }
+
+    if (upper === 'PATCH') {
+      if (data?.id && data.id !== id) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `The selected entity (${id}) does not match the ID in the payload (${data.id}).`, via) }
+      const may = writes.canUpdate(session, resource)
+      if (!may.allowed) return forbidden(may.detail)
+      const attributes = data?.attributes || {}
+      const relationships = data?.relationships || {}
+      for (const name of Object.keys(attributes)) {
+        if (!(name in (resource.attributes || {}))) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The attribute ${name} does not exist on the ${type} resource type.`, source: { pointer: `/data/attributes/${name}` } }] } }
+        const refused = writes.refusedField(session, resource, name)
+        if (refused) return forbidden(refused.detail, refused.pointer)
+      }
+      for (const name of Object.keys(relationships)) {
+        if (!(name in (resource.relationships || {}))) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The relationship ${name} does not exist on the ${type} resource type.`, source: { pointer: `/data/relationships/${name}` } }] } }
+        const refused = writes.refusedField(session, resource, name)
+        if (refused) return forbidden(refused.detail, refused.pointer)
+      }
+      const merged: Record<string, unknown> = { ...resource.attributes, ...attributes }
+      const invalid = writes.validate(entityType, bundle, merged, { ...resource.relationships, ...relationships })
+      if (invalid) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: invalid.title, status: '422', detail: invalid.detail, source: { pointer: invalid.pointer } }] } }
+      const updated: Resource = structuredClone(resource)
+      updated.attributes = merged
+      updated.relationships = { ...updated.relationships, ...Object.fromEntries(Object.entries(relationships).map(([name, value]) => [name, { ...(updated.relationships?.[name] || {}), data: value.data }])) }
+      const revisionKey = 'drupal_internal__vid' in merged ? 'drupal_internal__vid' : 'drupal_internal__revision_id' in merged ? 'drupal_internal__revision_id' : undefined
+      if (revisionKey) updated.attributes[revisionKey] = store.nextId(langcode, entityType, revisionKey)
+      if ('changed' in merged) updated.attributes.changed = stampOf()
+      if ('revision_timestamp' in merged) updated.attributes.revision_timestamp = stampOf()
+      if (updated.relationships.revision_uid && session.user) updated.relationships.revision_uid = { ...updated.relationships.revision_uid, data: { type: 'user--user', id: session.user.id, meta: { drupal_internal__target_id: session.uid } } }
+      const own = `${baseUrl}${defaultPrefix}${basePath}/${typePath(type)}/${id}`
+      if (updated.links?.self && revisionKey) updated.links = { ...updated.links, self: { href: `${own}?resourceVersion=id%3A${updated.attributes[revisionKey]}` } }
+      store.replace(langcode, type, updated)
+      return { status: 200, headers, body: relink({ jsonapi: JSONAPI, data: updated, links: { self: { href: `${baseUrl}${prefix}${rest}` } } }) }
+    }
+    return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: ${allow}, HEAD)`, via) }
+  }
+
   const fetch: Drupal['fetch'] = async (input, init = {}) => {
     // `init` applies to a Request too, as it does in the browser's fetch.
     const request = new Request(input instanceof URL ? input.toString() : input, init)
     const requestHeaders: Record<string, string> = {}
     request.headers.forEach((value, name) => { requestHeaders[name] = value })
-    const { status, headers, body } = handle(request.method, request.url, requestHeaders)
+    const requestBody = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.text()
+    const { status, headers, body } = handle(request.method, request.url, requestHeaders, requestBody)
     const text = typeof body === 'string' ? body : JSON.stringify(body)
-    // A HEAD response carries no body.
-    return new Response(request.method === 'HEAD' ? null : text, { status, statusText: STATUS_TEXT[status] ?? '', headers })
+    // A HEAD response carries no body, nor does a 204 or a 304.
+    return new Response(request.method === 'HEAD' || status === 204 || status === 304 ? null : text, { status, statusText: STATUS_TEXT[status] ?? '', headers })
   }
 
-  return { fetch, handle, manifest: dump.manifest }
+  return { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset() } }
 }
