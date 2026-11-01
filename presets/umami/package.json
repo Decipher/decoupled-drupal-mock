@@ -18,5 +18,5 @@
   "peerDependencies": {
     "decoupled-drupal-mock": "workspace:^"
   },
-  "license": "MIT"
+  "license": "GPL-2.0-or-later"
 }
