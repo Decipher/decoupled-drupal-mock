@@ -43,7 +43,7 @@ for (const scenario of scenarios) {
     const got: Answer = { status: answer.status, headers: kept, body: answer.body }
     answers.push(got)
     const expected = scenario.answers[index]!
-    const d = got.status !== expected.status ? `status engine ${got.status} | drupal ${expected.status}` : diff(volatile(got.headers), volatile(expected.headers), 'headers') || (typeof expected.body === 'string' ? undefined : diff(volatile(got.body), volatile(expected.body)))
+    const d = got.status !== expected.status ? `status engine ${got.status} | drupal ${expected.status}` : diff(volatile(got.headers), volatile(expected.headers), 'headers') || ((typeof expected.body === 'string' && String(expected.headers['content-type']).includes('html')) || resolved.path === '/session/token' ? undefined : diff(volatile(got.body), volatile(expected.body)))
     if (d) console.log(`  step ${index + 1} ${resolved.method} ${resolved.path.slice(0, 70)}: ${d}`)
     else ok++
   })

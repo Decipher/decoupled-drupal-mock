@@ -399,7 +399,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
         if (!relationship) return html404(path)
         if (hiddenFrom(langcode, resource, all)?.includes(relationName)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', resource.type === 'user--user' && resource.id !== viewer.id ? "The current user is not allowed to view this relationship. The 'access user profiles' permission is required." : 'The current user is not allowed to view this relationship.', via) }
         const revision = (resource.attributes as Record<string, unknown> | undefined)?.drupal_internal__vid ?? (resource.attributes as Record<string, unknown> | undefined)?.drupal_internal__revision_id
-        const own = `${baseUrl}${defaultPrefix}${basePath}/${typePath(type)}/${id}`
+        // The request's language, and the default's when it named none, as Drupal writes it.
+        const own = `${baseUrl}${prefix || defaultPrefix}${basePath}/${typePath(type)}/${id}`
         const document: Document = { jsonapi: JSONAPI, data: relationship.data, links: { related: { href: `${own}/${relationName}${revision !== undefined ? `?resourceVersion=id%3A${revision}` : ''}` }, self: { href: `${baseUrl}${prefix}${rest}` } } }
         return { status: 200, headers, body: relink(document) }
       }
@@ -530,7 +531,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       // An add answers with the relationship, as Drupal does; a replacement and a removal answer nothing.
       if (upper === 'POST') {
         const revision = (updated.attributes as Record<string, unknown> | undefined)?.drupal_internal__vid ?? (updated.attributes as Record<string, unknown> | undefined)?.drupal_internal__revision_id
-        const own = `${baseUrl}${defaultPrefix}${basePath}/${typePath(type)}/${id}`
+        // The request's language, and the default's when it named none, as Drupal writes it.
+        const own = `${baseUrl}${prefix || defaultPrefix}${basePath}/${typePath(type)}/${id}`
         return { status: 200, headers, body: relink({ jsonapi: JSONAPI, data: target.data, links: { related: { href: `${own}/${name}${revision !== undefined ? `?resourceVersion=id%3A${revision}` : ''}` }, self: { href: `${baseUrl}${prefix}${rest}` } } }) }
       }
       return { status: 204, headers: {}, body: '' }
@@ -540,7 +542,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     if (upper === 'POST') {
       if (id) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: ${allow}, HEAD)`, via) }
       // Drupal's 403 on a refused POST says nothing in its detail.
-      if (!writes.canCreate(session, entityType, bundle)) return forbidden('')
+      if (!writes.canCreate(session, entityType, bundle)) return forbidden(entityType === 'path_alias' ? "The 'administer url aliases' permission is required." : '')
       const attributes = data?.attributes || {}
       const relationships = data?.relationships || {}
       for (const field of [...Object.keys(attributes), ...Object.keys(relationships)]) {
@@ -613,6 +615,13 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if ('revision_timestamp' in merged) updated.attributes.revision_timestamp = stampOf()
       if (updated.relationships.revision_uid && session.user) updated.relationships.revision_uid = { ...updated.relationships.revision_uid, data: { type: 'user--user', id: session.user.id, meta: { drupal_internal__target_id: session.uid } } }
       if (updated.links?.self && revisionKey) updated.links = { ...updated.links, self: { href: `${own}?resourceVersion=id%3A${updated.attributes[revisionKey]}` } }
+      // Every relationship's links name the revision too.
+      if (revisionKey) {
+        const version = `resourceVersion=id%3A${updated.attributes[revisionKey]}`
+        for (const relationship of Object.values(updated.relationships)) {
+          for (const link of Object.values(relationship.links || {})) if (link?.href) link.href = link.href.replace(/resourceVersion=id%3A\d+/, version)
+        }
+      }
       store.replace(langcode, type, updated)
       return { status: 200, headers, body: relink({ jsonapi: JSONAPI, data: updated, links: { self: { href: `${baseUrl}${prefix}${rest}` } } }) }
     }

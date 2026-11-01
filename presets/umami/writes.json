@@ -264,6 +264,127 @@
     ]
   },
   {
+    "name": "an author may not set what Drupal keeps, and cannot publish",
+    "as": "author",
+    "steps": [
+      {
+        "method": "POST",
+        "path": "/jsonapi/node/page",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "attributes": {
+              "title": "Mock page"
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/jsonapi/node/page",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "attributes": {
+              "title": "x",
+              "drupal_internal__nid": 9999
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/jsonapi/node/page",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "attributes": {
+              "title": "x",
+              "status": true
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/jsonapi/node/page",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "attributes": {
+              "title": "x",
+              "moderation_state": "published"
+            }
+          }
+        }
+      },
+      {
+        "method": "PATCH",
+        "path": "/jsonapi/node/page/{1.data.id}",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "id": "{1.data.id}",
+            "attributes": {
+              "moderation_state": "published"
+            }
+          }
+        }
+      },
+      {
+        "method": "PATCH",
+        "path": "/jsonapi/node/page/{1.data.id}/relationships/uid",
+        "body": {
+          "data": {
+            "type": "user--user",
+            "id": "{1.data.relationships.uid.data.id}"
+          }
+        }
+      },
+      {
+        "method": "DELETE",
+        "path": "/es/jsonapi/node/page/{1.data.id}"
+      },
+      {
+        "method": "GET",
+        "path": "/es/jsonapi/node/page/{1.data.id}/relationships/uid"
+      },
+      {
+        "method": "DELETE",
+        "path": "/jsonapi/node/page/{1.data.id}"
+      }
+    ]
+  },
+  {
+    "name": "a login with no credentials, and a visitor creating an alias",
+    "as": "anonymous",
+    "steps": [
+      {
+        "method": "POST",
+        "path": "/jsonapi/path_alias/path_alias",
+        "as": "anonymous",
+        "body": {
+          "data": {
+            "type": "path_alias--path_alias",
+            "attributes": {}
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/user/login?_format=json",
+        "as": "anonymous",
+        "json": null
+      },
+      {
+        "method": "POST",
+        "path": "/user/login?_format=json",
+        "as": "anonymous",
+        "json": {}
+      }
+    ]
+  },
+  {
     "name": "the editor may not create, and a reader may do nothing",
     "as": "editor",
     "steps": [

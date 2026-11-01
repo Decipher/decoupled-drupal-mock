@@ -7,6 +7,8 @@ import { createDrupal, KEPT_HEADERS, resolve, volatile } from '../src'
 import type { Answer, RecordedScenario } from '../src'
 import { loadDump } from '../src/load'
 
+const isThemedOrToken = (answer: Answer, path: string): boolean => (typeof answer.body === 'string' && String(answer.headers['content-type']).includes('html')) || path === '/session/token'
+
 /** The write and sign-in scenarios a preset's build recorded, replayed on a fresh instance each. */
 const dir = process.env.DECOUPLED_DRUPAL_MOCK_DUMP || fileURLToPath(new URL('../../../presets/umami/dump', import.meta.url))
 const available = existsSync(join(dir, 'oracle', 'writes.json.gz'))
@@ -47,7 +49,8 @@ describe.skipIf(!available)('the engine against the recorded scenarios', () => {
       const label = `step ${index + 1}: ${resolved.method} ${resolved.path}`
       expect(got.status, label).toBe(expected.status)
       expect(volatile(got.headers), label).toEqual(volatile(expected.headers))
-      if (typeof expected.body !== 'string') expect(volatile(got.body), label).toEqual(volatile(expected.body))
+      // A themed page of Drupal's is not the mock's to copy, and a session token is new each time: both are compared by status and type.
+      if (!isThemedOrToken(expected, resolved.path)) expect(volatile(got.body), label).toEqual(volatile(expected.body))
     })
   })
 })

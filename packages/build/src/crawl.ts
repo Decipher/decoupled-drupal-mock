@@ -308,11 +308,11 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   write('recorded/routes.json.gz', recorded)
 
   // The scenarios: each step as its account, every answer recorded, and what they created deleted afterwards.
-  if (options.scenarios?.length && options.identities) {
+  if (options.scenarios?.length) {
     const identities = options.identities
     const tokenFor = async (name: string): Promise<string | undefined> => {
       if (name === 'anonymous') return undefined
-      const consumer = identities.consumers.find((candidate) => candidate.user === name && candidate.grants.includes('client_credentials'))
+      const consumer = identities?.consumers.find((candidate) => candidate.user === name && candidate.grants.includes('client_credentials'))
       if (!consumer) throw new Error(`No consumer with the client credentials grant acts as "${name}".`)
       const scope = Object.keys(consumer.scopes || {})[0]
       const response = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'client_credentials', client_id: consumer.clientId, ...(consumer.secret ? { client_secret: consumer.secret } : {}), ...(scope ? { scope } : {}) }) })
@@ -321,36 +321,43 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       return granted.access_token
     }
     const recorded: RecordedScenario[] = []
-    const created: string[] = []
     const resourceId = (type: string, index: number) => all[options.defaultLanguage]?.[type]?.[index]?.id
+    /** What a scenario left in the Drupal, deleted before the next one reads it. A refusal stops the build: the site would keep it. */
+    const clean = async (created: string[]): Promise<void> => {
+      for (const path of created) {
+        const response = await fetch(`${base}${path}`, { method: 'DELETE', headers: { ...authorized() } })
+        log(`  cleaned up ${path}: ${response.status}`)
+        if (response.status !== 204 && response.status !== 404) throw new Error(`DELETE ${path} answered ${response.status}: the scenario's content is still in the Drupal.`)
+      }
+    }
     for (const scenario of options.scenarios) {
       const answers: Answer[] = []
       const tokens = new Map<string, string | undefined>()
-      for (const step of scenario.steps) {
-        const as = step.as || scenario.as
-        if (!tokens.has(as)) tokens.set(as, await tokenFor(as))
-        const resolved = resolve(step, answers, resourceId)
-        const headers: Record<string, string> = { accept: 'application/vnd.api+json, application/json;q=0.9, */*;q=0.8' }
-        const bearer = resolved.bearer ?? tokens.get(as)
-        if (bearer) headers.authorization = `Bearer ${bearer}`
-        let body: string | undefined
-        if (resolved.form) { headers['content-type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(resolved.form).toString() }
-        else if (resolved.json !== undefined) { headers['content-type'] = 'application/json'; body = JSON.stringify(resolved.json) }
-        else if (resolved.body !== undefined) { headers['content-type'] = 'application/vnd.api+json'; body = JSON.stringify(resolved.body) }
-        const response = await fetch(`${base}${resolved.path}`, { method: resolved.method, headers, ...(body !== undefined ? { body } : {}), redirect: 'manual' })
-        const text = await response.text()
-        const type = response.headers.get('content-type') || ''
-        const answer: Answer = { status: response.status, headers: Object.fromEntries(KEPT_HEADERS.map((name) => [name, response.headers.get(name)]).filter(([, value]) => value).map(([name, value]) => [name, name === 'content-type' ? String(value).split(';')[0]!.trim() : String(value)])), body: type.includes('json') && text ? JSON.parse(text) : text }
-        answers.push(answer)
-        if (response.status === 201 && answer.headers.location) created.push(answer.headers.location.replace(base, '').split('?')[0]!)
-        if (response.status === 204 && resolved.method === 'DELETE') created.splice(created.indexOf(resolved.path), created.includes(resolved.path) ? 1 : 0)
+      const created: string[] = []
+      try {
+        for (const step of scenario.steps) {
+          const as = step.as || scenario.as
+          if (!tokens.has(as)) tokens.set(as, await tokenFor(as))
+          const resolved = resolve(step, answers, resourceId)
+          const headers: Record<string, string> = { accept: 'application/vnd.api+json, application/json;q=0.9, */*;q=0.8' }
+          const bearer = resolved.bearer ?? tokens.get(as)
+          if (bearer) headers.authorization = `Bearer ${bearer}`
+          let body: string | undefined
+          if (resolved.form) { headers['content-type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(resolved.form).toString() }
+          else if (resolved.json !== undefined) { headers['content-type'] = 'application/json'; body = JSON.stringify(resolved.json) }
+          else if (resolved.body !== undefined) { headers['content-type'] = 'application/vnd.api+json'; body = JSON.stringify(resolved.body) }
+          const response = await fetch(`${base}${resolved.path}`, { method: resolved.method, headers, ...(body !== undefined ? { body } : {}), redirect: 'manual' })
+          const text = await response.text()
+          const type = response.headers.get('content-type') || ''
+          const answer: Answer = { status: response.status, headers: Object.fromEntries(KEPT_HEADERS.map((name) => [name, response.headers.get(name)]).filter(([, value]) => value).map(([name, value]) => [name, name === 'content-type' ? String(value).split(';')[0]!.trim() : String(value)])), body: type.includes('json') && text ? JSON.parse(text) : text }
+          answers.push(answer)
+          if (response.status === 201 && answer.headers.location) created.push(pathOf(answer.headers.location).split('?')[0]!)
+        }
+      } finally {
+        await clean(created)
       }
       recorded.push({ ...scenario, answers })
       log(`scenario "${scenario.name}": ${answers.map((answer) => answer.status).join(' ')}`)
-    }
-    for (const path of created) {
-      const response = await fetch(`${base}${path}`, { method: 'DELETE', headers: { ...authorized() } })
-      log(`  cleaned up ${path}: ${response.status}`)
     }
     write('oracle/writes.json.gz', recorded)
   }

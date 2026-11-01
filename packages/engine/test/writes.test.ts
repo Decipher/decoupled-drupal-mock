@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
-import { createDrupal } from '../src'
+import { createDrupal, resolve, volatile } from '../src'
 import type { Document, Resource } from '../src'
 import { dump } from './dump'
 
@@ -414,3 +414,31 @@ describe('writes across languages, and accounts without a user', () => {
   })
 })
 
+describe('what the review of the scenarios found', () => {
+  it('moves every relationship link to the new revision, and keeps a translation\'s prefix in them', async () => {
+    const d = drupal()
+    const admin = bearer(d.tokenFor('admin').access)
+    const created = (await read(await d.fetch(`${BASE}/jsonapi/node/page`, { method: 'POST', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: { type: 'node--page', attributes: { title: 'New' } } }) }))).data as Resource
+    const updated = (await read(await d.fetch(`${BASE}/jsonapi/node/page/${created.id}`, { method: 'PATCH', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: { type: 'node--page', id: created.id, attributes: { title: 'Newer' } } }) }))).data as Resource
+    const version = updated.links!.self!.href.split('?')[1]!
+    expect(updated.relationships!.uid!.links!.related!.href).toContain(version)
+    expect(created.relationships!.uid!.links!.related!.href).not.toContain(version)
+    const spanish = await read(await d.fetch(`${BASE}/es/jsonapi/node/recipe/r-1/relationships/uid`))
+    expect(spanish.links!.related!.href).toContain(`${BASE}/es/jsonapi/`)
+    const english = await read(await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/uid`))
+    expect(english.links!.related!.href).toContain(`${BASE}/jsonapi/`)
+  })
+})
+
+describe('the scenario helpers', () => {
+  it('refuses a step that names what an earlier answer did not give, and resolves a machine name with digits', () => {
+    expect(() => resolve('/x/{1.data.id}', [{ status: 403, headers: {}, body: {} }], () => undefined)).toThrow(/not in the answer of step 1/)
+    expect(resolve('/x/{node--article2:0}', [], () => 'found')).toBe('/x/found')
+  })
+
+  it('masks what Drupal generated, and not a title that looks like a uuid', () => {
+    const uuid = '9af15b20-9480-459c-bce5-d00b5d41fa32'
+    expect(volatile({ id: uuid, title: uuid, href: `https://x/${uuid}` })).toEqual({ id: '<uuid>', title: uuid, href: 'https://x/<uuid>' })
+    expect(volatile({ detail: `The selected entity (${uuid})` })).toEqual({ detail: 'The selected entity (<uuid>)' })
+  })
+})
