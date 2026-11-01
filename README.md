@@ -106,10 +106,16 @@ The engine accepts POST, PATCH and DELETE requests on JSON:API resources and rel
 A preset built from a Drupal with [GraphQL Compose](https://www.drupal.org/project/graphql_compose) carries the schema as Drupal served it and its mapping onto Drupal. With the `graphql` package installed, `decoupled-drupal-mock/graphql` answers the schema's endpoint beside everything else: entity queries from the resources, `route` from the recorded Decoupled Router answers, `menu` from the recorded menu items, connections by Compose's cursor rules, and Compose's errors.
 
 ```ts
-import { createDrupal } from 'decoupled-drupal-mock/graphql'
+import { createDrupal } from 'decoupled-drupal-mock/graphql';
 
-const drupal = createDrupal(umami(), { baseUrl: 'https://drupal.test' })
-await drupal.fetch('https://drupal.test/graphql', { method: 'POST', body: JSON.stringify({ query: '{ route(path: "/en/recipes/borscht-with-pork-ribs") { ... on RouteInternal { entity { ... on NodeRecipe { title } } } } }' }) })
+const drupal = createDrupal(umami(), { baseUrl: 'https://drupal.test' });
+await drupal.fetch('https://drupal.test/graphql', {
+  method: 'POST',
+  body: JSON.stringify({
+    query:
+      '{ route(path: "/en/recipes/borscht-with-pork-ribs") { ... on RouteInternal { entity { ... on NodeRecipe { title } } } } }',
+  }),
+});
 ```
 
 The CLI, the msw handlers and the server answer it too once `graphql` is installed. The Umami preset records 42 queries with Drupal's answers, and the engine's fidelity test replays them.
