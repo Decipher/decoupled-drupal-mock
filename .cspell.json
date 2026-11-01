@@ -1,0 +1,9 @@
+{
+  "version": "0.2",
+  "language": "en,en-GB",
+  "files": ["**/*.{js,mjs,ts,json,md,yml,yaml,php}"],
+  "dictionaryDefinitions": [{ "name": "project-words", "path": "./.cspell-project-words.txt" }],
+  "dictionaries": ["bash", "misc", "node", "php", "project-words", "softwareTerms", "typescript"],
+  "ignorePaths": ["**/node_modules/**", ".yarn/**", "**/dist/**", "presets/*/dump/**", "*.lock", "yarn.lock", ".git/**"],
+  "ignoreRegExpList": ["/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/", "/[A-Za-z0-9+/]{40,}={0,2}/", "/sha256-[A-Za-z0-9+/=]+/"]
+}

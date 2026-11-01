@@ -17,5 +17,7 @@ check:
     # The build package and the report import the engine's built output. A branch with no packages yet passes.
     - '[ -d packages/engine ] && yarn workspace decoupled-drupal-mock build || echo "no engine to build"'
     - yarn lint
+    # Every commit of the merge request's range, not the last alone.
+    - 'if [ -n "$CI_MERGE_REQUEST_DIFF_BASE_SHA" ]; then yarn commitlint --from "$CI_MERGE_REQUEST_DIFF_BASE_SHA" --to HEAD; fi'
     - '[ -d packages ] && yarn typecheck || echo "nothing to typecheck"'
     - '[ -d packages ] && yarn test || echo "nothing to test"'

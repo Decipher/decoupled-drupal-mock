@@ -11,14 +11,26 @@
   "scripts": {
     "build": "yarn workspaces foreach -A -pt run build",
     "test": "vitest run",
-    "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "yarn lint:js && yarn lint:cspell && yarn lint:md && yarn lint:format",
+    "lint:js": "eslint .",
+    "lint:cspell": "cspell lint --no-progress --no-must-find-files --gitignore --dot \"**/*.{js,mjs,ts,json,md,yml,yaml,php}\"",
+    "lint:md": "markdownlint-cli2 \"**/*.md\"",
+    "lint:format": "prettier --check \"**/*.{json,md,yml,yaml}\"",
+    "lint:format:fix": "prettier --write \"**/*.{json,md,yml,yaml}\"",
+    "lint:commit": "commitlint"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
     "@eslint/js": "^9.39.0",
     "@types/node": "^24.0.0",
+    "cspell": "^10.4.0",
     "eslint": "^9.39.0",
+    "eslint-plugin-jsdoc": "^65.4.2",
+    "markdownlint-cli2": "^0.24.0",
     "msw": "^3.0.0",
+    "prettier": "^3.9.10",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.50.0",
     "vite": "^7.0.0",

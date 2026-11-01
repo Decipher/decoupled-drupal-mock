@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -19,5 +21,7 @@ jobs:
       - run: yarn install --immutable
       - run: '[ -d packages/engine ] && yarn workspace decoupled-drupal-mock build || echo "no engine to build"'
       - run: yarn lint
+      - if: github.event_name == 'pull_request'
+        run: yarn commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}
       - run: '[ -d packages ] && yarn typecheck || echo "nothing to typecheck"'
       - run: '[ -d packages ] && yarn test || echo "nothing to test"'
