@@ -163,3 +163,14 @@ describe('writes', () => {
     expect((await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`, { method: 'PATCH', headers: JSON_API, body: '{"data":[]}' })).status).toBe(403)
   })
 })
+
+describe('the relationship routes and inherited members', () => {
+  it('answers no inherited member as a relationship, to a read or a write', async () => {
+    const d = createDrupal(dump, { baseUrl: BASE })
+    const admin = bearer(d.tokenFor('admin').access)
+    for (const name of ['__proto__', 'constructor', 'toString']) {
+      expect((await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/${name}`)).status, name).toBe(404)
+      expect((await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/${name}`, { method: 'PATCH', headers: { ...JSON_API, ...admin }, body: '{"data":[]}' })).status, name).toBe(404)
+    }
+  })
+})

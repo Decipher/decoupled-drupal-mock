@@ -5,7 +5,8 @@ import { Identity } from './identity.js'
 import type { Identities, Session, Token } from './identity.js'
 import { Store } from './store.js'
 import { Writes } from './writes.js'
-import { own } from './own.js'
+// Named apart from the `own` URL each write builds, which would shadow it.
+import { own as member } from './own.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
 
 export interface DrupalOptions {
@@ -190,7 +191,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const next: Resource[] = []
       for (const resource of resources) {
         // A relationship the user may not read is walked as if it were not there, and a target of a forbidden type is omitted.
-        const relationship = own(readable(langcode, resource, all).relationships, head)
+        const relationship = member(readable(langcode, resource, all).relationships, head)
         if (!relationship) continue
         const identifiers = Array.isArray(relationship.data) ? relationship.data : relationship.data ? [relationship.data] : []
         for (const identifier of identifiers) {
@@ -369,7 +370,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const omitted: Resource[] = []
       // A relationship's identifiers, with the related and self links Drupal writes.
       if (related === 'relationships' && relationName) {
-        const relationship = resource.relationships?.[relationName]
+        const relationship = member(resource.relationships, relationName)
         if (!relationship) return html404(path)
         const revision = (resource.attributes as Record<string, unknown> | undefined)?.drupal_internal__vid ?? (resource.attributes as Record<string, unknown> | undefined)?.drupal_internal__revision_id
         const own = `${baseUrl}${prefix}${basePath}/${typePath(type)}/${id}`
@@ -377,7 +378,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
         return { status: 200, headers, body: relink(document) }
       }
       if (related) {
-        const relationship = own(resource.relationships, related)
+        const relationship = member(resource.relationships, related)
         if (!relationship) return html404(path)
         // A relationship the user may not read is Drupal's 403, not a missing route.
         if (!all && accessOf(langcode, resource.type)?.hidden?.includes(related)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', 'The current user is not allowed to view this relationship.', via) }
@@ -483,7 +484,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     if (id && relation === 'relationships' && name) {
       const resource = find(langcode, { type, id })
       if (!resource) return { status: 404, headers, body: error(JSONAPI, 404, 'Not Found', `The "entity" parameter was not converted for the path "${basePath}/${entityType}/${bundle}/{entity}/relationships/${name}" (route name: "jsonapi.${type}.${name}.relationship.${upper.toLowerCase()}")`, via) }
-      const relationship = resource.relationships?.[name]
+      const relationship = member(resource.relationships, name)
       if (!relationship) return html404(path)
       const may = writes.canUpdate(session, resource)
       if (!may.allowed) return forbidden(may.detail)
