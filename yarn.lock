@@ -2342,6 +2342,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"decoupled-drupal-mock-build@workspace:packages/build":
+  version: 0.0.0-use.local
+  resolution: "decoupled-drupal-mock-build@workspace:packages/build"
+  dependencies:
+    decoupled-drupal-mock: "workspace:^"
+  bin:
+    decoupled-drupal-mock-crawl: ./src/crawl.ts
+  languageName: unknown
+  linkType: soft
+
 "decoupled-drupal-mock-workspace@workspace:.":
   version: 0.0.0-use.local
   resolution: "decoupled-drupal-mock-workspace@workspace:."
@@ -2363,7 +2373,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"decoupled-drupal-mock@workspace:packages/engine":
+"decoupled-drupal-mock@workspace:^, decoupled-drupal-mock@workspace:packages/engine":
   version: 0.0.0-use.local
   resolution: "decoupled-drupal-mock@workspace:packages/engine"
   dependencies:
