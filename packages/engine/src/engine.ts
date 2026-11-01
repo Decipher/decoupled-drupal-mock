@@ -41,7 +41,8 @@ const STATUS_TEXT: Record<number, string> = { 200: 'OK', 400: 'Bad Request', 403
  */
 export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal => {
   const baseUrl = (options.baseUrl || 'https://drupal.invalid').replace(/\/+$/, '')
-  const basePath = options.basePath || '/jsonapi'
+  // A trailing slash on the base path would make every route an HTML 404.
+  const basePath = (options.basePath || '/jsonapi').replace(/\/+$/, '') || '/jsonapi'
   const placeholder = dump.manifest.origin.replace(/\/+$/, '')
   const languages = dump.manifest.languages
   // The `jsonapi` object as the dump's Drupal writes it: the version it speaks.
@@ -93,7 +94,17 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   /** Every absolute link in the dump points at the placeholder; the server's base URL takes its place. */
   const relink = <T>(value: T): T => JSON.parse(JSON.stringify(value).split(placeholder).join(baseUrl)) as T
 
-  const resourcesOf = (langcode: string, type: string): Resource[] | undefined => dump.resources[langcode]?.[type] ?? dump.resources[dump.manifest.defaultLanguage]?.[type] ?? (listed.has(type) ? [] : undefined)
+  /** A type's resources in a language: a resource with no translation there is listed in its default language, as Drupal lists it. */
+  const resourcesOf = (langcode: string, type: string): Resource[] | undefined => {
+    const translated = dump.resources[langcode]?.[type]
+    const defaults = dump.resources[dump.manifest.defaultLanguage]?.[type]
+    if (!translated) return defaults ?? (listed.has(type) ? [] : undefined)
+    if (!defaults || langcode === dump.manifest.defaultLanguage) return translated
+    const byId = new Map(translated.map((resource) => [resource.id, resource]))
+    const merged = defaults.map((resource) => byId.get(resource.id) ?? resource)
+    const known = new Set(defaults.map((resource) => resource.id))
+    return [...merged, ...translated.filter((resource) => !known.has(resource.id))]
+  }
 
   /** A resource in a language, or its default translation, as Drupal falls back. */
   const find = (langcode: string, identifier: ResourceIdentifier): Resource | undefined =>
@@ -123,21 +134,26 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   }
 
   /** The resources `include` names, in the order they are met, each once. */
+  /** Drupal writes `included` only when something was included. */
+  const withIncluded = (document: Document, included: Resource[]): void => { if (included.length) document.included = included }
+
   const include = (langcode: string, roots: Resource[], paths: string[], fields: Record<string, unknown> | undefined, all: boolean, omitted: Resource[]): Resource[] => {
-    const seen = new Set<string>()
+    // A compound document lists each resource once: what `data` carries is never included again.
+    const seen = new Set<string>(roots.map((resource) => `${resource.type}:${resource.id}`))
     const included: Resource[] = []
     const walk = (resources: Resource[], path: string[]): void => {
       const [head, ...rest] = path
       if (head === undefined) return
       const next: Resource[] = []
       for (const resource of resources) {
-        const relationship = resource.relationships?.[head]
+        // A relationship the user may not read is walked as if it were not there, and a target of a forbidden type is omitted.
+        const relationship = readable(langcode, resource, all).relationships?.[head]
         if (!relationship) continue
         const identifiers = Array.isArray(relationship.data) ? relationship.data : relationship.data ? [relationship.data] : []
         for (const identifier of identifiers) {
           const target = find(langcode, identifier)
           if (!target) continue
-          if (isPhantom(langcode, target) || (!all && !visible(langcode, target))) {
+          if (isPhantom(langcode, target) || (!all && (!visible(langcode, target) || forbidden(langcode, target.type)))) {
             if (!omitted.includes(target)) omitted.push(target)
             continue
           }
@@ -155,13 +171,26 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return included
   }
 
-  const read = (langcode: string) => createReader((identifier) => find(langcode, identifier))
+  /** A filter's reader, over what the user may read: a hidden field never matches, and never reveals itself by matching. */
+  const read = (langcode: string, all: boolean) => createReader((identifier) => { const target = find(langcode, identifier); return target ? readable(langcode, target, all) : undefined })
+
+  /** The field names a type has, from its resources: a filter on another is Drupal's 400. */
+  const fieldsOf = (langcode: string, type: string): Set<string> => {
+    const names = new Set(['id', 'type'])
+    for (const resource of resourcesOf(langcode, type) || []) {
+      for (const name of Object.keys(resource.attributes || {})) names.add(name)
+      for (const name of Object.keys(resource.relationships || {})) names.add(name)
+    }
+    return names
+  }
 
   // C. A recorded route answers unprefixed for the default language, as Drupal does.
   const defaultPrefix = languages[dump.manifest.defaultLanguage] ? `/${languages[dump.manifest.defaultLanguage]}` : ''
   const recorded = (method: string, path: string, search: string): Recorded | undefined => {
-    const keys = [`${method} ${path}${search ? `?${sortedSearch(search)}` : ''}`, `${method} ${path}`]
-    if (defaultPrefix && !prefixes.some(([, prefix]) => path === `/${prefix}` || path.startsWith(`/${prefix}/`))) keys.push(`${method} ${defaultPrefix}${path}${search ? `?${sortedSearch(search)}` : ''}`, `${method} ${defaultPrefix}${path}`)
+    // A request with a query string answers only from a recording of that query: the unqueried answer is not its answer.
+    const keyed = (prefix: string) => `${method} ${prefix}${path}${search ? `?${sortedSearch(search)}` : ''}`
+    const keys = [keyed('')]
+    if (defaultPrefix && !prefixes.some(([, prefix]) => path === `/${prefix}` || path.startsWith(`/${prefix}/`))) keys.push(keyed(defaultPrefix))
     for (const key of keys) if (dump.recorded[key]) return dump.recorded[key]
     return undefined
   }
@@ -211,7 +240,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     }
     const [entityType, bundle, id, related] = segments
     // A path no JSON:API route answers is Drupal's HTML 404, as is a type the index does not list.
-    if (!entityType || !bundle) return html404(path)
+    if (!entityType || !bundle || segments.length > 4) return html404(path)
     const type = typeOf(entityType, bundle)
     const collection = resourcesOf(langcode, type)
     if (!collection) return html404(path)
@@ -228,18 +257,20 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (related) {
         const relationship = resource.relationships?.[related]
         if (!relationship) return html404(path)
+        // A relationship the user may not read is Drupal's 403, not a missing route.
+        if (!all && accessOf(langcode, resource.type)?.hidden?.includes(related)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', 'The current user is not allowed to view this relationship.', via) }
         const identifiers = Array.isArray(relationship.data) ? relationship.data : relationship.data ? [relationship.data] : []
         const found = identifiers.map((identifier) => find(langcode, identifier)).filter((target): target is Resource => !!target)
-        const targets = found.filter((target) => !isPhantom(langcode, target) && (all || visible(langcode, target)))
+        const targets = found.filter((target) => !isPhantom(langcode, target) && (all || (visible(langcode, target) && !forbidden(langcode, target.type))))
         omitted.push(...found.filter((target) => !targets.includes(target)))
         const data = Array.isArray(relationship.data) ? targets.map((target) => sparse(target, fields, langcode, all)) : targets[0] ? sparse(targets[0], fields, langcode, all) : null
         const document: Document = { jsonapi: JSONAPI, data, links: { self: { href: self } } }
-        if (includes.length) document.included = include(langcode, targets, includes, fields, all, omitted)
+        if (includes.length) withIncluded(document, include(langcode, targets, includes, fields, all, omitted))
         if (omitted.length) document.meta = { omitted: omission(prefix, omitted) }
         return { status: 200, headers, body: relink(document) }
       }
       const document: Document = { jsonapi: JSONAPI, data: sparse(resource, fields, langcode, all), links: { self: { href: self } } }
-      if (includes.length) document.included = include(langcode, [resource], includes, fields, all, omitted)
+      if (includes.length) withIncluded(document, include(langcode, [resource], includes, fields, all, omitted))
       if (omitted.length) document.meta = { omitted: omission(prefix, omitted) }
       return { status: 200, headers, body: relink(document) }
     }
@@ -252,15 +283,20 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (err instanceof FilterError) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', err.message, via, { parameter: 'filter' }) }
       throw err
     }
-    const reader = read(langcode)
-    let matched = collection.filter((resource) => passes(resource, filter, reader))
+    for (const condition of Object.values(filter.conditions)) {
+      const [head] = condition.path.split('.')
+      if (head && !fieldsOf(langcode, type).has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, via, { parameter: 'filter' }) }
+    }
+    const reader = read(langcode, all)
+    const view = (resource: Resource): Resource => readable(langcode, resource, all)
+    let matched = collection.filter((resource) => passes(view(resource), filter, reader))
     const sort = typeof query.sort === 'string' ? query.sort.split(',').map((item) => item.trim()).filter(Boolean) : []
     if (sort.length) {
       const keys = sort.map((item) => ({ path: item.replace(/^-/, '').split('.'), direction: item.startsWith('-') ? -1 : 1 }))
       matched = [...matched].sort((a, b) => {
         for (const { path, direction } of keys) {
-          const x = reader(a, path)[0]
-          const y = reader(b, path)[0]
+          const x = reader(view(a), path)[0]
+          const y = reader(view(b), path)[0]
           const order = x === y ? 0 : x === undefined || x === null ? -1 : y === undefined || y === null ? 1 : compare(x, y)
           if (order) return order * direction
         }
@@ -276,7 +312,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const slice = page_.filter((resource) => !isPhantom(langcode, resource) && (all || visible(langcode, resource)))
     const omitted = page_.filter((resource) => !slice.includes(resource))
     const document: Document = { jsonapi: JSONAPI, data: slice.map((resource) => sparse(resource, fields, langcode, all)), links: { self: { href: self } } }
-    if (includes.length) document.included = include(langcode, slice, includes, fields, all, omitted)
+    if (includes.length) withIncluded(document, include(langcode, slice, includes, fields, all, omitted))
     if (omitted.length) document.meta = { omitted: omission(prefix, omitted) }
     // Drupal keeps the request's parameters in their order, with page[offset] and page[limit] in page's place.
     const pageLink = (newOffset: number): { href: string } => ({ href: `${baseUrl}${prefix}${rest}?${pagedSearch(search, newOffset, limit)}` })
@@ -289,11 +325,14 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   }
 
   const fetch: Drupal['fetch'] = async (input, init = {}) => {
-    const request = input instanceof Request ? input : new Request(input instanceof URL ? input.toString() : input, init)
+    // `init` applies to a Request too, as it does in the browser's fetch.
+    const request = new Request(input instanceof URL ? input.toString() : input, init)
     const requestHeaders: Record<string, string> = {}
     request.headers.forEach((value, name) => { requestHeaders[name] = value })
     const { status, headers, body } = handle(request.method, request.url, requestHeaders)
-    return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, statusText: STATUS_TEXT[status] ?? '', headers })
+    const text = typeof body === 'string' ? body : JSON.stringify(body)
+    // A HEAD response carries no body.
+    return new Response(request.method === 'HEAD' ? null : text, { status, statusText: STATUS_TEXT[status] ?? '', headers })
   }
 
   return { fetch, handle, manifest: dump.manifest }

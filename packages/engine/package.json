@@ -17,7 +17,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "yarn build"
   },
   "license": "MIT",
   "devDependencies": {

@@ -150,7 +150,69 @@ describe('recorded routes', () => {
     const route = await get('/router/translate-path?path=%2Fabout-umami')
     expect(route.status).toBe(200)
     expect((route.body as unknown as { resolved: string }).resolved).toBe('https://drupal.test/about-umami')
-    expect((await get('/jsonapi/menu_items/main?filter[max_depth]=2')).status).toBe(200)
+    // A query the build did not record is not answered with the unqueried recording.
+    expect((await get('/jsonapi/menu_items/main')).status).toBe(200)
+    expect((await get('/jsonapi/menu_items/main?filter[max_depth]=2')).status).toBe(404)
     expect((await get('/router/translate-path?path=%2Fnope')).status).toBe(404)
+  })
+})
+
+describe('what the first review found', () => {
+  const hidden = createDrupal({ ...dump, access: { en: { 'node--page': { hidden: ['field_secret'] }, 'file--file': { forbidden: true } } } }, { baseUrl: 'https://drupal.test' })
+  const read = async (drupal: ReturnType<typeof createDrupal>, path: string) => { const response = await drupal.fetch(`https://drupal.test${path}`); const text = await response.text(); return { status: response.status, body: text.startsWith('<') ? { meta: { html: text } } : JSON.parse(text) as Document } }
+
+  it('keeps a query from reaching the prototype', async () => {
+    expect((await get('/jsonapi/node/page?__proto__[page][limit]=1')).status).toBe(200)
+    expect(({} as { page?: unknown }).page).toBeUndefined()
+    expect(ids((await get('/jsonapi/node/page')).body)).toEqual(['p-1', 'p-2'])
+  })
+
+  it('answers a HEAD with no body, applies init to a Request, and takes a base path with a trailing slash', async () => {
+    const head = await drupal.fetch('https://drupal.test/jsonapi/node/page/p-1', { method: 'HEAD' })
+    expect(head.status).toBe(200)
+    expect(await head.text()).toBe('')
+    const viaRequest = await drupal.fetch(new Request('https://drupal.test/jsonapi/node/page/p-1'), { method: 'HEAD' })
+    expect(await viaRequest.text()).toBe('')
+    const slashed = createDrupal(dump, { baseUrl: 'https://drupal.test', basePath: '/jsonapi/' })
+    expect((await read(slashed, '/jsonapi/node/page/p-1')).status).toBe(200)
+  })
+
+  it('lists an untranslated resource in its default language, and includes a resource once', async () => {
+    expect(ids((await get('/es/jsonapi/node/recipe')).body)).toEqual(['r-1', 'r-2', 'r-3'])
+    expect(((await get('/es/jsonapi/node/recipe')).body.data as Resource[])[0]!.attributes!.title).toBe('Quiche mediterráneo profundo')
+    const { body } = await get('/jsonapi/node/recipe?include=field_related')
+    expect(body.included).toBeUndefined()
+  })
+
+  it('walks no hidden relationship, omits a forbidden target, and refuses the hidden relationship\'s route', async () => {
+    const included = await read(hidden, '/jsonapi/node/page/p-1?include=field_secret')
+    expect(included.status).toBe(200)
+    expect(included.body.included).toBeUndefined()
+    const related = await read(hidden, '/jsonapi/node/page/p-1/field_secret')
+    expect(related.status).toBe(403)
+    expect(related.body.errors![0]!.detail).toBe('The current user is not allowed to view this relationship.')
+    const media = await read(hidden, '/jsonapi/media/image/m-1?include=field_media_image')
+    expect(media.body.included).toBeUndefined()
+    expect(Object.keys((media.body.meta as { omitted: { links: object } }).omitted.links).some((key) => key.startsWith('item--'))).toBe(true)
+  })
+
+  it('refuses extra path segments, a filter on a field the type lacks, and a group named @root', async () => {
+    expect((await get('/jsonapi/node/recipe/r-1/uid/extra')).status).toBe(404)
+    const unknown = await get('/jsonapi/node/page?filter[nope]=1')
+    expect(unknown.status).toBe(400)
+    expect(unknown.body.errors![0]!.detail).toBe('Invalid nested filtering. The field `nope`, given in the path `nope`, does not exist.')
+    expect((await get('/jsonapi/node/page?filter[@root][group][conjunction]=OR')).status).toBe(400)
+  })
+
+  it('compares a string field as text, and negates only a present value', async () => {
+    expect(ids((await get('/jsonapi/node/page?filter[field_code]=1')).body)).toEqual([])
+    expect(ids((await get('/jsonapi/node/page?filter[field_code]=01')).body)).toEqual(['p-1'])
+    expect(ids((await get('/jsonapi/node/recipe?filter[field_cooking_time]=30')).body)).toEqual(['r-1'])
+    expect(ids((await get('/jsonapi/node/page?filter[b][condition][path]=body.value&filter[b][condition][operator]=%3C%3E&filter[b][condition][value]=nope')).body)).toEqual(['p-1'])
+  })
+
+  it('filters on what the user may read, so a hidden field never matches', async () => {
+    const guarded = createDrupal({ ...dump, access: { en: { 'node--page': { hidden: ['field_code'] } } } }, { baseUrl: 'https://drupal.test' })
+    expect(ids((await read(guarded, '/jsonapi/node/page?filter[field_code]=01')).body)).toEqual([])
   })
 })

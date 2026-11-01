@@ -3,7 +3,8 @@ export type Query = Record<string, unknown>
 
 const set = (target: Record<string, unknown>, path: string[], value: string): void => {
   const [head, ...rest] = path
-  if (head === undefined) return
+  // A key that would reach the prototype is dropped, so no request writes into every later one.
+  if (head === undefined || head === '__proto__' || head === 'constructor' || head === 'prototype') return
   // `value[]=a&value[]=b` appends; a repeated key does the same.
   if (!rest.length || (rest.length === 1 && rest[0] === '')) {
     const current = target[head]

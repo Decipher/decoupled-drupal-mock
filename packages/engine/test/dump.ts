@@ -18,12 +18,12 @@ const node = (id: string, bundle: string, nid: number, title: string, extra: Rec
 })
 
 export const pages = [
-  node('p-1', 'page', 1, 'About Umami', { body: { value: '<p>About.</p>', format: 'basic_html' } }),
+  node('p-1', 'page', 1, 'About Umami', { body: { value: '<p>About.</p>', format: 'basic_html' }, field_code: '01' }, { field_secret: { data: { type: 'user--user', id: 'u-1' } } }),
   node('p-2', 'page', 2, 'Contact', { status: false, body: null }),
 ]
 export const recipes = [
   node('r-1', 'recipe', 3, 'Deep mediterranean quiche', { field_cooking_time: 30, field_difficulty: 'medium' }, { field_media_image: { data: { type: 'media--image', id: 'm-1' } }, field_tags: { data: [{ type: 'taxonomy_term--tags', id: 't-1' }, { type: 'taxonomy_term--tags', id: 't-2' }] } }),
-  node('r-2', 'recipe', 4, 'Borscht', { field_cooking_time: 90, field_difficulty: 'hard' }, { field_media_image: { data: null }, field_tags: { data: [] } }),
+  node('r-2', 'recipe', 4, 'Borscht', { field_cooking_time: 90, field_difficulty: 'hard' }, { field_media_image: { data: null }, field_tags: { data: [] }, field_related: { data: { type: 'node--recipe', id: 'r-1' } } }),
   node('r-3', 'recipe', 5, 'Fiery chili', { field_cooking_time: 45, field_difficulty: 'easy' }, { field_media_image: { data: null }, field_tags: { data: [{ type: 'taxonomy_term--tags', id: 't-1' }] } }),
 ]
 export const tags: Resource[] = [

@@ -25,6 +25,7 @@ export const parseFilter = (filter: unknown): Filter => {
       const group = entry.group as Record<string, unknown>
       const conjunction = String(group.conjunction || 'AND').toUpperCase()
       if (conjunction !== 'AND' && conjunction !== 'OR') throw new FilterError(`The conjunction of group "${name}" must be AND or OR.`)
+      if (name === '@root') throw new FilterError('Filter parameter is invalid: "@root" is the root group, not a name a group may take.')
       out.groups[name] = { conjunction, memberOf: String(group.memberOf || '@root') }
       continue
     }
@@ -86,6 +87,9 @@ const phpBool = (value: unknown): boolean => !(value === '' || value === '0' || 
 
 export const compare = (a: unknown, b: unknown): number => {
   if (typeof a === 'boolean') return Number(a) - Number(phpBool(b))
+  // A number field compares as a number, a string field as text: "01" is not 1, as it is not in Drupal's SQL.
+  if (typeof a === 'number') { const n = Number(b); return Number.isNaN(n) ? 1 : a - n }
+  if (typeof a === 'string') return a < String(b) ? -1 : a > String(b) ? 1 : 0
   const x = asNumberOrString(a)
   const y = asNumberOrString(b)
   if (typeof x === 'number' && typeof y === 'number') return x - y
@@ -101,7 +105,8 @@ const matches = (values: unknown[], condition: Condition): boolean => {
     case 'IS NULL': return present.length === 0
     case 'IS NOT NULL': return present.length > 0
     case '=': return present.some((item) => compare(item, value) === 0)
-    case '<>': return !present.some((item) => compare(item, value) === 0)
+    // A negation needs a value to negate: a field with none does not match, as a NULL does not in SQL.
+    case '<>': return present.length > 0 && !present.some((item) => compare(item, value) === 0)
     case '>': return present.some((item) => compare(item, value) > 0)
     case '>=': return present.some((item) => compare(item, value) >= 0)
     case '<': return present.some((item) => compare(item, value) < 0)
@@ -110,20 +115,24 @@ const matches = (values: unknown[], condition: Condition): boolean => {
     case 'CONTAINS': return present.some((item) => String(item).toLowerCase().includes(String(value).toLowerCase()))
     case 'ENDS_WITH': return present.some((item) => String(item).toLowerCase().endsWith(String(value).toLowerCase()))
     case 'IN': return present.some((item) => list(value).some((wanted) => compare(item, wanted) === 0))
-    case 'NOT IN': return !present.some((item) => list(value).some((wanted) => compare(item, wanted) === 0))
+    case 'NOT IN': return present.length > 0 && !present.some((item) => list(value).some((wanted) => compare(item, wanted) === 0))
     case 'BETWEEN': { const [low, high] = list(value); return present.some((item) => compare(item, low) >= 0 && compare(item, high) <= 0) }
-    case 'NOT BETWEEN': { const [low, high] = list(value); return !present.some((item) => compare(item, low) >= 0 && compare(item, high) <= 0) }
+    case 'NOT BETWEEN': { const [low, high] = list(value); return present.length > 0 && !present.some((item) => compare(item, low) >= 0 && compare(item, high) <= 0) }
     default: return false
   }
 }
 
 /** Whether a resource passes the filter's tree of groups and conditions. */
 export const passes = (resource: Resource, filter: Filter, read: Reader): boolean => {
+  const visited = new Set<string>()
   const evaluate = (group: string): boolean => {
+    // A group that names itself, or a cycle, is evaluated once.
+    if (visited.has(group)) return true
+    visited.add(group)
     const conjunction = group === '@root' ? 'AND' : filter.groups[group]?.conjunction || 'AND'
     const results = [
       ...Object.values(filter.conditions).filter((condition) => condition.memberOf === group).map((condition) => matches(read(resource, condition.path.split('.')), condition)),
-      ...Object.entries(filter.groups).filter(([, member]) => member.memberOf === group).map(([name]) => evaluate(name)),
+      ...Object.entries(filter.groups).filter(([name, member]) => member.memberOf === group && name !== group).map(([name]) => evaluate(name)),
     ]
     if (!results.length) return true
     return conjunction === 'AND' ? results.every(Boolean) : results.some(Boolean)
