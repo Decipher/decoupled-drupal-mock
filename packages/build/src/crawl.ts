@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
-import type { Document, Dump, Manifest, Recorded, Resource } from 'decoupled-drupal-mock'
-import { sortedSearch } from 'decoupled-drupal-mock'
+import type { Answer, Document, Dump, Manifest, Recorded, RecordedScenario, Resource, Scenario } from 'decoupled-drupal-mock'
+import { KEPT_HEADERS, resolve, sortedSearch } from 'decoupled-drupal-mock'
 
 export interface CrawlOptions {
   /** The Drupal to crawl, such as `http://127.0.0.1:8888`. */
@@ -28,6 +28,8 @@ export interface CrawlOptions {
   exclude?: (resource: Resource) => boolean
   /** The accounts and consumers the mock signs in, written to the dump. The CLI creates them in the Drupal first. */
   identities?: NonNullable<Dump['identities']>
+  /** Write and sign-in scenarios, run against the Drupal as their accounts and recorded for the engine's replay. */
+  scenarios?: Scenario[]
   /**
    * Reads a resource no user may read through JSON:API, such as a block whose visibility denies every request, so
    * the dump can place it in a collection and report it omitted as Drupal does. The CLI reads it through drush.
@@ -176,9 +178,15 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     // Decoupled Router, for every resource's alias in this language, every node's system path, and the front page.
     const aliases = Object.values(all[langcode]!).flat().map((resource) => (resource.attributes as { path?: { alias?: string | null } }).path?.alias).filter((alias): alias is string => !!alias)
     const nodes = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('node--')).flatMap(([, list]) => list.map((node) => `/node/${String((node.attributes as { drupal_internal__nid?: number }).drupal_internal__nid)}`))
-    const prefixed = [lang || '/', `${lang}/node`, ...aliases.map((alias) => `${lang}${alias}`), ...nodes.map((path) => `${lang}${path}`)]
+    // The pages views give: every enabled page display with a path a client can ask for, such as /recipes.
+    const viewPages = (all[langcode]!['view--view'] || []).flatMap((view) => {
+      const attributes = view.attributes as { status?: boolean, display?: Record<string, { display_plugin?: string, display_options?: { path?: string } }> }
+      if (!attributes.status) return []
+      return Object.values(attributes.display || {}).map((display) => display.display_plugin === 'page' ? display.display_options?.path : undefined).filter((path): path is string => !!path && !path.includes('%') && !path.startsWith('admin/')).map((path) => `/${path}`)
+    })
+    const prefixed = [lang || '/', `${lang}/node`, ...aliases.map((alias) => `${lang}${alias}`), ...nodes.map((path) => `${lang}${path}`), ...viewPages.map((path) => `${lang}${path}`)]
     // The default language answers unprefixed too, as a client asks for `/` or `/node/1`.
-    const unprefixed = langcode === options.defaultLanguage && lang ? ['/', '/node', ...aliases, ...nodes] : []
+    const unprefixed = langcode === options.defaultLanguage && lang ? ['/', '/node', ...aliases, ...nodes, ...viewPages] : []
     const paths = [...new Set([...prefixed, ...unprefixed])]
     log(`${langcode}: ${paths.length} router lookups`)
     for (const path of paths) await record(`/router/translate-path?path=${encodeURIComponent(path)}`)
@@ -220,6 +228,54 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     log(`${entries.length} oracle entries`)
   }
   write('recorded/routes.json.gz', recorded)
+
+  // The scenarios: each step as its account, every answer recorded, and what they created deleted afterwards.
+  if (options.scenarios?.length && options.identities) {
+    const identities = options.identities
+    const tokenFor = async (name: string): Promise<string | undefined> => {
+      if (name === 'anonymous') return undefined
+      const consumer = identities.consumers.find((candidate) => candidate.user === name && candidate.grants.includes('client_credentials'))
+      if (!consumer) throw new Error(`No consumer with the client credentials grant acts as "${name}".`)
+      const scope = Object.keys(consumer.scopes || {})[0]
+      const response = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'client_credentials', client_id: consumer.clientId, ...(consumer.secret ? { client_secret: consumer.secret } : {}), ...(scope ? { scope } : {}) }) })
+      const granted = await response.json() as { access_token?: string }
+      if (!granted.access_token) throw new Error(`No token for "${name}".`)
+      return granted.access_token
+    }
+    const recorded: RecordedScenario[] = []
+    const created: string[] = []
+    const resourceId = (type: string, index: number) => all[options.defaultLanguage]?.[type]?.[index]?.id
+    for (const scenario of options.scenarios) {
+      const answers: Answer[] = []
+      const tokens = new Map<string, string | undefined>()
+      for (const step of scenario.steps) {
+        const as = step.as || scenario.as
+        if (!tokens.has(as)) tokens.set(as, await tokenFor(as))
+        const resolved = resolve(step, answers, resourceId)
+        const headers: Record<string, string> = { accept: 'application/vnd.api+json, application/json;q=0.9, */*;q=0.8' }
+        const bearer = resolved.bearer ?? tokens.get(as)
+        if (bearer) headers.authorization = `Bearer ${bearer}`
+        let body: string | undefined
+        if (resolved.form) { headers['content-type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(resolved.form).toString() }
+        else if (resolved.json !== undefined) { headers['content-type'] = 'application/json'; body = JSON.stringify(resolved.json) }
+        else if (resolved.body !== undefined) { headers['content-type'] = 'application/vnd.api+json'; body = JSON.stringify(resolved.body) }
+        const response = await fetch(`${base}${resolved.path}`, { method: resolved.method, headers, ...(body !== undefined ? { body } : {}), redirect: 'manual' })
+        const text = await response.text()
+        const type = response.headers.get('content-type') || ''
+        const answer: Answer = { status: response.status, headers: Object.fromEntries(KEPT_HEADERS.map((name) => [name, response.headers.get(name)]).filter(([, value]) => value).map(([name, value]) => [name, name === 'content-type' ? String(value).split(';')[0]!.trim() : String(value)])), body: type.includes('json') && text ? JSON.parse(text) : text }
+        answers.push(answer)
+        if (response.status === 201 && answer.headers.location) created.push(answer.headers.location.replace(base, '').split('?')[0]!)
+        if (response.status === 204 && resolved.method === 'DELETE') created.splice(created.indexOf(resolved.path), created.includes(resolved.path) ? 1 : 0)
+      }
+      recorded.push({ ...scenario, answers })
+      log(`scenario "${scenario.name}": ${answers.map((answer) => answer.status).join(' ')}`)
+    }
+    for (const path of created) {
+      const response = await fetch(`${base}${path}`, { method: 'DELETE', headers: { ...authorized() } })
+      log(`  cleaned up ${path}: ${response.status}`)
+    }
+    write('oracle/writes.json.gz', recorded)
+  }
 
   if (options.identities) {
     // Simple OAuth 6 ships the password grant as its own module: a grant the Drupal refuses as not installed is recorded as such.

@@ -125,6 +125,8 @@ export class Identity {
     const answer = (token: Token) => ({ status: 200, body: { token_type: 'Bearer', expires_in: 300, access_token: token.access, ...(token.refresh ? { refresh_token: token.refresh } : {}) } })
     switch (grantType) {
       case 'client_credentials': {
+        // Simple OAuth needs a scope, the request's or one of the consumer's.
+        if (!scopes.length && !Object.keys(consumer.scopes || {}).length) return fail(400, 'invalid_request', 'The request is missing a required parameter, includes an invalid parameter value, includes a parameter more than once, or is otherwise malformed.', 'Check the `scope` parameter')
         const name = consumer.user || this.identities.accounts[0]?.name
         if (!name || !this.userNamed(name)) return fail(401, 'invalid_client', 'Client authentication failed')
         return answer(this.issue({ clientId, name, scopes: scopes.length ? scopes : undefined, refresh: false }))
@@ -186,6 +188,7 @@ export class Identity {
       preferred_username: attributes.name,
       ...(attributes.mail ? { email: attributes.mail, email_verified: true } : {}),
       profile: `${baseUrl}${prefix}/user/${session.uid}`,
+
       locale: attributes.preferred_langcode || attributes.langcode || 'en',
       zoneinfo: attributes.timezone || 'UTC',
       updated_at: Math.floor(new Date(String(attributes.changed || 0)).getTime() / 1000) || 0,

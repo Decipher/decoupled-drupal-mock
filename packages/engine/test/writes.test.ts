@@ -116,7 +116,9 @@ describe('writes', () => {
     const recipe = await read(await d.fetch(`${BASE}/jsonapi/node/recipe`, { method: 'POST', headers: { ...JSON_API, ...bearer(admin.access) }, body: JSON.stringify({ data: { type: 'node--recipe', attributes: { title: 'Soup', field_cooking_time: 20 } } }) }))
     const resource = recipe.data as Resource
     expect(resource.attributes).toMatchObject({ status: false, moderation_state: 'draft', field_cooking_time: 20 })
-    expect(resource.relationships!.field_tags).toEqual({ data: [] })
+    // Every relationship of a created resource carries its links, as a stored one does.
+    expect(resource.relationships!.field_tags).toEqual({ data: [], links: { related: { href: expect.stringContaining('/jsonapi/node/recipe/') }, self: { href: expect.stringContaining('/relationships/field_tags') } } })
+    expect(resource.relationships!.node_type!.data).toMatchObject({ type: 'node_type--node_type', id: 'nt-recipe', meta: { drupal_internal__target_id: 'recipe' } })
     expect(resource.links!['working-copy']!.href).toContain('resourceVersion=rel%3Aworking-copy')
     expect((await d.fetch(`${BASE}/jsonapi/block/block`, { method: 'POST', headers: { ...JSON_API, ...bearer(admin.access) }, body: '{}' })).status).toBe(405)
   })
@@ -158,7 +160,10 @@ describe('writes', () => {
     expect(relationship.links!.self!.href).toBe(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`)
     expect((await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`, { method: 'DELETE', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: [{ type: 'taxonomy_term--tags', id: 't-1' }] }) })).status).toBe(204)
     expect((await read(await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`))).data).toEqual([{ type: 'taxonomy_term--tags', id: 't-2' }])
-    expect((await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`, { method: 'POST', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: [{ type: 'taxonomy_term--tags', id: 't-1' }] }) })).status).toBe(204)
+    // An add answers 200 with the relationship, as Drupal does; a replacement and a removal answer 204.
+    const added = await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`, { method: 'POST', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: [{ type: 'taxonomy_term--tags', id: 't-1' }] }) })
+    expect(added.status).toBe(200)
+    expect((await read(added)).data).toHaveLength(2)
     expect((await read(await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`))).data).toHaveLength(2)
     expect((await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`, { method: 'PATCH', headers: JSON_API, body: '{"data":[]}' })).status).toBe(403)
   })

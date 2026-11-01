@@ -14,8 +14,8 @@ export const roles: Resource[] = [
 export const user: Resource = { type: 'user--user', id: 'u-1', attributes: { display_name: 'Umami', name: 'umami', mail: 'umami@example.com', drupal_internal__uid: 2, changed: '2026-01-01T00:00:00+00:00', timezone: 'UTC' }, relationships: { roles: { data: [{ type: 'user_role--user_role', id: 'role-editor' }] } } }
 export const admin: Resource = { type: 'user--user', id: 'u-admin', attributes: { display_name: 'admin', name: 'admin', mail: 'admin@example.com', drupal_internal__uid: 1, changed: '2026-01-01T00:00:00+00:00' }, relationships: { roles: { data: [{ type: 'user_role--user_role', id: 'role-admin' }] } } }
 export const nodeTypes: Resource[] = [
-  { type: 'node_type--node_type', id: 'nt-page', attributes: { drupal_internal__id: 'page', name: 'Basic page' } },
-  { type: 'node_type--node_type', id: 'nt-recipe', attributes: { drupal_internal__id: 'recipe', name: 'Recipe' } },
+  { type: 'node_type--node_type', id: 'nt-page', attributes: { drupal_internal__type: 'page', name: 'Basic page' } },
+  { type: 'node_type--node_type', id: 'nt-recipe', attributes: { drupal_internal__type: 'recipe', name: 'Recipe' } },
 ]
 export const fieldConfigs: Resource[] = [
   { type: 'field_config--field_config', id: 'fc-body', attributes: { field_name: 'body', entity_type: 'node', bundle: 'page', field_type: 'text_with_summary', required: false } },

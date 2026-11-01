@@ -1,0 +1,392 @@
+[
+  {
+    "name": "an author creates a page, reads it back, updates it and deletes it",
+    "as": "author",
+    "steps": [
+      {
+        "method": "POST",
+        "path": "/jsonapi/node/page",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "attributes": {
+              "title": "Mock page"
+            }
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/jsonapi/node/page/{1.data.id}"
+      },
+      {
+        "method": "PATCH",
+        "path": "/jsonapi/node/page/{1.data.id}",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "id": "{1.data.id}",
+            "attributes": {
+              "title": "Mock page, renamed"
+            }
+          }
+        }
+      },
+      {
+        "method": "PATCH",
+        "path": "/jsonapi/node/page/{1.data.id}",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "id": "00000000-0000-4000-8000-000000000000",
+            "attributes": {
+              "title": "x"
+            }
+          }
+        }
+      },
+      {
+        "method": "PATCH",
+        "path": "/jsonapi/node/page/{1.data.id}",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "id": "{1.data.id}",
+            "attributes": {
+              "drupal_internal__nid": 1
+            }
+          }
+        }
+      },
+      {
+        "method": "PATCH",
+        "path": "/jsonapi/node/page/{1.data.id}",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "id": "{1.data.id}",
+            "attributes": {
+              "nope": 1
+            }
+          }
+        }
+      },
+      {
+        "method": "PATCH",
+        "path": "/jsonapi/node/page/{1.data.id}",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "id": "{1.data.id}",
+            "attributes": {
+              "title": null
+            }
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/jsonapi/node/page/{1.data.id}/relationships/uid"
+      },
+      {
+        "method": "DELETE",
+        "path": "/jsonapi/node/page/{1.data.id}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/jsonapi/node/page/{1.data.id}"
+      },
+      {
+        "method": "GET",
+        "path": "/jsonapi/node/page/{1.data.id}"
+      }
+    ]
+  },
+  {
+    "name": "an author fails validation, and the visitor is refused",
+    "as": "author",
+    "steps": [
+      {
+        "method": "POST",
+        "path": "/jsonapi/node/page",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "attributes": {
+              "body": {
+                "value": "No title."
+              }
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/jsonapi/taxonomy_term/tags",
+        "body": {
+          "data": {
+            "type": "taxonomy_term--tags",
+            "attributes": {}
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/jsonapi/block/block",
+        "body": {
+          "data": {
+            "type": "block--block",
+            "attributes": {}
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/jsonapi/node/page",
+        "as": "anonymous",
+        "body": {
+          "data": {
+            "type": "node--page",
+            "attributes": {
+              "title": "A visitor's page"
+            }
+          }
+        }
+      },
+      {
+        "method": "PATCH",
+        "path": "/jsonapi/node/recipe/{node--recipe:0}",
+        "as": "anonymous",
+        "body": {
+          "data": {
+            "type": "node--recipe",
+            "id": "{node--recipe:0}",
+            "attributes": {
+              "title": "x"
+            }
+          }
+        }
+      },
+      {
+        "method": "DELETE",
+        "path": "/jsonapi/node/recipe/{node--recipe:0}",
+        "as": "anonymous"
+      }
+    ]
+  },
+  {
+    "name": "an author creates an article with tags, rewrites its relationship, and the editor publishes it",
+    "as": "author",
+    "steps": [
+      {
+        "method": "POST",
+        "path": "/jsonapi/node/article",
+        "body": {
+          "data": {
+            "type": "node--article",
+            "attributes": {
+              "title": "Mock article"
+            },
+            "relationships": {
+              "field_tags": {
+                "data": [
+                  {
+                    "type": "taxonomy_term--tags",
+                    "id": "{taxonomy_term--tags:0}"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/jsonapi/node/article/{1.data.id}/relationships/field_tags"
+      },
+      {
+        "method": "POST",
+        "path": "/jsonapi/node/article/{1.data.id}/relationships/field_tags",
+        "body": {
+          "data": [
+            {
+              "type": "taxonomy_term--tags",
+              "id": "{taxonomy_term--tags:1}"
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/jsonapi/node/article/{1.data.id}/relationships/field_tags"
+      },
+      {
+        "method": "DELETE",
+        "path": "/jsonapi/node/article/{1.data.id}/relationships/field_tags",
+        "body": {
+          "data": [
+            {
+              "type": "taxonomy_term--tags",
+              "id": "{taxonomy_term--tags:0}"
+            }
+          ]
+        }
+      },
+      {
+        "method": "PATCH",
+        "path": "/jsonapi/node/article/{1.data.id}/relationships/field_tags",
+        "body": {
+          "data": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/jsonapi/node/article/{1.data.id}?include=field_tags"
+      },
+      {
+        "method": "PATCH",
+        "path": "/jsonapi/node/article/{1.data.id}",
+        "body": {
+          "data": {
+            "type": "node--article",
+            "id": "{1.data.id}",
+            "attributes": {
+              "moderation_state": "published"
+            }
+          }
+        },
+        "as": "editor"
+      },
+      {
+        "method": "DELETE",
+        "path": "/jsonapi/node/article/{1.data.id}"
+      }
+    ]
+  },
+  {
+    "name": "the editor may not create, and a reader may do nothing",
+    "as": "editor",
+    "steps": [
+      {
+        "method": "POST",
+        "path": "/jsonapi/node/article",
+        "body": {
+          "data": {
+            "type": "node--article",
+            "attributes": {
+              "title": "The editor's article"
+            }
+          }
+        }
+      },
+      {
+        "method": "PATCH",
+        "path": "/jsonapi/node/recipe/{node--recipe:0}",
+        "as": "reader",
+        "body": {
+          "data": {
+            "type": "node--recipe",
+            "id": "{node--recipe:0}",
+            "attributes": {
+              "title": "x"
+            }
+          }
+        }
+      },
+      {
+        "method": "DELETE",
+        "path": "/jsonapi/node/recipe/{node--recipe:0}",
+        "as": "reader"
+      }
+    ]
+  },
+  {
+    "name": "sign-in through Simple OAuth",
+    "as": "anonymous",
+    "steps": [
+      {
+        "method": "POST",
+        "path": "/oauth/token",
+        "form": {
+          "grant_type": "client_credentials",
+          "client_id": "decoupled-drupal-mock",
+          "client_secret": "decoupled-drupal-mock",
+          "scope": "editor"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/oauth/userinfo",
+        "bearer": "{1.access_token}"
+      },
+      {
+        "method": "POST",
+        "path": "/oauth/token",
+        "form": {
+          "grant_type": "client_credentials",
+          "client_id": "decoupled-drupal-mock",
+          "client_secret": "wrong"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/oauth/token",
+        "form": {
+          "grant_type": "client_credentials",
+          "client_id": "nobody"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/oauth/token",
+        "form": {
+          "grant_type": "client_credentials",
+          "client_id": "decoupled-drupal-mock",
+          "client_secret": "decoupled-drupal-mock",
+          "scope": "nope"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/oauth/token",
+        "form": {
+          "grant_type": "implicit",
+          "client_id": "decoupled-drupal-mock",
+          "client_secret": "decoupled-drupal-mock"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/oauth/token",
+        "form": {
+          "grant_type": "password",
+          "client_id": "decoupled-drupal-mock",
+          "client_secret": "decoupled-drupal-mock",
+          "username": "editor",
+          "password": "editor"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/oauth/userinfo"
+      },
+      {
+        "method": "GET",
+        "path": "/jsonapi/node/page",
+        "bearer": "garbage"
+      },
+      {
+        "method": "POST",
+        "path": "/user/login?_format=json",
+        "json": {
+          "name": "editor",
+          "pass": "wrong"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/session/token"
+      }
+    ]
+  }
+]

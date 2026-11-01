@@ -25,6 +25,8 @@ export class Writes {
     const storages = new Map(this.config('field_storage_config--field_storage_config').map((storage) => [`${attributesOf(storage).entity_type}.${attributesOf(storage).field_name}`, storage]))
     return this.config('field_config--field_config')
       .filter((field) => attributesOf(field).entity_type === entityType && attributesOf(field).bundle === bundle)
+      // Layout Builder's section field is internal: JSON:API never shows it.
+      .filter((field) => attributesOf(field).field_type !== 'layout_section' && attributesOf(field).field_name !== 'layout_builder__layout')
       .map((field) => {
         const attributes = attributesOf(field)
         const storage = attributesOf(storages.get(`${entityType}.${attributes.field_name}`))
@@ -73,8 +75,12 @@ export class Writes {
     if (admin) return { allowed: true }
     const [entityType, bundle] = resource.type.split('--') as [string, string]
     let allowed = false
+    let detail = 'The current user is not allowed to PATCH the selected resource.'
     switch (entityType) {
-      case 'node': allowed = has('bypass node access') || has(`edit any ${bundle} content`) || (has(`edit own ${bundle} content`) && this.owns(session, resource)); break
+      case 'node':
+        allowed = has('bypass node access') || has(`edit any ${bundle} content`) || (has(`edit own ${bundle} content`) && this.owns(session, resource))
+        detail = `The '${this.owns(session, resource) ? `edit own ${bundle} content` : `edit any ${bundle} content`}' permission is required.`
+        break
       case 'taxonomy_term': allowed = has('administer taxonomy') || has(`edit terms in ${bundle}`); break
       case 'media': allowed = has('administer media') || has('update any media') || (has('update media') && this.owns(session, resource)); break
       case 'block_content': allowed = has('administer block content') || has(`edit any ${bundle} block content`); break
@@ -89,22 +95,30 @@ export class Writes {
       const transitions = Object.keys(((attributesOf(workflow).type_settings as { transitions?: Record<string, unknown> } | undefined)?.transitions) || {})
       if (!transitions.some((transition) => has(`use ${id} transition ${transition}`))) return { allowed: false, detail: 'No valid transitions exist for given account.' }
     }
-    if (!allowed) return { allowed: false, detail: 'The current user is not allowed to PATCH the selected resource.' }
+    if (!allowed) return { allowed: false, detail }
     return { allowed: true }
   }
 
-  canDelete(session: Session, resource: Resource): boolean {
+  /** Whether the session may delete a resource, and the reason Drupal gives when it may not. */
+  canDelete(session: Session, resource: Resource): { allowed: true } | { allowed: false, detail: string } {
     const { admin, has } = this.identity.permissions(session)
-    if (admin) return true
+    if (admin) return { allowed: true }
     const [entityType, bundle] = resource.type.split('--') as [string, string]
-    switch (entityType) {
-      case 'node': return has('bypass node access') || has(`delete any ${bundle} content`) || (has(`delete own ${bundle} content`) && this.owns(session, resource))
-      case 'taxonomy_term': return has('administer taxonomy') || has(`delete terms in ${bundle}`)
-      case 'media': return has('administer media') || has('delete any media') || (has('delete media') && this.owns(session, resource))
-      case 'block_content': return has('administer block content') || has(`delete any ${bundle} block content`)
-      case 'menu_link_content': return has('administer menu')
-      default: return false
+    if (entityType === 'node') {
+      const allowed = has('bypass node access') || has(`delete any ${bundle} content`) || (has(`delete own ${bundle} content`) && this.owns(session, resource))
+      // Node access names the permission the user lacks: the own one for the owner, the any one for the rest.
+      return allowed ? { allowed: true } : { allowed: false, detail: `The '${this.owns(session, resource) ? `delete own ${bundle} content` : `delete any ${bundle} content`}' permission is required.` }
     }
+    const allowed = ((): boolean => {
+      switch (entityType) {
+        case 'taxonomy_term': return has('administer taxonomy') || has(`delete terms in ${bundle}`)
+        case 'media': return has('administer media') || has('delete any media') || (has('delete media') && this.owns(session, resource))
+        case 'block_content': return has('administer block content') || has(`delete any ${bundle} block content`)
+        case 'menu_link_content': return has('administer menu')
+        default: return false
+      }
+    })()
+    return allowed ? { allowed: true } : { allowed: false, detail: 'The current user is not allowed to DELETE the selected resource.' }
   }
 
   /** The 422 Drupal answers for a required field left empty, the first one. */
@@ -139,11 +153,20 @@ export class Writes {
     return undefined
   }
 
+  /** A base field's default for a bundle, from `base_field_override`, such as an article's `promote`. */
+  private baseDefault(entityType: string, bundle: string, field: string): unknown {
+    const override = this.config('base_field_override--base_field_override').find((candidate) => attributesOf(candidate).entity_type === entityType && attributesOf(candidate).bundle === bundle && attributesOf(candidate).field_name === field)
+    const values = attributesOf(override).default_value as Array<{ value?: unknown }> | undefined
+    return values?.[0]?.value
+  }
+
   /** The bundle's config entity, such as `node_type--node_type` for a node. */
   private bundleEntity(entityType: string, bundle: string): Resource | undefined {
     const typeOf: Record<string, string> = { node: 'node_type--node_type', taxonomy_term: 'taxonomy_vocabulary--taxonomy_vocabulary', media: 'media_type--media_type', block_content: 'block_content_type--block_content_type', comment: 'comment_type--comment_type' }
     const type = typeOf[entityType]
-    return type ? this.config(type).find((candidate) => attributesOf(candidate).drupal_internal__id === bundle) : undefined
+    // A node type's machine name is `drupal_internal__type`; the other bundle types keep `drupal_internal__id`.
+    const key = entityType === 'node' ? 'drupal_internal__type' : 'drupal_internal__id'
+    return type ? this.config(type).find((candidate) => attributesOf(candidate)[key] === bundle) : undefined
   }
 
   /** A new resource of a bundle, as Drupal writes one from a POST. */
@@ -164,7 +187,7 @@ export class Writes {
       case 'node': {
         const nid = this.store.nextId(this.langcode, 'node', 'drupal_internal__nid')
         const vid = this.store.nextId(this.langcode, 'node', 'drupal_internal__vid')
-        Object.assign(base, { drupal_internal__nid: nid, drupal_internal__vid: vid, langcode: this.langcode, revision_timestamp: stamp, revision_log: null, status: published, title: attributes.title, created: stamp, changed: stamp, promote: attributes.promote ?? !!(attributesOf(bundleEntity).promote ?? false), sticky: false, default_langcode: true, revision_translation_affected: true, ...(moderation ? { moderation_state: moderation } : {}), path: { alias: null, pid: null, langcode: this.langcode }, content_translation_source: 'und', content_translation_outdated: false })
+        Object.assign(base, { drupal_internal__nid: nid, drupal_internal__vid: vid, langcode: this.langcode, revision_timestamp: stamp, revision_log: null, status: published, title: attributes.title, created: stamp, changed: stamp, promote: attributes.promote ?? !!(this.baseDefault('node', bundle, 'promote') ?? false), sticky: attributes.sticky ?? !!(this.baseDefault('node', bundle, 'sticky') ?? false), default_langcode: true, revision_translation_affected: true, ...(moderation ? { moderation_state: moderation } : {}), path: { alias: null, pid: null, langcode: this.langcode }, content_translation_source: 'und', content_translation_outdated: false })
         bundleRelationship('node_type')
         rels.revision_uid = { data: user }
         rels.uid = { data: user }
@@ -207,7 +230,27 @@ export class Writes {
       else base[field.name] = field.cardinality === 1 ? null : []
     }
     for (const [name, value] of Object.entries(attributes)) if (!(name in rels)) base[name] = value
-    for (const [name, value] of Object.entries(relationships)) if (value) rels[name] = { data: value.data }
+    for (const [name, value] of Object.entries(relationships)) if (value) rels[name] = { data: this.withMeta(value.data) }
     return { type, id: this.identity.uuid(), attributes: base, relationships: rels }
+  }
+
+  /** Identifiers with `meta.drupal_internal__target_id`, as Drupal writes a relationship. */
+  withMeta<T extends ResourceIdentifier | ResourceIdentifier[] | null>(data: T): T {
+    const one = (identifier: ResourceIdentifier): ResourceIdentifier => {
+      if (identifier.meta?.drupal_internal__target_id !== undefined) return identifier
+      const target = (this.store.get(this.langcode, identifier.type) || []).find((candidate) => candidate.id === identifier.id)
+      const attributes = attributesOf(target)
+      const internal = attributes.drupal_internal__nid ?? attributes.drupal_internal__tid ?? attributes.drupal_internal__uid ?? attributes.drupal_internal__mid ?? attributes.drupal_internal__fid ?? attributes.drupal_internal__id
+      return internal === undefined ? identifier : { ...identifier, meta: { ...(identifier.meta || {}), drupal_internal__target_id: internal } }
+    }
+    if (Array.isArray(data)) return data.map(one) as T
+    return (data ? one(data) : data) as T
+  }
+
+  /** Content moderation sets the published flag from the state a PATCH moves to. */
+  publishedFor(entityType: string, bundle: string, state: string): boolean | undefined {
+    const workflow = this.workflow(entityType, bundle)
+    const states = (attributesOf(workflow).type_settings as { states?: Record<string, { published?: boolean }> } | undefined)?.states
+    return states?.[state]?.published
   }
 }
