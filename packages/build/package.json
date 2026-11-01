@@ -9,5 +9,6 @@
   },
   "dependencies": {
     "decoupled-drupal-mock": "workspace:^"
-  }
+  },
+  "license": "GPL-2.0-or-later"
 }
