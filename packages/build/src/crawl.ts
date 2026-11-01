@@ -90,6 +90,8 @@ export const passwordGrantInstalled = (status: number, text: string): boolean =>
 }
 
 export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
+  // The engine cannot answer a schema without its mapping, and finding that out after the crawl wastes the crawl.
+  if (options.graphql && !options.graphql.meta) throw new Error('A GraphQL build needs the schema\'s mapping: set `drush` in the config, or `graphql.meta`.')
   const base = options.baseUrl.replace(/\/+$/, '')
   const origin = (options.origin || PLACEHOLDER).replace(/\/+$/, '')
   const log = options.log || ((line: string) => console.log(line))

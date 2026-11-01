@@ -403,9 +403,27 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
     if (method.toUpperCase() === 'GET') {
       request = { query: parsed.searchParams.get('query') || '', variables: parsed.searchParams.get('variables'), operationName: parsed.searchParams.get('operationName') }
     } else {
-      try { request = JSON.parse(requestBody || '{}') as typeof request } catch { return { status: 400, headers, body: { errors: [{ message: 'GraphQL Request must include at least one of those two parameters: "query" or "queryId"', extensions: { category: 'request' } }] } } }
+      const missing = { errors: [{ message: 'GraphQL Request must include at least one of those two parameters: "query" or "queryId"', extensions: { category: 'request' } }] }
+      let given: unknown
+      try { given = JSON.parse(requestBody || '{}') } catch { return { status: 400, headers, body: missing } }
+      // As Drupal answers: a batch is not something it takes, and a body of `null` asks for nothing.
+      if (Array.isArray(given)) return { status: 500, headers: { 'content-type': 'text/plain; charset=UTF-8' }, body: 'The website encountered an unexpected error. Try again later.' }
+      if (given === null || typeof given !== 'object') return { status: 200, headers, body: missing }
+      request = given as typeof request
     }
-    const variables = typeof request.variables === 'string' ? (JSON.parse(request.variables || '{}') as Record<string, unknown>) : (request.variables || {})
+    let variables: Record<string, unknown> = {}
+    if (typeof request.variables === 'string') {
+      try {
+        const decoded = JSON.parse(request.variables || '{}') as unknown
+        if (decoded && typeof decoded === 'object' && !Array.isArray(decoded)) variables = decoded as Record<string, unknown>
+        else throw new SyntaxError('not an object')
+      } catch {
+        // Drupal runs a GET without variables it cannot read, and refuses them in a POST.
+        if (method.toUpperCase() !== 'GET') return { status: 200, headers, body: { errors: [{ message: `GraphQL Request parameter "variables" must be object or JSON string parsed to object, but got ${JSON.stringify(request.variables)}`, extensions: { category: 'request' } }] } }
+      }
+    } else if (request.variables) {
+      variables = request.variables
+    }
     let document
     try {
       document = parse(request.query || '')

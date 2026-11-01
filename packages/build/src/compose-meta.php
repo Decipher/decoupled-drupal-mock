@@ -27,7 +27,7 @@ foreach ($settings->get('entity_config.menu') ?: [] as $menu => $cfg) {
     $override = \Drupal::languageManager()->getLanguageConfigOverride($langcode, 'system.menu.' . $menu)->get('label');
     $labels[$langcode] = $override ?: \Drupal::config('system.menu.' . $menu)->get('label');
   }
-  $out['menus'][$menu] = ['enum' => strtoupper(preg_replace('/[^a-z0-9]/i', '', $menu)), 'labels' => $labels];
+  $out['menus'][$menu] = ['enum' => strtoupper(preg_replace('/[^a-z0-9]/i', '_', $menu)), 'labels' => $labels];
 }
 foreach ($languages as $langcode) {
   foreach ($languages as $other) {

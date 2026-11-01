@@ -114,7 +114,7 @@
     "files/borscht-with-pork-ribs-umami.jpg": "71e70b275690211d92b52ca514529fb58bdeeb76c46b3da683d52f611e366023",
     "oracle/writes.json.gz": "aef3ce8eed311773e64c63c3a218d24c5c5fc4a4c6b03785e5e9fa53362ad5d3",
     "graphql/schema.graphql": "a9bd8f1c6d67d62685531708b83d3404e79820c2fab935f1e880ad66ba4afccb",
-    "graphql/compose.json": "9150c6d2d680fab0e824270b921c944bbd5dcefecc4eb38ed9057d5178adb4c9",
+    "graphql/compose.json": "202b84090087cf6600ea2e6f66b4d26c8c94844b035a2a0bb1e1b544a04a9c35",
     "graphql/oracle.json.gz": "156a817f5221dfb15f4ae189a42bf641b12023710b5984b567702558b846ae50",
     "identities.json": "20e3e8469eecb74c8d14df1840e199991b20bf746d229373b97a8b42be6a8d96"
   }

@@ -52,6 +52,21 @@ describe.skipIf(!available)('the GraphQL endpoint as a transport', () => {
     }
   })
 
+  it('takes the menu enum Drupal\'s schema declares for a hyphenated menu', () => {
+    const drupal = createDrupal(dump!, { baseUrl: dump!.manifest.origin })
+    const got = drupal.handle('POST', `${dump!.manifest.origin}/graphql`, { 'content-type': 'application/json' }, JSON.stringify({ query: '{ menu(name: NAVIGATION_USER_LINKS) { name } }' }))
+    expect(got.body).toEqual({ data: { menu: { name: 'Navigation user links' } } })
+  })
+
+  it('answers a malformed request as Drupal does, and never throws', () => {
+    const drupal = createDrupal(dump!, { baseUrl: dump!.manifest.origin })
+    const post = (body: string) => drupal.handle('POST', `${dump!.manifest.origin}/graphql`, { 'content-type': 'application/json' }, body)
+    expect(post('null')).toMatchObject({ status: 200, body: { errors: [{ extensions: { category: 'request' } }] } })
+    expect(post('[1]').status).toBe(500)
+    expect(post('{"query":"{ info { version } }","variables":"{"}').body).toEqual({ errors: [{ message: 'GraphQL Request parameter "variables" must be object or JSON string parsed to object, but got "{"', extensions: { category: 'request' } }] })
+    expect(drupal.handle('GET', `${dump!.manifest.origin}/graphql?query=${encodeURIComponent('{ info { version } }')}&variables=%7B`).body).toEqual({ data: { info: { version: '1' } } })
+  })
+
   it('refuses a visitor whose role lacks the permission, as Drupal does', () => {
     const permission = 'execute graphql_compose_server arbitrary graphql requests'
     const roles = (dump!.resources[dump!.manifest.defaultLanguage]!['user_role--user_role'] || []).map((role): Resource => {
