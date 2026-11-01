@@ -2368,6 +2368,8 @@ __metadata:
   resolution: "decoupled-drupal-mock@workspace:packages/engine"
   dependencies:
     typescript: "npm:^5.9.0"
+  bin:
+    decoupled-drupal-mock: ./dist/cli.js
   languageName: unknown
   linkType: soft
 
