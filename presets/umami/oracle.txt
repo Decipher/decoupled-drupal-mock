@@ -140,3 +140,13 @@ en/jsonapi
 /en/jsonapi/block/block/{block--block:0}?fields%5Bblock--block%5D=plugin%2Cregion%2Csettings%2Ctheme
 /en/jsonapi/view/view/{view--view:0}
 /en/jsonapi/node/recipe/00000000-0000-4000-8000-000000000000
+/es/jsonapi
+/es/jsonapi/node/article?filter%5Bstatus%5D=1&page%5Blimit%5D=2&sort=title
+/es/jsonapi/menu_items/main
+/es/jsonapi/views/recipes/page_1
+/router/translate-path?path=/es/recipes
+/router/translate-path?path=/es/recipes/borscht-con-costillas-de-cerdo
+/es/system/menu/main/linkset
+/en/system/menu/main/linkset
+/en/jsonapi/decoupled/settings
+/es/jsonapi/decoupled/settings
