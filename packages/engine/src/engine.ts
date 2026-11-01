@@ -352,13 +352,16 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const sort = typeof query.sort === 'string' ? query.sort.split(',').map((item) => item.trim()).filter(Boolean) : []
     if (sort.length) {
       const keys = sort.map((item) => ({ path: item.replace(/^-/, '').split('.'), direction: item.startsWith('-') ? -1 : 1 }))
-      const sortReader = read(dump.manifest.defaultLanguage)
-      const sortBase = (resource: Resource): Resource => find(dump.manifest.defaultLanguage, resource) || resource
+      // Drupal's entity query groups a node's translations: an ascending sort reads the lowest value of any of them, a
+      // descending one the highest, whatever language the list is in.
+      const sortValue = (resource: Resource, path: string[], direction: number): unknown => {
+        const values = Object.keys(dump.resources).map((code) => read(code)(find(code, resource) || resource, path)[0]).filter((value) => value !== undefined && value !== null)
+        return values.reduce((best: unknown, value) => (best === undefined || compare(value, best) * direction < 0 ? value : best), undefined)
+      }
       matched = [...matched].sort((a, b) => {
         for (const { path, direction } of keys) {
-          // Drupal sorts on the default language's values, whatever language the list is in.
-          const x = sortReader(sortBase(a), path)[0]
-          const y = sortReader(sortBase(b), path)[0]
+          const x = sortValue(a, path, direction)
+          const y = sortValue(b, path, direction)
           const order = x === y ? 0 : x === undefined || x === null ? -1 : y === undefined || y === null ? 1 : compare(x, y)
           if (order) return order * direction
         }

@@ -205,6 +205,22 @@ describe('a sort in another language', () => {
     const response = await multilingual.fetch('https://drupal.test/es/jsonapi/node/recipe?sort=title')
     const titles = ((await response.json()) as { data: Array<{ id: string }> }).data.map((recipe) => recipe.id)
     expect(titles).toEqual(['r-2', 'r-1', 'r-3'])
+
+describe('a sort over translations', () => {
+  const titles = ['Zebra', 'Yak', 'Aardvark']
+  const translated = dump.resources.en!['node--recipe']!.map((recipe, index) => ({ ...recipe, attributes: { ...recipe.attributes, title: titles[index] } }))
+  const multilingual = createDrupal({ ...dump, resources: { ...dump.resources, es: { ...dump.resources.en, 'node--recipe': translated } } }, { baseUrl: 'https://drupal.test' })
+  const ids = async (path: string) => ((await (await multilingual.fetch(`https://drupal.test${path}`)).json()) as { data: Array<{ id: string }> }).data.map((recipe) => recipe.id)
+
+  // English: Deep mediterranean quiche, Borscht, Fiery chili. Spanish: Zebra, Yak, Aardvark.
+  it('ascending, reads the lowest value of any translation, in every language', async () => {
+    expect(await ids('/jsonapi/node/recipe?sort=title')).toEqual(['r-3', 'r-2', 'r-1'])
+    expect(await ids('/es/jsonapi/node/recipe?sort=title')).toEqual(['r-3', 'r-2', 'r-1'])
+  })
+
+  it('descending, reads the highest', async () => {
+    expect(await ids('/jsonapi/node/recipe?sort=-title')).toEqual(['r-1', 'r-2', 'r-3'])
+    expect(await ids('/es/jsonapi/node/recipe?sort=-title')).toEqual(['r-1', 'r-2', 'r-3'])
   })
 })
 
