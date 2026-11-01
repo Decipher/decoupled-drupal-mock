@@ -1,0 +1,27 @@
+{
+  "name": "decoupled-drupal-mock-workspace",
+  "private": true,
+  "description": "Drupal JSON:API fixtures and a mock server, built per Drupal release.",
+  "type": "module",
+  "packageManager": "yarn@4.18.1",
+  "workspaces": [
+    "packages/*",
+    "presets/*"
+  ],
+  "scripts": {
+    "build": "yarn workspaces foreach -A -pt run build",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.39.0",
+    "msw": "^3.0.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.50.0",
+    "vite": "^7.0.0",
+    "vitest": "^5.0.3"
+  }
+}
