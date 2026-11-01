@@ -332,7 +332,13 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     }
   }
   for (const url of publicFiles) {
-    const response = await fetch(`${base}${url}`)
+    let response: Response
+    try {
+      response = await fetch(`${base}${url}`)
+    } catch (error) {
+      log(`  file ${url}: ${(error as Error).message}, left out`)
+      continue
+    }
     if (!response.ok) { log(`  file ${url}: ${response.status}, left out`); continue }
     writeBytes(`files/${url.slice('/sites/default/files/'.length)}`, Buffer.from(await response.arrayBuffer()))
   }
