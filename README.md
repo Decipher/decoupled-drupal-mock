@@ -7,3 +7,7 @@ Built for [Druxt](https://druxtjs.org), the decoupled Drupal and Nuxt framework,
 ## Status
 
 Not released yet.
+
+## Licence
+
+GPL-2.0-or-later, as everything hosted on drupal.org is, and as the Umami preset must be: it carries Drupal's own demo content and configuration.
