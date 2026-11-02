@@ -87,6 +87,13 @@ const unchanged = (before: unknown, after: unknown): boolean => JSON.stringify(b
 /** A relationship's targets, without the meta a client does not send. */
 const identifiers = (data: unknown): unknown => (Array.isArray(data) ? data.map(identifiers) : data && typeof data === 'object' ? `${(data as ResourceIdentifier).type}:${(data as ResourceIdentifier).id}` : data ?? null)
 
+/** A string without the slashes that end it. A loop, as the regular expression runs slowly on a long run of them. */
+const withoutTrailingSlashes = (text: string): string => {
+  let end = text.length
+  while (end > 0 && text[end - 1] === '/') end--
+  return text.slice(0, end)
+}
+
 /** A JSON:API error document as Drupal writes one: `via` is the request, `info` the RFC section. */
 const error = (JSONAPI: NonNullable<Document['jsonapi']>, status: number, title: string, detail: string | undefined, via: string, source?: Record<string, string>): Document => ({
   jsonapi: JSONAPI,
