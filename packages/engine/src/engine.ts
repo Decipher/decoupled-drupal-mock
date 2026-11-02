@@ -452,7 +452,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       // Drupal names the request in the sorted form here, as it names a collection's self link.
       const refused = refusedFilter(langcode, type, condition.path, all)
       if (refused) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', `The current user is not authorized to filter by the \`${refused.field}\` field, given in the path \`${refused.path}\`.`, self) }
-      if (head && fieldNames.size > 2 && !fieldNames.has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, via, { parameter: 'filter' }) }
+      if (head && fieldNames.size > 2 && !fieldNames.has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, self) }
     }
     const reader = read(langcode)
     let matched = collection.filter((resource) => passes(resource, filter, reader))

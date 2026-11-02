@@ -21,6 +21,8 @@ An overlay is a recording of the same site with one change, kept as the differen
 | Overlay                    | What it is                                                                                                                                                                                                                                      |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `language-routing-patches` | [Decoupled Router #3111456](https://www.drupal.org/i/3111456) and [Druxt #3273228](https://www.drupal.org/i/3273228), which no release holds yet. Stock Decoupled Router cannot resolve many Spanish paths, so a multilingual client needs this |
+| `contact-storage`          | The contrib Contact and Contact Storage modules, with a `feedback` form, so `contact_message--feedback` can be read and written                                                                                                                 |
+| `jsonapi-extras`           | JSON:API Extras in its default configuration, which adds `jsonapi_resource_config--jsonapi_resource_config`                                                                                                                                     |
 
 ```sh
 npx decoupled-drupal-mock serve umami --overlay language-routing-patches

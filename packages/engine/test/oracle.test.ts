@@ -77,3 +77,24 @@ describe.skipIf(!overlays.length)('a recorded overlay', () => {
     expect(() => loadOverlay(dir!, 'nope')).toThrow(`No overlay named nope. This preset has: ${overlays.join(', ')}.`)
   })
 })
+
+describe.skipIf(!overlays.includes('contact-storage'))('the overlays of what a preset lacks', () => {
+  const dump = loadDump(dir!)
+  const mockWith = (name?: string) => createMock(dump, { baseUrl: dump.manifest.origin, extensions: name ? [loadOverlay(dir!, name)] : [] })
+  const path = '/en/jsonapi/contact_message/feedback'
+  const body = JSON.stringify({ data: { type: 'contact_message--feedback', attributes: { subject: 'Hello', message: 'There', name: 'A visitor', mail: 'visitor@example.com' } } })
+  const post = (mock: ReturnType<typeof mockWith>) => mock.handle('POST', `${dump.manifest.origin}${path}`, { 'content-type': 'application/vnd.api+json' }, body)
+
+  it('adds a resource type only with the overlay', () => {
+    expect(mockWith().handle('GET', `${dump.manifest.origin}${path}`).status).toBe(404)
+    expect(mockWith('contact-storage').handle('GET', `${dump.manifest.origin}${path}`).status).toBe(200)
+    expect(mockWith().handle('GET', `${dump.manifest.origin}/en/jsonapi/jsonapi_resource_config/jsonapi_resource_config`).status).toBe(404)
+    expect(mockWith('jsonapi-extras').handle('GET', `${dump.manifest.origin}/en/jsonapi/jsonapi_resource_config/jsonapi_resource_config`).status).toBe(200)
+  })
+
+  it('takes a visitor\'s message, as real Drupal did', () => {
+    expect(post(mockWith()).status).toBe(404)
+    expect(post(mockWith('contact-storage')).status).toBe(201)
+  })
+})
+
