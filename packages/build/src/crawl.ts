@@ -106,7 +106,9 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   // A recording this build does not make would be replayed against a dump it was not made with.
   for (const file of ['reads.json.gz', 'writes.json.gz', 'graphql.json.gz']) rmSync(join(oracleOut, file), { force: true })
   const recordOracle = (file: string, body: unknown): void => {
-    const bytes = gzipSync(Buffer.from(relink(JSON.stringify(body))), { level: 9 })
+    // A token is good for minutes, and the tests never read one: this keeps them out of a public repository anyway.
+    const text = JSON.stringify(body, (key: string, value: unknown) => (typeof value === 'string' && /^(access_token|refresh_token|csrf_token|logout_token)$/.test(key) ? '<token>' : value))
+    const bytes = gzipSync(Buffer.from(relink(text)), { level: 9 })
     mkdirSync(oracleOut, { recursive: true })
     writeFileSync(join(oracleOut, file), bytes)
     oracleFiles[file] = createHash('sha256').update(bytes).digest('hex')

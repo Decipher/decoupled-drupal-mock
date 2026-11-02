@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignoreDependencies": [
+    // Optional peers of the engine, loaded with a dynamic import or brought by a consumer.
+    "graphql",
+    "msw"
+  ],
+  "workspaces": {
+    "examples/*": {
+      // An example names its preset as a string, as a consumer does.
+      "ignoreDependencies": ["decoupled-drupal-mock-umami"]
+    }
+  }
+}

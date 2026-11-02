@@ -7,3 +7,6 @@ playwright-report
 cypress/screenshots
 .next
 next-env.d.ts
+.vale
+coverage
+reports

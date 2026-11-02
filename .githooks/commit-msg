@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Conventional Commits, checked before the commit exists rather than in CI.
+exec yarn commitlint --edit "$1"

@@ -1,0 +1,6 @@
+# Links in the documentation. Local addresses are the examples' own, and drupal.org refuses most automated requests.
+exclude = ['^http://127\.0\.0\.1', '^http://localhost', '^https://drupal\.test', '^https://drupal\.invalid', '^https://www\.drupal\.org', '^https://devpod\.sh']
+exclude_path = ['node_modules', 'presets/umami/dump', 'presets/umami/oracle', '.yarn']
+max_retries = 2
+timeout = 20
+accept = [200, 206, 429]

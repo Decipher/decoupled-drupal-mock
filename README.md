@@ -109,6 +109,8 @@ node packages/engine/dist/cli.js serve umami --port 3005 --base-url https://<pri
 
 Port 3000, for a frontend, is forwarded too. Run `yarn install` and `yarn workspace decoupled-drupal-mock build` after changing to another branch.
 
+[Contributing](CONTRIBUTING.md) covers the checks and how a change gets recorded.
+
 ## Licence
 
 GPL-2.0-or-later, as everything hosted on drupal.org is, and as the Umami preset must be: it carries Drupal's own demo content and configuration.
