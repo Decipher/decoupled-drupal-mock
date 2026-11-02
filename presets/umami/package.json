@@ -13,7 +13,8 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "dump"
+    "dump",
+    "overlays"
   ],
   "peerDependencies": {
     "decoupled-drupal-mock": "^1.0.0-alpha.0"

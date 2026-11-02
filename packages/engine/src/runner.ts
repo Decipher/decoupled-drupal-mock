@@ -8,7 +8,7 @@ import type { MockClient } from './control.js'
 import type { DrupalOptions } from './engine.js'
 import type { ExtendedDrupal, Extension } from './extend.js'
 import { createMock } from './mock.js'
-import { loadDump } from './load.js'
+import { loadDump, loadOverlay } from './load.js'
 import { presetDir } from './preset.js'
 
 export { answerAxios, axiosAdapter, axiosVerbs } from './axios.js'
@@ -16,7 +16,7 @@ export { connectMock, URL_VARIABLE } from './control.js'
 export type { MockClient } from './control.js'
 export { createDrupal } from './engine.js'
 export { createMock } from './mock.js'
-export { loadDump } from './load.js'
+export { loadDump, loadOverlay } from './load.js'
 export { presetDir } from './preset.js'
 
 /**
@@ -24,10 +24,14 @@ export { presetDir } from './preset.js'
  * a suite does it once and calls `reset()` between tests.
  *
  * @param preset - A directory, a preset package or its short name.
- * @param options - The base URL the links name, and the identities.
+ * @param options - The base URL the links name, the identities, the extensions and the recorded overlays by name.
  * @returns The engine.
  */
-export const loadPreset = (preset: string, options: DrupalOptions & { extensions?: Extension[] } = {}): ExtendedDrupal => createMock(loadDump(presetDir(preset)), options)
+export const loadPreset = (preset: string, options: DrupalOptions & { extensions?: Extension[], overlays?: string[] } = {}): ExtendedDrupal => {
+  const { overlays = [], extensions = [], ...rest } = options
+  const dir = presetDir(preset)
+  return createMock(loadDump(dir), { ...rest, extensions: [...overlays.map((name) => loadOverlay(dir, name)), ...extensions] })
+}
 
 const freePort = (): Promise<number> => new Promise((resolve, reject) => {
   const probe = createServer()
@@ -61,10 +65,10 @@ export interface SpawnedMock extends MockClient {
  * @param options - The port, or a free one when not named, and the files that hold extensions.
  * @returns The running server.
  */
-export const spawnMock = async (preset: string, options: { port?: number, extensions?: string[] } = {}): Promise<SpawnedMock> => {
+export const spawnMock = async (preset: string, options: { port?: number, extensions?: string[], overlays?: string[] } = {}): Promise<SpawnedMock> => {
   const port = options.port || await freePort()
   const url = `http://127.0.0.1:${port}`
-  const child: ChildProcess = spawn(process.execPath, [join(__dirname, 'cli.js'), 'serve', preset, '--port', String(port), '--control', ...(options.extensions || []).flatMap((file) => ['--extension', file])], { stdio: ['ignore', 'ignore', 'pipe'] })
+  const child: ChildProcess = spawn(process.execPath, [join(__dirname, 'cli.js'), 'serve', preset, '--port', String(port), '--control', ...(options.extensions || []).flatMap((file) => ['--extension', file]), ...(options.overlays || []).flatMap((name) => ['--overlay', name])], { stdio: ['ignore', 'ignore', 'pipe'] })
   let errors = ''
   child.stderr!.on('data', (chunk: Buffer) => { errors += chunk.toString('utf8') })
   let exited = false
@@ -97,7 +101,7 @@ let running: SpawnedMock | undefined
  * @param options - The files that hold extensions.
  * @returns The function Jest calls.
  */
-export const globalSetup = (preset: string, options: { extensions?: string[] } = {}) => async (): Promise<void> => {
+export const globalSetup = (preset: string, options: { extensions?: string[], overlays?: string[] } = {}) => async (): Promise<void> => {
   running = await spawnMock(preset, options)
   process.env[URL_VARIABLE] = running.url
 }

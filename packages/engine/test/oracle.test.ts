@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { createDrupal } from '../src'
-import { loadDump } from '../src/load'
+import { loadDump, loadOverlay } from '../src/load'
+import { createMock } from '../src/mock'
 import { comparable } from './comparable'
 import { oracleDir } from './oracle-dir.ts'
 
@@ -56,3 +56,24 @@ describe.skipIf(!available)('the recordings of a build', () => {
   })
 })
 
+// The site a preset overlays, as it really answered: an overlay's claim is that the baseline plus it answers the same.
+const overlaysDir = join(oracleDir(dir), 'overlays')
+const overlays = available && existsSync(overlaysDir) ? readdirSync(overlaysDir).map((file) => file.replace(/\.json\.gz$/, '')) : []
+
+describe.skipIf(!overlays.length).each(overlays)('the %s overlay', (name) => {
+  const dump = loadDump(dir!)
+  const mock = createMock(dump, { baseUrl: dump.manifest.origin, extensions: [loadOverlay(dir!, name)] })
+  const entries = JSON.parse(gunzipSync(readFileSync(join(overlaysDir, `${name}.json.gz`))).toString('utf8')) as Array<{ request: string, status: number, body: unknown }>
+
+  it.each(entries.map((entry) => [entry.request, entry] as const))('%s', (_request, entry) => {
+    const answer = mock.handle('GET', entry.request)
+    expect(answer.status).toBe(entry.status)
+    if (typeof entry.body !== 'string') expect(comparable(answer.body)).toEqual(comparable(entry.body))
+  })
+})
+
+describe.skipIf(!overlays.length)('a recorded overlay', () => {
+  it('names what the preset has, when asked for what it does not', () => {
+    expect(() => loadOverlay(dir!, 'nope')).toThrow(`No overlay named nope. This preset has: ${overlays.join(', ')}.`)
+  })
+})

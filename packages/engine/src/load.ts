@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { UNSAFE_KEYS } from './own.js'
 import type { Document, Dump, Manifest, Recorded, Resource } from './types.js'
+import type { Extension, RecordedOverlay } from './extend.js'
 
 /** Every file under a directory, as paths relative to it. */
 const walk = (dir: string, base = dir): string[] => readdirSync(dir).flatMap((name) => {
@@ -63,4 +64,24 @@ export const loadDump = (dir: string): Dump => {
     }
   }
   return dump
+}
+
+/**
+ * An extension from a recorded overlay a preset ships beside its dump: what the same site answers with a module or a
+ * patch the preset's baseline does not have.
+ *
+ * @param dumpDir - The preset's dump directory.
+ * @param name - The overlay, from the preset's `overlays` directory.
+ * @returns The extension.
+ * @throws {Error} When the preset has no such overlay, naming the ones it has.
+ */
+export const loadOverlay = (dumpDir: string, name: string): Extension => {
+  const dir = join(dumpDir, '..', 'overlays')
+  const file = join(dir, `${name}.json.gz`)
+  if (!existsSync(file)) {
+    const known = existsSync(dir) ? readdirSync(dir).map((entry) => entry.replace(/\.json\.gz$/, '')) : []
+    throw new Error(`No overlay named ${name}. This preset has: ${known.join(', ') || 'none'}.`)
+  }
+  const overlay = JSON.parse(gunzipSync(readFileSync(file)).toString('utf8')) as RecordedOverlay
+  return { name, overlay }
 }

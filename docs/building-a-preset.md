@@ -51,7 +51,17 @@ Only JSON:API is required. Everything else widens what the build records:
 | `jsonapi.settings:read_only` set to `false`                            | Writes, for `writesFile`                                                                          |
 | The Simple OAuth Password Grant module                                 | The password grant, for an identity with a password                                               |
 
-To read as an administrator, `auth` needs a Simple OAuth 6 consumer with the client credentials grant and a secret, whose user has the administrator role. Its scope must grant the administrator role by role, as a token holds only the roles that the user and the scope both give. The site also needs an OAuth keypair in `simple_oauth.settings`.
+## Recording a module or a patch
+
+Build the site twice, with and without the change, then keep the difference:
+
+```sh
+node --experimental-strip-types packages/build/src/overlay.ts <baseline build> <variant build> <name> presets/<preset>/overlays
+```
+
+Copy the variant's `reads.json.gz` to `presets/<preset>/oracle/overlays/<name>.json.gz`, and the oracle test replays it against the baseline plus the overlay. Set `composerDir` in the config, and the manifest names what the site really runs. Add `patched` to name its patches too.
+
+## Without `auth`
 
 ## Building without administrator access
 

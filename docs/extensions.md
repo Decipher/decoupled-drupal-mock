@@ -28,7 +28,8 @@ Functions cannot be passed to a server in another process. Give the server an ex
 
 - **`routes`:** new endpoints, by `METHOD /path`. `:name` matches one segment and `ANY` matches every method. A language prefix is matched for you and given as `prefix`.
 - **`answer`:** sees every request. Return what `next()` gives, change it, or replace it.
-- **`fixtures`:** resources by language and type, which read and write like the dump's own. A fixture appears in its type's collection and in every list built from that collection. A block added to a region appears in that region's block list.
+- **`fixtures`:** resources by language and type, which read and write like the dump's own. A fixture joins its type's collection, and every listing built from it: a block added to a region is in that region's block list.
+- **`overlay`:** what a recording of the site with a module or a patch answers differently. A preset ships these: pass `overlays: ['language-routing-patches']` to `loadPreset`, `startMock`, `spawnMock` or `withDrupal`, or `--overlay` to the CLI. The preset's README lists them.
 - **`onWrite`:** runs after a successful JSON:API write. `send` calls another service, and `sent()` holds the result.
 - **`scenarios`:** sets of `routes`, `answer` and `onWrite` under a name, off until a test turns them on.
 
@@ -42,7 +43,7 @@ The engine answers synchronously, so a Jest spy can return its answers, and an e
 
 ## Extensions and fidelity
 
-An extension's answers are written by hand. The mock's fidelity claim covers what a build recorded from a real Drupal and nothing an extension answers, so write down where each answer came from, and record it from a real site when you can.
+An extension's answers are written by hand, unless they are a recorded overlay. The mock's fidelity claim covers what a build recorded from a real Drupal and nothing else an extension answers, so write down where each answer came from, and record it from a real site when you can.
 
 ## Examples
 

@@ -3,7 +3,7 @@ import { connectMock } from './control.js'
 import type { MockClient } from './control.js'
 import type { ExtendedDrupal, Extension } from './extend.js'
 import { createMock } from './mock.js'
-import { loadDump } from './load.js'
+import { loadDump, loadOverlay } from './load.js'
 import { presetDir } from './preset.js'
 import { listen } from './serve.js'
 
@@ -31,16 +31,16 @@ const freePort = (): Promise<number> => new Promise((resolve, reject) => {
  * Jest with its ESM support on.
  *
  * @param preset - A directory, a preset package or its short name.
- * @param options - The extensions.
+ * @param options - The extensions, and the recorded overlays by name.
  * @returns The running server.
  */
-export const startMock = async (preset: string, options: { extensions?: Extension[] } = {}): Promise<Mock> => {
+export const startMock = async (preset: string, options: { extensions?: Extension[], overlays?: string[] } = {}): Promise<Mock> => {
   const dir = presetDir(preset)
   const dump = loadDump(dir)
   for (let attempt = 0; ; attempt++) {
     const port = await freePort()
     const url = `http://127.0.0.1:${port}`
-    const drupal = createMock(dump, { baseUrl: url, extensions: options.extensions || [] })
+    const drupal = createMock(dump, { baseUrl: url, extensions: [...(options.overlays || []).map((name) => loadOverlay(dir, name)), ...(options.extensions || [])] })
     try {
       const { close } = await listen(drupal, port, '127.0.0.1', { files: dir, control: true })
       return { ...connectMock(url), reset: async () => drupal.reset(), tokenFor: async (name, scopes) => drupal.tokenFor(name, scopes), scenario: async (name) => drupal.scenario(name), requests: async () => drupal.requests(), sent: async () => drupal.sent(), advanceTime: async (seconds) => drupal.advanceTime(seconds), drupal, close }
@@ -66,7 +66,7 @@ interface Extendable<Test> {
  * @param options - The extensions.
  * @returns The extended `test`.
  */
-export const withDrupal = <Test>(test: Extendable<Test>, preset: string, options: { extensions?: Extension[] } = {}): Test => test.extend({
+export const withDrupal = <Test>(test: Extendable<Test>, preset: string, options: { extensions?: Extension[], overlays?: string[] } = {}): Test => test.extend({
   // Playwright reads a fixture's dependencies from this pattern, so it must be written as one even when it is empty.
   // eslint-disable-next-line no-empty-pattern
   drupalServer: [async ({}, use: (mock: MockClient) => Promise<void>) => {

@@ -7,7 +7,7 @@ import { crawl } from './crawl.ts'
  * `node --experimental-strip-types cli.ts <config.json>`: the crawl options as JSON, with `oracleFile` a path of one
  * request per line, and `drush` as `{ bin, cwd }` to read what JSON:API refuses every user.
  */
-const config = JSON.parse(readFileSync(process.argv[2]!, 'utf8')) as Parameters<typeof crawl>[0] & { oracleFile?: string, writesFile?: string, drush?: { bin: string, cwd: string }, excludeUsers?: string[] }
+const config = JSON.parse(readFileSync(process.argv[2]!, 'utf8')) as Parameters<typeof crawl>[0] & { oracleFile?: string, writesFile?: string, composerDir?: string, patched?: boolean, drush?: { bin: string, cwd: string }, excludeUsers?: string[] }
 const scripts = config.writesFile ? JSON.parse(readFileSync(config.writesFile, 'utf8')) as Parameters<typeof crawl>[0]['writes'] : undefined
 
 const drush = (script: string): string => {
@@ -61,5 +61,20 @@ const exclude = excludeUsers.size
   ? (resource: Parameters<NonNullable<Parameters<typeof crawl>[0]['exclude']>>[0]): boolean => resource.type === 'user--user' && excludeUsers.has(String((resource.attributes as { name?: string } | undefined)?.name))
   : undefined
 
-const manifest = await crawl({ ...config, ...(oracle ? { oracle } : {}), ...(scripts ? { writes: scripts } : {}), ...(phantomData ? { phantomData } : {}), ...(exclude ? { exclude } : {}) })
+// What the site really runs, from its own lock file, so a preset cannot misstate it. Patches are applied by composer.
+const composer = config.composerDir
+  ? {
+      lock: JSON.parse(readFileSync(`${config.composerDir}/composer.lock`, 'utf8')) as { packages: Array<{ name: string, version: string }> },
+      json: JSON.parse(readFileSync(`${config.composerDir}/composer.json`, 'utf8')) as { extra?: { patches?: Record<string, Record<string, string>> } },
+    }
+  : undefined
+const drupal = composer
+  ? {
+      ...config.drupal,
+      core: composer.lock.packages.find((item) => item.name === 'drupal/core')?.version || config.drupal.core,
+      modules: Object.fromEntries(composer.lock.packages.filter((item) => item.name.startsWith('drupal/') && !item.name.startsWith('drupal/core')).map((item) => [item.name.slice('drupal/'.length), item.version])),
+      ...(config.patched ? { patches: Object.fromEntries(Object.entries(composer.json.extra?.patches || {}).map(([name, list]) => [name.slice('drupal/'.length), Object.keys(list)])) } : {}),
+    }
+  : config.drupal
+const manifest = await crawl({ ...config, drupal, ...(oracle ? { oracle } : {}), ...(scripts ? { writes: scripts } : {}), ...(phantomData ? { phantomData } : {}), ...(exclude ? { exclude } : {}) })
 console.log(`built ${manifest.preset} from Drupal ${manifest.drupal.core}: ${Object.keys(manifest.files).length} files`)
