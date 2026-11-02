@@ -116,8 +116,6 @@
 /jsonapi/menu_items/catalog?filter%5Benabled%5D=1&filter%5Bmenu_name%5D=catalog&filter%5Bmax_depth%5D=3&filter%5Bmin_depth%5D=2&filter%5Bparent%5D=taxonomy_menu.menu_link%3Ataxonomy_menu.menu_link.catalog.31
 /jsonapi/menu_items/error?filter%5Benabled%5D=1&filter%5Bmenu_name%5D=error
 /jsonapi/missing/test
-/jsonapi/views/featured_articles/default
-/jsonapi/views/featured_articles/page_1
 /router/translate-path?path=/
 /router/translate-path?path=/broken-router
 /router/translate-path?path=/en/node
@@ -141,10 +139,9 @@ en/jsonapi
 /en/jsonapi/view/view/{view--view:0}
 /en/jsonapi/node/recipe/00000000-0000-4000-8000-000000000000
 /es/jsonapi
-/es/jsonapi/node/article?filter%5Bstatus%5D=1&page%5Blimit%5D=2&sort=title
+/es/jsonapi/node/article?filter%5Bstatus%5D=1&page%5Blimit%5D=3&sort=title
 /es/jsonapi/menu_items/main
 /es/jsonapi/views/recipes/page_1
-/router/translate-path?path=/es/recipes
 /router/translate-path?path=/es/recipes/borscht-con-costillas-de-cerdo
 /es/system/menu/main/linkset
 /en/system/menu/main/linkset
