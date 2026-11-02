@@ -35,7 +35,7 @@ const drushScript = (path: string): string => {
 /** A value as a PHP expression: JSON decoded into arrays, so a string, a list and a map all read as PHP writes them. */
 const php = (value: unknown): string => `json_decode('${JSON.stringify(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', TRUE)`
 
-// The scenarios fail sign-ins on purpose, and Drupal's flood control would answer the next build's with 403 instead
+// The recorded writes fail sign-ins on purpose, and Drupal's flood control would answer the next build's with 403 instead
 // of 400: the build starts with a clean slate.
 if (config.drush) drush(`\\Drupal::database()->truncate('flood')->execute(); print 'ok';`)
 

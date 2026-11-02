@@ -445,7 +445,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         recorded.push({ ...resolved, status, answer })
         log(`graphql "${entry.name}": ${status}${(answer as { errors?: unknown[] }).errors ? ' with errors' : ''}`)
       }
-      write('graphql/oracle.json.gz', recorded)
+      recordOracle('graphql.json.gz', recorded)
     }
   }
 

@@ -7,16 +7,17 @@ import { createDrupal } from '../src/graphql.ts'
 import { loadDump } from '../src/load.ts'
 import { listen } from '../src/serve.ts'
 import type { Resource } from '../src/types.ts'
+import { oracleDir } from './oracle-dir.ts'
 
 /** Every GraphQL query a preset's build recorded, answered by the engine and compared with Drupal's answer. */
 interface Entry { name: string, query: string, variables?: Record<string, unknown>, status: number, answer: unknown }
 
 const dir = process.env.DECOUPLED_DRUPAL_MOCK_DUMP || fileURLToPath(new URL('../../../presets/umami/dump', import.meta.url))
-const available = existsSync(join(dir, 'graphql', 'oracle.json.gz'))
+const available = existsSync(join(oracleDir(dir), 'graphql.json.gz'))
 
 describe.skipIf(!available)('the engine against the recorded GraphQL queries', () => {
   const dump = available ? loadDump(dir) : undefined
-  const entries = available ? JSON.parse(gunzipSync(readFileSync(join(dir, 'graphql', 'oracle.json.gz'))).toString('utf8')) as Entry[] : []
+  const entries = available ? JSON.parse(gunzipSync(readFileSync(join(oracleDir(dir), 'graphql.json.gz'))).toString('utf8')) as Entry[] : []
   const drupal = dump ? createDrupal(dump, { baseUrl: dump.manifest.origin }) : undefined
 
   it.each(entries.map((entry) => [entry.name, entry] as const))('%s', (_name, entry) => {
