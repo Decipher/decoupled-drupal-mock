@@ -1,0 +1,12 @@
+# The default rules, with one allowance: a preset's manifest names each file's sha256, and a hash of public content is
+# not a key, though `"overlays/jsonapi-extras.json.gz": "<64 hex>"` reads like one to the generic rule. Only that
+# shape, only in a manifest: anything else there is still reported.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "A file's sha256 in a preset manifest"
+condition = "AND"
+paths = ['''^presets/[^/]+/dump/manifest\.json$''']
+regexTarget = "secret"
+regexes = ['''^[0-9a-f]{64}$''']
