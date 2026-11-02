@@ -149,3 +149,4 @@ en/jsonapi
 /es/jsonapi/decoupled/settings
 /jsonapi/views/featured_articles/default
 /jsonapi/views/featured_articles/page_1
+/router/translate-path?path=/es/recipes
