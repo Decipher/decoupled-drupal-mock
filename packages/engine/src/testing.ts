@@ -7,6 +7,7 @@ import { loadDump, loadOverlay } from './load.js'
 import { presetDir } from './preset.js'
 import { listen } from './serve.js'
 
+export { comparable } from './comparable.js'
 export { connectMock, URL_VARIABLE } from './control.js'
 export type { MockClient } from './control.js'
 
@@ -31,7 +32,7 @@ const freePort = (): Promise<number> => new Promise((resolve, reject) => {
  * Jest with its ESM support on.
  *
  * @param preset - A directory, a preset package or its short name.
- * @param options - The extensions, and the recorded overlays by name.
+ * @param options - The extensions, and the recorded overlays: paths to overlay files.
  * @returns The running server.
  */
 export const startMock = async (preset: string, options: { extensions?: Extension[], overlays?: string[] } = {}): Promise<Mock> => {

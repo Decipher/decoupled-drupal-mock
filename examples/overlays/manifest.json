@@ -1,0 +1,8 @@
+{
+  "contact-storage.json.gz": "21794baa1ce98eb1a09d1c3a8e2ef58a9e26767907f7f9439811a4c1634eab79",
+  "jsonapi-extras.json.gz": "23df5ff286b8eea5105c5da147185ae7c01d7a3f2564f9f1692d15a16734bdcf",
+  "language-routing-patches.json.gz": "2549aa9e245a089cc0d6e557e05cb858406842676c1b71e1bae07f5211ee6aa9",
+  "oracle/contact-storage.json.gz": "329ffc80737a6cb4408797f35c792c80d8881cb4b8ee958eb2de4ab30518f79b",
+  "oracle/jsonapi-extras.json.gz": "e43cb5ad5ab5c6349abe37e762512a641a3047e392285a80200da3e4d071eee8",
+  "oracle/language-routing-patches.json.gz": "19a84bcec17b657f63b77f018835b17dd2014bd15037efa673471bdc87300428"
+}

@@ -12,6 +12,7 @@ import { loadDump, loadOverlay } from './load.js'
 import { presetDir } from './preset.js'
 
 export { answerAxios, axiosAdapter, axiosVerbs } from './axios.js'
+export { comparable } from './comparable.js'
 export { connectMock, URL_VARIABLE } from './control.js'
 export type { MockClient } from './control.js'
 export { createDrupal } from './engine.js'
@@ -24,7 +25,7 @@ export { presetDir } from './preset.js'
  * a suite does it once and calls `reset()` between tests.
  *
  * @param preset - A directory, a preset package or its short name.
- * @param options - The base URL the links name, the identities, the extensions and the recorded overlays by name.
+ * @param options - The base URL the links name, the identities, the extensions and the recorded overlays, as paths to overlay files.
  * @returns The engine.
  */
 export const loadPreset = (preset: string, options: DrupalOptions & { extensions?: Extension[], overlays?: string[] } = {}): ExtendedDrupal => {

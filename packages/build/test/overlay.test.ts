@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
-import { diffBuilds, publishOverlayRecording, writeOverlay } from '../src/overlay'
+import { alignTo, diffBuilds, publishOverlayRecording, writeOverlay } from '../src/overlay'
 
 /** A build directory from a map of its files. */
 const build = (files: Record<string, unknown>): string => {
@@ -17,10 +17,42 @@ const build = (files: Record<string, unknown>): string => {
   return dir
 }
 
+const read = (dir: string, file: string): unknown => JSON.parse(gunzipSync(readFileSync(join(dir, file))).toString('utf8'))
 const manifest = { drupal: { core: '11', modules: {} }, languages: { en: 'en' } }
 const route = (body: unknown, status = 200) => ({ status, headers: {}, body })
 const node = (id: string, title: string) => ({ type: 'node--page', id, attributes: { title } })
 const user = (changed: string) => ({ type: 'user--user', id: 'u', attributes: { name: 'a', changed, access: changed } })
+
+describe('a variant from another install of the site', () => {
+  // The same recipe and author in two installs: other UUIDs, other install times, the same internal ids.
+  const recipe = (id: string, author: string, created: string, title = 'Quiche') => ({ type: 'node--recipe', id, attributes: { drupal_internal__nid: 1, langcode: 'en', title, created, changed: created }, relationships: { uid: { data: { type: 'user--user', id: author, meta: { drupal_internal__target_id: 2 } } } } })
+  const user = (id: string, created: string) => ({ type: 'user--user', id, attributes: { drupal_internal__uid: 2, langcode: 'en', name: 'author', created } })
+  const anonymous = (id: string) => ({ type: 'node--page', id: `page-${id}`, attributes: { drupal_internal__nid: 9, langcode: 'en' }, relationships: { uid: { data: { type: 'user--user', id, meta: { drupal_internal__target_id: 0 } } } } })
+  const base = build({ 'manifest.json': manifest, 'recorded/routes.json.gz': { 'GET /router/translate-path?path=/quiche': route({ entity: { uuid: 'r-base' } }) }, 'resources/en/node--recipe.json.gz': [recipe('r-base', 'u-base', '2026-01-01T00:00:00+00:00')], 'resources/en/user--user.json.gz': [user('u-base', '2026-01-01T00:00:00+00:00')], 'resources/en/node--page.json.gz': [anonymous('anon-base')] })
+  const other = (title = 'Quiche') => build({ 'manifest.json': manifest, 'recorded/routes.json.gz': { 'GET /router/translate-path?path=/quiche': route({ entity: { uuid: 'r-other' } }) }, 'resources/en/node--recipe.json.gz': [recipe('r-other', 'u-other', '2026-11-02T20:00:00+00:00', title)], 'resources/en/user--user.json.gz': [user('u-other', '2026-11-02T20:00:00+00:00')], 'resources/en/node--page.json.gz': [anonymous('anon-other')] })
+
+  it('reads as the baseline\'s install: its UUIDs, by internal id and by relationship, and its install times', () => {
+    const aligned = alignTo(base, other())(read(other(), 'resources/en/node--recipe.json.gz')) as Array<{ id: string, attributes: { created: string, changed: string }, relationships: { uid: { data: { id: string } } } }>
+    expect(aligned[0]!.id).toBe('r-base')
+    expect(aligned[0]!.relationships.uid.data.id).toBe('u-base')
+    expect(aligned[0]!.attributes.created).toBe('2026-01-01T00:00:00+00:00')
+    expect(aligned[0]!.attributes.changed).toBe('2026-01-01T00:00:00+00:00')
+  })
+
+  it('is no overlay at all when nothing but the install differs, and only the change when something does', () => {
+    const nothing = diffBuilds(base, other(), 'nothing')
+    expect(nothing.recorded).toEqual({})
+    expect(nothing.resources).toEqual({})
+    const changed = diffBuilds(base, other('Quiche, patched'), 'changed')
+    expect(changed.resources.en!['node--recipe']).toEqual([expect.objectContaining({ id: 'r-base', attributes: expect.objectContaining({ title: 'Quiche, patched', created: '2026-01-01T00:00:00+00:00' }) })])
+  })
+
+  it('maps no UUID that two entities would share', () => {
+    const twice = build({ 'manifest.json': manifest, 'resources/en/node--recipe.json.gz': [recipe('a', 'u-other', 'x'), { ...recipe('b', 'u-other', 'x') }] })
+    const aligned = alignTo(base, twice)(read(twice, 'resources/en/node--recipe.json.gz')) as Array<{ id: string }>
+    expect(aligned.map((resource) => resource.id)).toEqual(['a', 'b'])
+  })
+})
 
 describe('the difference between two builds', () => {
   it('keeps only what the variant answers differently', () => {
@@ -70,14 +102,15 @@ describe('the difference between two builds', () => {
     expect(() => diffBuilds(build({ 'manifest.json': manifest }), build({}), 'unfinished')).toThrow('has no manifest.json')
   })
 
-  it('puts the variant\'s recording beside the preset, and its hash in the preset\'s manifest', () => {
-    const preset = build({ 'dump/manifest.json': { preset: 'p', oracle: { 'reads.json.gz': 'abc' } } })
-    const recording = join(build({ 'reads.json.gz': [{ request: '/x', status: 200, body: {} }] }), 'reads.json.gz')
-    publishOverlayRecording(recording, preset, 'a-module')
-    const bytes = readFileSync(join(preset, 'oracle', 'overlays', 'a-module.json.gz'))
-    expect(bytes.equals(readFileSync(recording))).toBe(true)
-    const written = JSON.parse(readFileSync(join(preset, 'dump', 'manifest.json'), 'utf8')) as { oracle: Record<string, string> }
-    expect(written.oracle).toEqual({ 'reads.json.gz': 'abc', 'overlays/a-module.json.gz': createHash('sha256').update(bytes).digest('hex') })
+  it('puts the variant\'s recording beside its overlay, aligned as the overlay is, with both hashed in the directory\'s manifest', () => {
+    const out = mkdtempSync(join(tmpdir(), 'overlays-'))
+    const recording = join(build({ 'reads.json.gz': [{ request: '/x/r-other', status: 200, body: { data: { type: 'node--recipe', id: 'r-other' } } }] }), 'reads.json.gz')
+    writeOverlay(diffBuilds(build({ 'manifest.json': manifest }), build({ 'manifest.json': manifest }), 'a-module'), out)
+    publishOverlayRecording(recording, out, 'a-module', (value) => JSON.parse(JSON.stringify(value).replace(/r-other/g, 'r-base')))
+    expect(read(out, 'oracle/a-module.json.gz')).toEqual([{ request: '/x/r-base', status: 200, body: { data: { type: 'node--recipe', id: 'r-base' } } }])
+    const written = JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8')) as Record<string, string>
+    expect(Object.keys(written)).toEqual(['a-module.json.gz', 'oracle/a-module.json.gz'])
+    expect(written['oracle/a-module.json.gz']).toBe(createHash('sha256').update(readFileSync(join(out, 'oracle', 'a-module.json.gz'))).digest('hex'))
   })
 
   it('writes what a preset loads', () => {

@@ -14,29 +14,11 @@ const index = await drupal.fetch('https://drupal.test/jsonapi');
 
 The baseline is the site as released modules answer it, and `dump/manifest.json` names each module's version.
 
-## Overlays
+## A site with more
 
-An overlay is a recording of the same site with one change, kept as the difference from the baseline. `oracle/overlays/` holds that site's real answers, and a test replays them against the baseline plus the overlay.
+The preset is the stock site only. A site with a contrib module or a patch the preset lacks records the difference as an overlay of its own, from a build of that site: see [Overlays](../../docs/overlays.md). [`examples/overlays/`](../../examples/overlays) holds three made that way, Druxt's language routing patches among them, which the engine's tests replay. None is published with the preset.
 
-| Overlay                    | What it is                                                                                                                                                                                                                                      |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `language-routing-patches` | [Decoupled Router #3111456](https://www.drupal.org/i/3111456) and [Druxt #3273228](https://www.drupal.org/i/3273228), which no release holds yet. Stock Decoupled Router cannot resolve many Spanish paths, so a multilingual client needs this |
-| `contact-storage`          | The contrib Contact and Contact Storage modules, with a `feedback` form, so `contact_message--feedback` can be read and written                                                                                                                 |
-| `jsonapi-extras`           | JSON:API Extras in its default configuration, which adds `jsonapi_resource_config--jsonapi_resource_config`                                                                                                                                     |
-
-```sh
-npx decoupled-drupal-mock serve umami --overlay language-routing-patches
-```
-
-In a test, pass `overlays: ['language-routing-patches']` to `loadPreset`, `startMock` or `spawnMock`.
-
-Overlays combine, and each changes what a suite that counts or snapshots the site sees, by design:
-
-- `language-routing-patches` changes Decoupled Router's answers only: the JSON:API index and resources are the baseline's.
-- `contact-storage` adds three types to the JSON:API index (`contact_form--contact_form`, `contact_message--feedback` and `contact_message--personal`) and changes the configuration resources the modules touch, such as `entity_view_display` and `user_role`.
-- `jsonapi-extras` adds one type to the index and changes the `entity_view_mode` resources. It remaps no paths in its default configuration.
-
-`dump/` is what the mock loads, and `overlays/` what it adds on request: those two are what this package publishes. `dump/manifest.json` names the Drupal core version the build came from, the hash of every file, and the hash of every recording the tests replay.
+`dump/` is what the mock loads, and what this package publishes. `dump/manifest.json` names the Drupal core version the build came from, the hash of every file, and the hash of every recording the tests replay.
 
 The rest is evidence, kept in the repository and not published. `oracle.txt` and `writes.json` list the requests the build sends to a real Drupal. `oracle/` stores Drupal's answers, and the engine's tests check against them.
 

@@ -29,7 +29,7 @@ Functions cannot be passed to a server in another process. Give the server an ex
 - **`routes`:** new endpoints, by `METHOD /path`. `:name` matches one segment and `ANY` matches every method. A language prefix is matched for you and given as `prefix`.
 - **`answer`:** sees every request. Return what `next()` gives, change it, or replace it.
 - **`fixtures`:** resources by language and type, which read and write like the dump's own. A fixture joins its type's collection, and every listing built from it: a block added to a region is in that region's block list.
-- **`overlay`:** what a recording of the site with a module or a patch answers differently. Each preset has its own, named in `overlays: ['language-routing-patches']` on `loadPreset`, `startMock`, `spawnMock` or `withDrupal`, or with `--overlay` on the CLI. The preset's README lists them.
+- **`overlay`:** what a recording of the site with a module or a patch answers differently. You record one from your own site and pass its path in `overlays: ['./overlays/my-patch.json.gz']` on `loadPreset`, `startMock`, `spawnMock` or `withDrupal`, or with `--overlay` on the CLI. See [Overlays](overlays.md).
 - **`onWrite`:** runs after a successful JSON:API write. `send` calls another service, and `sent()` holds the result.
 - **`scenarios`:** sets of `routes`, `answer` and `onWrite` under a name, off until a test turns them on.
 

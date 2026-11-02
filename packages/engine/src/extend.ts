@@ -57,7 +57,7 @@ export interface Extension {
   answer?: (request: ExtensionRequest, next: () => Answered) => ExtensionAnswer
   /** Resources the preset's dump does not hold, by language and type. They read and write like the dump's own. */
   fixtures?: Record<string, Record<string, Resource[]>>
-  /** What a recording of the site with a module or a patch answers differently: replaces what the preset recorded. See `presets/<name>/overlays`. */
+  /** What a recording of the site with a module or a patch answers differently: replaces what the preset recorded. See `docs/overlays.md`. */
   overlay?: RecordedOverlay
   onWrite?: (event: WriteEvent) => void
   /** Named sets of behaviour a test turns on with `scenario(name)`, from any process. `reset()` turns them off. */

@@ -53,13 +53,7 @@ Only JSON:API is required. Everything else widens what the build records:
 
 ## Recording a module or a patch
 
-Build the site twice, with and without the change, then keep the difference:
-
-```sh
-node --experimental-strip-types packages/build/src/overlay.ts <baseline build> <variant build> <name> presets/<preset>/overlays
-```
-
-It also copies the variant's `reads.json.gz` to `presets/<preset>/oracle/overlays/<name>.json.gz` and names it, with its hash, in the preset's manifest: the oracle test replays it against the baseline plus the overlay, and checks the hash first. Set `composerDir` in the config, and the manifest names what the site really runs. Add `patched` to name its patches too.
+A build of a site with a change the preset lacks becomes an overlay of that preset: see [Overlays](overlays.md). Set `composerDir` in the config, and the manifest names what the site really runs. Add `patched` to name its patches too.
 
 ## Without `auth`
 

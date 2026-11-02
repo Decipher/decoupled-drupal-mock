@@ -56,23 +56,27 @@ describe.skipIf(!available)('the recordings of a build', () => {
   })
 })
 
-// The site a preset overlays, as it really answered: an overlay's claim is that the baseline plus it answers the same.
-const overlaysDir = join(oracleDir(dir), 'overlays')
-const overlays = available && existsSync(overlaysDir) ? readdirSync(overlaysDir).map((file) => file.replace(/\.json\.gz$/, '')) : []
+// Overlays made as anyone makes their own, from a build of the site with a module or a patch, and that site's real
+// answers beside each. Druxt's language routing overlay was recorded from another install of the same Umami: its
+// UUIDs and install times differ from the preset's, and the overlay tool aligns them. The claim each makes is that the
+// baseline plus the overlay answers as that site did.
+const overlaysDir = fileURLToPath(new URL('../../../examples/overlays', import.meta.url))
+const overlayManifest = existsSync(join(overlaysDir, 'manifest.json')) ? JSON.parse(readFileSync(join(overlaysDir, 'manifest.json'), 'utf8')) as Record<string, string> : {}
+const overlays = available && !process.env.DECOUPLED_DRUPAL_MOCK_DUMP ? readdirSync(overlaysDir).filter((file) => file.endsWith('.json.gz')).map((file) => file.replace(/\.json\.gz$/, '')) : []
+const overlayFile = (name: string) => join(overlaysDir, `${name}.json.gz`)
 
-// The preset in this repository ships its overlays' recordings, so a missing one is a lost test, not a skipped one.
-describe.skipIf(!!process.env.DECOUPLED_DRUPAL_MOCK_DUMP)('the overlays this repository\'s preset ships', () => {
-  it('each have the real answers they are replayed against', () => {
-    const shipped = readdirSync(join(dir!, '..', 'overlays')).map((file) => file.replace(/\.json\.gz$/, '')).sort()
-    expect(shipped.length).toBeGreaterThan(0)
-    expect([...overlays].sort()).toEqual(shipped)
+describe.skipIf(!!process.env.DECOUPLED_DRUPAL_MOCK_DUMP)('the example overlays', () => {
+  it('each have the real answers they are replayed against, and the hashes their manifest names', () => {
+    expect(overlays.length).toBeGreaterThan(0)
+    expect(Object.keys(overlayManifest).sort()).toEqual(overlays.flatMap((name) => [`${name}.json.gz`, `oracle/${name}.json.gz`]).sort())
+    for (const [file, hash] of Object.entries(overlayManifest)) expect(createHash('sha256').update(readFileSync(join(overlaysDir, file))).digest('hex'), file).toBe(hash)
   })
 })
 
 describe.skipIf(!overlays.length).each(overlays)('the %s overlay', (name) => {
   const dump = loadDump(dir!)
-  const mock = createMock(dump, { baseUrl: dump.manifest.origin, extensions: [loadOverlay(dir!, name)] })
-  const entries = JSON.parse(gunzipSync(readFileSync(join(overlaysDir, `${name}.json.gz`))).toString('utf8')) as Array<{ request: string, status: number, body: unknown }>
+  const mock = createMock(dump, { baseUrl: dump.manifest.origin, extensions: [loadOverlay(dir!, overlayFile(name))] })
+  const entries = JSON.parse(gunzipSync(readFileSync(join(overlaysDir, 'oracle', `${name}.json.gz`))).toString('utf8')) as Array<{ request: string, status: number, body: unknown }>
 
   it.each(entries.map((entry) => [entry.request, entry] as const))('%s', (_request, entry) => {
     const answer = mock.handle('GET', entry.request)
@@ -81,15 +85,17 @@ describe.skipIf(!overlays.length).each(overlays)('the %s overlay', (name) => {
   })
 })
 
-describe.skipIf(!overlays.length)('a recorded overlay', () => {
-  it('names what the preset has, when asked for what it does not', () => {
-    expect(() => loadOverlay(dir!, 'nope')).toThrow(`No overlay named nope. This preset has: ${overlays.join(', ')}.`)
+describe.skipIf(!overlays.length)('loading an overlay', () => {
+  it('reads one of your own by its path, and names what is missing', () => {
+    expect(loadOverlay(dir!, overlayFile('contact-storage')).name).toBe('contact-storage')
+    expect(() => loadOverlay(dir!, './no/such.json.gz')).toThrow('No overlay file at')
+    expect(() => loadOverlay(dir!, 'nope')).toThrow('No overlay named nope. This preset has: none. An overlay of your own is named by its path.')
   })
 })
 
 describe.skipIf(!overlays.includes('contact-storage'))('the overlays of what a preset lacks', () => {
   const dump = loadDump(dir!)
-  const mockWith = (name?: string) => createMock(dump, { baseUrl: dump.manifest.origin, extensions: name ? [loadOverlay(dir!, name)] : [] })
+  const mockWith = (name?: string) => createMock(dump, { baseUrl: dump.manifest.origin, extensions: name ? [loadOverlay(dir!, overlayFile(name))] : [] })
   const path = '/en/jsonapi/contact_message/feedback'
   const body = JSON.stringify({ data: { type: 'contact_message--feedback', attributes: { subject: 'Hello', message: 'There', name: 'A visitor', mail: 'visitor@example.com' } } })
   const post = (mock: ReturnType<typeof mockWith>) => mock.handle('POST', `${dump.manifest.origin}${path}`, { 'content-type': 'application/vnd.api+json' }, body)

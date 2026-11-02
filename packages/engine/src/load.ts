@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { basename, join, relative, resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { UNSAFE_KEYS } from './own.js'
 import type { Document, Dump, Manifest, Recorded, Resource } from './types.js'
@@ -67,21 +67,24 @@ export const loadDump = (dir: string): Dump => {
 }
 
 /**
- * An extension from a recorded overlay a preset ships beside its dump: what the same site answers with a module or a
- * patch the preset's baseline does not have.
+ * An extension from a recorded overlay: what the same site answers with a module or a patch the preset's baseline
+ * does not have. A path names an overlay file of your own, as `overlay.ts` writes one; a bare name, one the preset
+ * ships beside its dump.
  *
  * @param dumpDir - The preset's dump directory.
- * @param name - The overlay, from the preset's `overlays` directory.
+ * @param overlay - A path to an overlay file (`./overlays/my-patch.json.gz`), or the name of one the preset ships.
  * @returns The extension.
- * @throws {Error} When the preset has no such overlay, naming the ones it has.
+ * @throws {Error} When there is no such file or overlay, naming the ones the preset has.
  */
-export const loadOverlay = (dumpDir: string, name: string): Extension => {
+export const loadOverlay = (dumpDir: string, overlay: string): Extension => {
+  const isPath = overlay.endsWith('.json.gz') || overlay.includes('/') || overlay.includes('\\')
   const dir = join(dumpDir, '..', 'overlays')
-  const file = join(dir, `${name}.json.gz`)
+  const file = isPath ? resolve(overlay) : join(dir, `${overlay}.json.gz`)
   if (!existsSync(file)) {
+    if (isPath) throw new Error(`No overlay file at ${file}.`)
     const known = existsSync(dir) ? readdirSync(dir).map((entry) => entry.replace(/\.json\.gz$/, '')) : []
-    throw new Error(`No overlay named ${name}. This preset has: ${known.join(', ') || 'none'}.`)
+    throw new Error(`No overlay named ${overlay}. This preset has: ${known.join(', ') || 'none'}. An overlay of your own is named by its path.`)
   }
-  const overlay = JSON.parse(gunzipSync(readFileSync(file)).toString('utf8')) as RecordedOverlay
-  return { name, overlay }
+  const recorded = JSON.parse(gunzipSync(readFileSync(file)).toString('utf8')) as RecordedOverlay & { name?: string }
+  return { name: recorded.name || basename(file).replace(/\.json\.gz$/, ''), overlay: recorded }
 }
