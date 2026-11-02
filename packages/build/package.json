@@ -1,0 +1,14 @@
+{
+  "name": "decoupled-drupal-mock-build",
+  "version": "1.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Builds a preset dump by crawling a Drupal site's JSON:API.",
+  "bin": {
+    "decoupled-drupal-mock-crawl": "./src/cli.ts"
+  },
+  "dependencies": {
+    "decoupled-drupal-mock": "workspace:^"
+  },
+  "license": "GPL-2.0-or-later"
+}

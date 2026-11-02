@@ -161,6 +161,45 @@ describe('recorded routes', () => {
   })
 })
 
+describe('what the anonymous user may reach', () => {
+  const get = async (drupal: ReturnType<typeof createDrupal>, path: string) => {
+    const response = await drupal.fetch(`https://drupal.test${path}`)
+    return { status: response.status, body: await response.json() as { data: Array<{ id: string }>, errors?: Array<{ detail: string }>, meta?: { omitted?: unknown } } }
+  }
+  const withAccess = (access: NonNullable<typeof dump.access>[string]) => createDrupal({ ...dump, access: { en: access } }, { baseUrl: 'https://drupal.test' })
+
+  it('refuses a filter through a relationship on a field of the type it reaches', async () => {
+    const { status, body } = await get(withAccess({ 'user--user': { hidden: ['name'] } }), '/jsonapi/node/recipe?filter[uid.name]=umami')
+    expect(status).toBe(403)
+    expect(body.errors![0]!.detail).toBe('The current user is not authorized to filter by the `name` field, given in the path `uid.entity:user.name`.')
+  })
+
+  it('takes a filter through a relationship on a field it may read', async () => {
+    expect((await get(withAccess({ 'user--user': { hidden: ['name'] } }), '/jsonapi/node/recipe?filter[uid.display_name]=Umami')).status).toBe(200)
+  })
+
+  it('still refuses a field of the collection\'s own type, naming the path as given', async () => {
+    const { status, body } = await get(withAccess({ 'node--recipe': { hidden: ['field_difficulty'] } }), '/jsonapi/node/recipe?filter[field_difficulty]=easy')
+    expect(status).toBe(403)
+    expect(body.errors![0]!.detail).toContain('given in the path `field_difficulty`')
+  })
+
+  it('lists only the resources `visible` names, and refuses the rest by id', async () => {
+    const drupal = withAccess({ 'node--recipe': { visible: ['r-1'] } })
+    expect((await get(drupal, '/jsonapi/node/recipe')).body.data.map((resource) => resource.id)).toEqual(['r-1'])
+    expect((await get(drupal, '/jsonapi/node/recipe/r-2')).status).toBe(403)
+    expect((await get(drupal, '/jsonapi/node/recipe/r-1')).status).toBe(200)
+  })
+
+  it('reports a phantom as omitted: it takes a place in the collection and has no data', async () => {
+    const drupal = withAccess({ 'node--recipe': { phantom: ['r-2'] } })
+    const { body } = await get(drupal, '/jsonapi/node/recipe')
+    expect(body.data.map((resource) => resource.id)).toEqual(['r-1', 'r-3'])
+    expect(body.meta?.omitted).toBeDefined()
+    expect((await get(drupal, '/jsonapi/node/recipe/r-2')).status).toBe(403)
+  })
+})
+
 describe('what the first review found', () => {
   const hidden = createDrupal({ ...dump, access: { en: { 'node--page': { hidden: ['field_secret'] }, 'file--file': { forbidden: true } } } }, { baseUrl: 'https://drupal.test' })
   const read = async (drupal: ReturnType<typeof createDrupal>, path: string) => { const response = await drupal.fetch(`https://drupal.test${path}`); const text = await response.text(); return { status: response.status, body: text.startsWith('<') ? { meta: { html: text } } : JSON.parse(text) as Document } }
