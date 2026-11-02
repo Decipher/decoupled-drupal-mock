@@ -19,7 +19,9 @@
 #   PROSE_LINT_GLOB   passed to `vale --glob` for the repository's markdown,
 #                     to keep fixtures and vendored prose out. Never applied
 #                     to commit messages or the description: those are never
-#                     fixtures.
+#                     fixtures. A repository sets it where it calls this
+#                     script (`yarn lint:prose` here), so a direct call without
+#                     it lints more than CI does.
 #
 # Before any input is read, an em-dash is written to a file outside the tree
 # and linted. If that does not fire, the .vale.ini has no section covering the

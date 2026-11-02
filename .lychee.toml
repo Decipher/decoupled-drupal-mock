@@ -1,4 +1,5 @@
-# Links in the documentation. Local addresses are the examples' own, and drupal.org refuses most automated requests.
+# Links in the documentation. Local addresses are the examples' own, and drupal.org refuses most automated requests,
+# so its links, the preset's patch issues among them, are checked by hand: both answered 200 on 2026-11-02.
 # Each host is anchored at its end, so a lookalike such as www.drupal.org.example is still checked.
 exclude = ['^http://127\.0\.0\.1(?:[/?#:]|$)', '^http://localhost(?:[/?#:]|$)', '^https://drupal\.test(?:[/?#:]|$)', '^https://drupal\.invalid(?:[/?#:]|$)', '^https://www\.drupal\.org(?:[/?#:]|$)', '^https://devpod\.sh(?:[/?#:]|$)']
 exclude_path = ['node_modules', 'presets/umami/dump', 'presets/umami/oracle', '.yarn']

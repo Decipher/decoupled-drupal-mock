@@ -74,7 +74,7 @@ The public files the content names are in the preset and served from `/sites/def
 
 ## Fidelity
 
-Each preset keeps an oracle beside its dump, which holds real requests with Drupal's real answers, drawn from what clients ask. It covers reads, writes and sign-in. The engine's fidelity tests answer every one and compare the documents. The Umami preset's 151 read entries and 52 write steps all match.
+Each preset keeps an oracle beside its dump, which holds real requests with Drupal's real answers, drawn from what clients ask. It covers reads, writes and sign-in. The engine's fidelity tests answer every one and compare the documents, apart from Drupal's themed HTML pages, whose status and headers are compared but whose markup is not. The Umami preset's 151 read entries and 52 write steps all match.
 
 ## Status
 
