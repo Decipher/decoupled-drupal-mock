@@ -49,5 +49,5 @@ if (!existsSync(target)) {
 }
 const dump = loadDump(dir)
 const drupal = createDrupal(dump, { baseUrl })
-const { url } = await listen(drupal, port, host, { cors: !rest.includes('--no-cors') })
+const { url } = await listen(drupal, port, host, { files: dir, cors: !rest.includes('--no-cors') })
 console.log(`${dump.manifest.preset} from Drupal ${dump.manifest.drupal.core}, listening on ${url}`)

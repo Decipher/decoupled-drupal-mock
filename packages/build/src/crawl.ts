@@ -65,13 +65,15 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     for (const file of Object.keys((JSON.parse(readFileSync(previous, 'utf8')) as Manifest).files)) rmSync(join(options.out, file), { force: true })
   }
 
-  const write = (file: string, body: unknown): void => {
+  const writeBytes = (file: string, bytes: Buffer): void => {
     const path = join(options.out, file)
     mkdirSync(join(path, '..'), { recursive: true })
-    const text = relink(JSON.stringify(body))
-    const bytes = file.endsWith('.gz') ? gzipSync(Buffer.from(text), { level: 9 }) : Buffer.from(text)
     writeFileSync(path, bytes)
     files[file] = createHash('sha256').update(bytes).digest('hex')
+  }
+  const write = (file: string, body: unknown): void => {
+    const text = relink(JSON.stringify(body))
+    writeBytes(file, file.endsWith('.gz') ? gzipSync(Buffer.from(text), { level: 9 }) : Buffer.from(text))
   }
 
   let token: string | undefined
@@ -273,6 +275,28 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     log(`${entries.length} oracle entries`)
   }
   write('recorded/routes.json.gz', recorded)
+
+  // The public files the content names, so a frontend against the server gets its images. Each is kept under
+  // `files/` at its path below Drupal's public files directory.
+  const publicFiles = new Set<string>()
+  for (const resources of Object.values(all)) {
+    for (const file of resources['file--file'] || []) {
+      const url = (file.attributes as { uri?: { url?: string } } | undefined)?.uri?.url
+      if (url && url.startsWith('/sites/default/files/')) publicFiles.add(url)
+    }
+  }
+  for (const url of publicFiles) {
+    let response: Response
+    try {
+      response = await fetch(`${base}${url}`)
+    } catch (error) {
+      log(`  file ${url}: ${(error as Error).message}, left out`)
+      continue
+    }
+    if (!response.ok) { log(`  file ${url}: ${response.status}, left out`); continue }
+    writeBytes(`files/${url.slice('/sites/default/files/'.length)}`, Buffer.from(await response.arrayBuffer()))
+  }
+  log(`${publicFiles.size} public files kept`)
 
   const manifest: Manifest = {
     preset: options.preset,
