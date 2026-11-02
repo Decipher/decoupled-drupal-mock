@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createDrupal } from '../src'
 import { resolve, volatile } from '../src/recorded-writes'
 import type { Document, Resource } from '../src'
+import { loadDump } from '../src/load'
 import { dump } from './dump'
 
 const BASE = 'https://drupal.test'
@@ -471,6 +472,18 @@ describe('comparing a token\'s lifetime', () => {
   it('ignores a second of clock, and not a different lifetime', () => {
     expect(volatile({ expires_in: 299 })).toEqual(volatile({ expires_in: 300 }))
     expect(volatile({ expires_in: 3600 })).not.toEqual(volatile({ expires_in: 300 }))
+  })
+})
+
+describe('a new resource\'s bundle', () => {
+  it('names a term\'s vocabulary, which keeps its id in `drupal_internal__vid`', () => {
+    const umami = loadDump(new URL('../../../presets/umami/dump', import.meta.url).pathname)
+    const d = createDrupal(umami, { baseUrl: BASE })
+    const vocabulary = umami.resources.en!['taxonomy_vocabulary--taxonomy_vocabulary']!.find((candidate) => (candidate.attributes as { drupal_internal__vid?: string }).drupal_internal__vid === 'tags')!
+    const headers = { ...JSON_API, ...bearer(d.tokenFor('editor').access) }
+    const created = d.handle('POST', `${BASE}/en/jsonapi/taxonomy_term/tags`, headers, JSON.stringify({ data: { type: 'taxonomy_term--tags', attributes: { name: 'New' } } }))
+    expect(created.status).toBe(201)
+    expect((created.body as { data: Resource }).data.relationships!.vid!.data).toEqual({ type: vocabulary.type, id: vocabulary.id, meta: { drupal_internal__target_id: 'tags' } })
   })
 })
 

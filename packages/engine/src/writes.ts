@@ -218,8 +218,8 @@ export class Writes {
   private bundleEntity(entityType: string, bundle: string): Resource | undefined {
     const typeOf: Record<string, string> = { node: 'node_type--node_type', taxonomy_term: 'taxonomy_vocabulary--taxonomy_vocabulary', media: 'media_type--media_type', block_content: 'block_content_type--block_content_type', comment: 'comment_type--comment_type' }
     const type = typeOf[entityType]
-    // A node type's machine name is `drupal_internal__type`; the other bundle types keep `drupal_internal__id`.
-    const key = entityType === 'node' ? 'drupal_internal__type' : 'drupal_internal__id'
+    // A node type's machine name is `drupal_internal__type` and a vocabulary's `drupal_internal__vid`; the others keep `drupal_internal__id`.
+    const key = entityType === 'node' ? 'drupal_internal__type' : entityType === 'taxonomy_term' ? 'drupal_internal__vid' : 'drupal_internal__id'
     return type ? this.config(type).find((candidate) => attributesOf(candidate)[key] === bundle) : undefined
   }
 

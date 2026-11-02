@@ -103,6 +103,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   // The recordings live outside the dump: a consumer loads the dump, and only the engine's tests read these.
   const oracleOut = (options.oracleOut || `${options.out.replace(/\/+$/, '')}.oracle`).replace(/\/+$/, '')
   const oracleFiles: Record<string, string> = {}
+  // A recording this build does not make would be replayed against a dump it was not made with.
+  for (const file of ['reads.json.gz', 'writes.json.gz', 'graphql.json.gz']) rmSync(join(oracleOut, file), { force: true })
   const recordOracle = (file: string, body: unknown): void => {
     const bytes = gzipSync(Buffer.from(relink(JSON.stringify(body))), { level: 9 })
     mkdirSync(oracleOut, { recursive: true })
