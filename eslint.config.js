@@ -3,7 +3,7 @@ import jsdoc from 'eslint-plugin-jsdoc'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', 'presets/*/dump/**', '.yarn/**'] },
+  { ignores: ['**/dist/**', '**/node_modules/**', 'presets/*/dump/**', '.yarn/**', 'examples/**/*.cjs', 'examples/cypress/cypress/**'] },
   js.configs.recommended,
   { languageOptions: { globals: { URL: 'readonly', Buffer: 'readonly', process: 'readonly', console: 'readonly', fetch: 'readonly', Request: 'readonly', Response: 'readonly', URLSearchParams: 'readonly', Intl: 'readonly', setInterval: 'readonly' } } },
   ...tseslint.configs.strict,

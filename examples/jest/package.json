@@ -1,0 +1,15 @@
+{
+  "name": "example-jest",
+  "private": true,
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "axios": "^1.7.0",
+    "decoupled-drupal-mock": "workspace:^",
+    "decoupled-drupal-mock-umami": "workspace:^",
+    "jest": "29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "jest-mock-axios": "4.9.0"
+  }
+}

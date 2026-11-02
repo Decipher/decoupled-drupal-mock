@@ -26,6 +26,71 @@ A client that takes a `fetch` gets `drupal.fetch`. One that intercepts with msw 
 npx decoupled-drupal-mock serve decoupled-drupal-mock-umami --port 3005
 ```
 
+## In a test runner
+
+Every runner gets the same engine. Reset between tests, because a write stays until then. Each section has a working copy under [`examples/`](examples), run in CI.
+
+**Jest**, on CommonJS and Node 16 or later, in jsdom or node. Answer axios spies from the engine, so the assertions on their calls keep working:
+
+```js
+const mockAxios = require('jest-mock-axios').default;
+const { axiosVerbs, loadPreset } = require('decoupled-drupal-mock/jest');
+
+const baseUrl = 'https://drupal.test';
+const drupal = loadPreset('umami', { baseUrl });
+const verbs = axiosVerbs(drupal, baseUrl);
+
+mockAxios.get = jest.fn(verbs.get);
+mockAxios.post = jest.fn(verbs.post);
+mockAxios.patch = jest.fn(verbs.patch);
+afterEach(() => drupal.reset());
+```
+
+A client that takes an adapter gets `axios.create({ adapter: axiosAdapter(drupal) })`. For a server shared by the whole run, `globalSetup('umami')` and `globalTeardown` go in the files Jest's config names, and a test reaches it with `connectMock()`.
+
+**Vitest**, or anything else that imports ESM:
+
+```ts
+import { startMock } from 'decoupled-drupal-mock/testing';
+
+const mock = await startMock('umami');
+afterEach(() => mock.reset());
+afterAll(() => mock.close());
+// mock.url, await mock.tokenFor('admin'), mock.drupal
+```
+
+**Playwright** gets a `drupal` fixture, with a server per worker, reset after each test:
+
+```js
+import { test as base } from '@playwright/test';
+import { withDrupal } from 'decoupled-drupal-mock/testing';
+
+const test = withDrupal(base, 'umami');
+test('a recipe', async ({ page, drupal }) => {
+  await page.goto(`${drupal.url}/en/jsonapi/node/recipe`);
+});
+```
+
+**Cypress** gets tasks, in `setupNodeEvents`:
+
+```js
+const { cypressTasks, spawnMock } = require('decoupled-drupal-mock/cypress');
+
+const mock = await spawnMock('umami');
+on('task', cypressTasks(mock.url));
+on('after:run', () => mock.close());
+```
+
+A test then calls `cy.task('drupal:reset')` and `cy.task('drupal:token', { name: 'admin' })`.
+
+**A frontend the runner does not start** points at a server on a port you choose, for example from `start-server-and-test`:
+
+```sh
+npx decoupled-drupal-mock serve umami --port 3005 --control
+```
+
+Set `DECOUPLED_DRUPAL_MOCK_URL` to its URL and `connectMock()` or `withDrupal` use it. Run one test worker at a time against a shared server, or their writes meet. `--control` opens `POST /__decoupled-drupal-mock/reset` and `/token`. It lets anyone who reaches the port sign in as anyone, so it is for a test's server only.
+
 ## Writes and sign-in
 
 The engine answers POST, PATCH and DELETE on JSON:API resources and relationships with Drupal's own validation, permission and moderation answers, and Simple OAuth's token grants, userinfo and authorize beside Drupal's cookie sign-in. Each `createDrupal()` keeps its own copy of what it writes, so one test's writes never reach another's, and `reset()` restores the preset. `tokenFor('editor')` is a test's shortcut past the grant.
@@ -60,14 +125,27 @@ The engine runs on Node, including under a test runner's jsdom environment. It n
 
 ## Development
 
-The repository has a dev container, for VS Code or [DevPod](https://devpod.sh), with Node and Yarn set up:
+The repository has a dev container, for VS Code or [DevPod](https://devpod.sh), with Node, Yarn and the browsers the Playwright and Cypress examples use:
 
 ```sh
 devpod up github.com/Decipher/decoupled-drupal-mock
 ```
 
-Run the mock's server inside it with `--host 0.0.0.0` so the forwarded port 3005 reaches it. Run `yarn install` and `yarn workspace decoupled-drupal-mock build` after changing to another branch.
+Inside it, run the mock's server with `--host 0.0.0.0` so the forwarded port 3005 reaches it:
+
+```sh
+node packages/engine/dist/cli.js serve umami --host 0.0.0.0 --port 3005
+```
+
+The answers' links name the address the server was given. Through a tunnel, start the tunnel first, then the server with the `https://*.trycloudflare.com` address it prints:
+
+```sh
+yarn tunnel 3005
+node packages/engine/dist/cli.js serve umami --port 3005 --base-url https://<printed>.trycloudflare.com
+```
+
+Port 3000, for a frontend, is forwarded too. Run `yarn install` and `yarn workspace decoupled-drupal-mock build` after changing to another branch.
 
 ## Licence
 
-GPL-2.0-or-later, as everything hosted on drupal.org is, and as the Umami preset must be: it carries Drupal's own demo content and configuration.\n
+GPL-2.0-or-later, as everything hosted on drupal.org is, and as the Umami preset must be: it carries Drupal's own demo content and configuration.

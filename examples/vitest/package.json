@@ -1,0 +1,13 @@
+{
+  "name": "example-vitest",
+  "private": true,
+  "scripts": {
+    "test": "vitest run --root ../..  examples/vitest"
+  },
+  "devDependencies": {
+    "decoupled-drupal-mock": "workspace:^",
+    "decoupled-drupal-mock-umami": "workspace:^",
+    "vitest": "^5.0.3"
+  },
+  "type": "module"
+}

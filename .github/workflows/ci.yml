@@ -25,3 +25,25 @@ jobs:
         run: yarn commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}
       - run: '[ -d packages ] && yarn typecheck || echo "nothing to typecheck"'
       - run: '[ -d packages ] && yarn test || echo "nothing to test"'
+
+  # Each runner, as a consumer uses it. Jest runs as druxt.js's 0.x branch does: Node 16, CommonJS, jsdom.
+  runners:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/1.0.x'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable
+      - run: yarn workspace decoupled-drupal-mock build
+      - run: yarn workspace example-playwright playwright install --with-deps chromium
+      - run: yarn workspace example-playwright test
+      - run: yarn workspace example-cypress cypress install
+      - run: yarn workspace example-cypress test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 16
+      - run: node ../../node_modules/jest/bin/jest.js
+        working-directory: examples/jest

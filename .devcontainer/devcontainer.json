@@ -8,8 +8,11 @@
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "postCreateCommand": "bash .devcontainer/post-create.sh",
-  "forwardPorts": [3005],
+  "forwardPorts": [3000, 3005],
   "portsAttributes": {
+    "3000": {
+      "label": "Frontend"
+    },
     "3005": {
       "label": "Mock server"
     }

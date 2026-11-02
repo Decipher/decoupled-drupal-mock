@@ -1,0 +1,12 @@
+{
+  "name": "example-cypress",
+  "private": true,
+  "scripts": {
+    "test": "cypress run --browser electron"
+  },
+  "devDependencies": {
+    "cypress": "^13.17.0",
+    "decoupled-drupal-mock": "workspace:^",
+    "decoupled-drupal-mock-umami": "workspace:^"
+  }
+}
