@@ -186,6 +186,9 @@ describe('a recorded overlay', () => {
     const [key] = Object.keys(dump.recorded)
     const mock = createMock(dump, { baseUrl: BASE, extensions: [{ overlay: { recorded: { 'GET /only/in/the/overlay': { status: 200, headers: { 'content-type': 'application/json' }, body: { ok: true } } }, removed: [key!], resources: { en: { 'thing--thing': [{ type: 'thing--thing', id: 't-1', attributes: {}, relationships: {} }] } }, index: { es: { links: {} } }, access: { en: { 'node--page': { hidden: ['field_code'] } } } } }] })
     expect(mock.handle('GET', `${BASE}/only/in/the/overlay`).body).toEqual({ ok: true })
+    // Its resources and index replace the preset's, language by language.
+    expect((mock.handle('GET', `${BASE}/jsonapi/thing/thing/t-1`).body as { data: { id: string } }).data.id).toBe('t-1')
+    expect((mock.handle('GET', `${BASE}/es/jsonapi`).body as { links: object }).links).toEqual({})
     expect(Object.keys(dump.recorded)).toHaveLength(before)
     expect((mock.handle('GET', `${BASE}/jsonapi/node/page/p-1`).body as { data: { attributes: object } }).data.attributes).not.toHaveProperty('field_code')
     // The recording it removes is not served, where the stock mock serves it.

@@ -37,10 +37,11 @@ const freePort = (): Promise<number> => new Promise((resolve, reject) => {
 export const startMock = async (preset: string, options: { extensions?: Extension[], overlays?: string[] } = {}): Promise<Mock> => {
   const dir = presetDir(preset)
   const dump = loadDump(dir)
+  const extensions = [...(options.overlays || []).map((name) => loadOverlay(dir, name)), ...(options.extensions || [])]
   for (let attempt = 0; ; attempt++) {
     const port = await freePort()
     const url = `http://127.0.0.1:${port}`
-    const drupal = createMock(dump, { baseUrl: url, extensions: [...(options.overlays || []).map((name) => loadOverlay(dir, name)), ...(options.extensions || [])] })
+    const drupal = createMock(dump, { baseUrl: url, extensions })
     try {
       const { close } = await listen(drupal, port, '127.0.0.1', { files: dir, control: true })
       return { ...connectMock(url), reset: async () => drupal.reset(), tokenFor: async (name, scopes) => drupal.tokenFor(name, scopes), scenario: async (name) => drupal.scenario(name), requests: async () => drupal.requests(), sent: async () => drupal.sent(), advanceTime: async (seconds) => drupal.advanceTime(seconds), drupal, close }

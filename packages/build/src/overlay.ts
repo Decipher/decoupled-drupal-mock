@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import type { Document, Recorded, Resource } from 'decoupled-drupal-mock'
 
@@ -60,7 +61,8 @@ const quiet = (recording: Recorded | undefined): unknown => {
  * @returns The overlay.
  */
 export const diffBuilds = (base: string, variant: string, name: string): Overlay => {
-  const manifest = read<{ drupal: Overlay['drupal'], languages: Record<string, string> }>(variant, 'manifest.json')!
+  const manifest = read<{ drupal: Overlay['drupal'], languages: Record<string, string> }>(variant, 'manifest.json')
+  if (!manifest) throw new Error(`${variant} has no manifest.json: it is not a finished build.`)
   const fromRecorded = read<Record<string, Recorded>>(base, 'recorded/routes.json.gz') || {}
   const toRecordedFile = read<Record<string, Recorded>>(variant, 'recorded/routes.json.gz')
   // A variant without the recordings its baseline has is a crawl that failed, not a site that answers nothing.
@@ -106,11 +108,33 @@ export const writeOverlay = (overlay: Overlay, out: string): void => {
   writeFileSync(join(out, `${overlay.name}.json.gz`), gzipSync(Buffer.from(JSON.stringify(overlay)), { level: 9 }))
 }
 
+/**
+ * Puts the variant site's real answers beside the preset, where the oracle test replays them against the baseline
+ * plus the overlay, and names them in the preset's manifest with their hash, so the bytes replayed are the bytes
+ * recorded.
+ *
+ * @param recording - The variant build's `reads.json.gz`.
+ * @param preset - The preset's directory, holding `dump/` and `oracle/`.
+ * @param name - The overlay's name.
+ */
+export const publishOverlayRecording = (recording: string, preset: string, name: string): void => {
+  const bytes = readFileSync(recording)
+  const file = `overlays/${name}.json.gz`
+  mkdirSync(join(preset, 'oracle', 'overlays'), { recursive: true })
+  writeFileSync(join(preset, 'oracle', file), bytes)
+  const manifestFile = join(preset, 'dump', 'manifest.json')
+  const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as { oracle?: Record<string, string> }
+  manifest.oracle = { ...manifest.oracle, [file]: createHash('sha256').update(bytes).digest('hex') }
+  writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`)
+}
+
 /* c8 ignore start */
 if (process.argv[1]?.endsWith('overlay.ts')) {
   const [baseDir, variantDir, name, out] = process.argv.slice(2) as [string, string, string, string]
   const overlay = diffBuilds(baseDir, variantDir, name)
   writeOverlay(overlay, out)
+  // The variant's recordings, beside its build as the crawl writes them.
+  publishOverlayRecording(join(`${variantDir.replace(/\/+$/, '')}.oracle`, 'reads.json.gz'), dirname(out), name)
   console.log(`${name}: ${Object.keys(overlay.recorded).length} recordings, ${overlay.removed.length} removed, ${Object.values(overlay.resources).flatMap(Object.keys).length} resource types, ${Object.keys(overlay.index).length} indexes`)
 }
 /* c8 ignore stop */

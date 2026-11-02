@@ -74,10 +74,19 @@ const composer = config.composerDir
       json: JSON.parse(readFileSync(`${config.composerDir}/composer.json`, 'utf8')) as ComposerJson,
     }
   : undefined
+// The point of reading the lock is that the version is not stated by hand, so a lock without core stops the build.
+const lockedCore = (packages: Array<{ name: string, version: string }>): string => {
+  const core = packages.find((item) => item.name === 'drupal/core' || item.name === 'drupal/core-recommended')?.version
+  if (!core) {
+    console.error(`${config.composerDir}/composer.lock names no drupal/core: the build will not state the core version by hand.`)
+    process.exit(1)
+  }
+  return core
+}
 const drupal = composer
   ? {
       ...config.drupal,
-      core: composer.lock.packages.find((item) => item.name === 'drupal/core')?.version || config.drupal.core,
+      core: lockedCore(composer.lock.packages),
       modules: Object.fromEntries(composer.lock.packages.filter((item) => item.name.startsWith('drupal/') && !item.name.startsWith('drupal/core')).map((item) => [item.name.slice('drupal/'.length), item.version])),
       ...(config.patched ? { patches: composerPatches(config.composerDir!, composer.json) } : {}),
     }

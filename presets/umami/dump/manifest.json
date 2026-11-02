@@ -127,6 +127,9 @@
   },
   "oracle": {
     "reads.json.gz": "10175caac4dd33b46572a5eab44c0991026cdf8eb1f1c4fb051c83024d2e5ee6",
-    "writes.json.gz": "fd9899cc1ec562aed18c82ca41365a28081a0c621e44b48d7b2237d3749c099c"
+    "writes.json.gz": "fd9899cc1ec562aed18c82ca41365a28081a0c621e44b48d7b2237d3749c099c",
+    "overlays/language-routing-patches.json.gz": "95ee4f3e1041e344e8a02f25ba65a8526848fcd1561e0999381e57440a757584",
+    "overlays/contact-storage.json.gz": "329ffc80737a6cb4408797f35c792c80d8881cb4b8ee958eb2de4ab30518f79b",
+    "overlays/jsonapi-extras.json.gz": "e43cb5ad5ab5c6349abe37e762512a641a3047e392285a80200da3e4d071eee8"
   }
 }

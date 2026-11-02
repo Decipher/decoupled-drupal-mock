@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
-import { diffBuilds, writeOverlay } from '../src/overlay'
+import { createHash } from 'node:crypto'
+import { diffBuilds, publishOverlayRecording, writeOverlay } from '../src/overlay'
 
 /** A build directory from a map of its files. */
 const build = (files: Record<string, unknown>): string => {
@@ -63,6 +64,20 @@ describe('the difference between two builds', () => {
     const broken = build({ 'manifest.json': manifest, 'recorded/routes.json.gz': {} })
     writeFileSync(join(broken, 'recorded', 'routes.json.gz'), 'not gzip')
     expect(() => diffBuilds(base, broken, 'broken')).toThrow('cannot be read')
+  })
+
+  it('refuses a variant with no manifest, which is not a finished build', () => {
+    expect(() => diffBuilds(build({ 'manifest.json': manifest }), build({}), 'unfinished')).toThrow('has no manifest.json')
+  })
+
+  it('puts the variant\'s recording beside the preset, and its hash in the preset\'s manifest', () => {
+    const preset = build({ 'dump/manifest.json': { preset: 'p', oracle: { 'reads.json.gz': 'abc' } } })
+    const recording = join(build({ 'reads.json.gz': [{ request: '/x', status: 200, body: {} }] }), 'reads.json.gz')
+    publishOverlayRecording(recording, preset, 'a-module')
+    const bytes = readFileSync(join(preset, 'oracle', 'overlays', 'a-module.json.gz'))
+    expect(bytes.equals(readFileSync(recording))).toBe(true)
+    const written = JSON.parse(readFileSync(join(preset, 'dump', 'manifest.json'), 'utf8')) as { oracle: Record<string, string> }
+    expect(written.oracle).toEqual({ 'reads.json.gz': 'abc', 'overlays/a-module.json.gz': createHash('sha256').update(bytes).digest('hex') })
   })
 
   it('writes what a preset loads', () => {

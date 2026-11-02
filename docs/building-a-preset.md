@@ -59,7 +59,7 @@ Build the site twice, with and without the change, then keep the difference:
 node --experimental-strip-types packages/build/src/overlay.ts <baseline build> <variant build> <name> presets/<preset>/overlays
 ```
 
-Copy the variant's `reads.json.gz` to `presets/<preset>/oracle/overlays/<name>.json.gz`, and the oracle test replays it against the baseline plus the overlay. Set `composerDir` in the config, and the manifest names what the site really runs. Add `patched` to name its patches too.
+It also copies the variant's `reads.json.gz` to `presets/<preset>/oracle/overlays/<name>.json.gz` and names it, with its hash, in the preset's manifest: the oracle test replays it against the baseline plus the overlay, and checks the hash first. Set `composerDir` in the config, and the manifest names what the site really runs. Add `patched` to name its patches too.
 
 ## Without `auth`
 

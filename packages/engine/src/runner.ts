@@ -66,6 +66,9 @@ export interface SpawnedMock extends MockClient {
  * @returns The running server.
  */
 export const spawnMock = async (preset: string, options: { port?: number, extensions?: string[], overlays?: string[] } = {}): Promise<SpawnedMock> => {
+  // A misspelled overlay is named now, rather than as a server that never answers.
+  const dir = presetDir(preset)
+  for (const name of options.overlays || []) loadOverlay(dir, name)
   const port = options.port || await freePort()
   const url = `http://127.0.0.1:${port}`
   const child: ChildProcess = spawn(process.execPath, [join(__dirname, 'cli.js'), 'serve', preset, '--port', String(port), '--control', ...(options.extensions || []).flatMap((file) => ['--extension', file]), ...(options.overlays || []).flatMap((name) => ['--overlay', name])], { stdio: ['ignore', 'ignore', 'pipe'] })
