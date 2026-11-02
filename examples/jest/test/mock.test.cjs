@@ -42,6 +42,7 @@ describe('the server globalSetup started', () => {
     const { data: { data: [recipe] } } = await client.get('/en/jsonapi/node/recipe')
     const headers = { Authorization: `Bearer ${token.access}`, 'Content-Type': 'application/vnd.api+json' }
     await client.patch(`/en/jsonapi/node/recipe/${recipe.id}`, { data: { type: recipe.type, id: recipe.id, attributes: { title: 'Changed' } } }, { headers })
+    expect((await client.get(`/en/jsonapi/node/recipe/${recipe.id}`)).data.data.attributes.title).toBe('Changed')
     await mock.reset()
     expect((await client.get(`/en/jsonapi/node/recipe/${recipe.id}`)).data.data.attributes.title).toBe(recipe.attributes.title)
   })

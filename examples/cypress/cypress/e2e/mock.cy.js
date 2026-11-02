@@ -14,6 +14,7 @@ describe('the mock', () => {
           headers: { authorization: `Bearer ${access}`, 'content-type': 'application/vnd.api+json' },
           body: { data: { type: recipe.type, id: recipe.id, attributes: { title: 'Changed' } } },
         }).its('status').should('eq', 200)
+        cy.request(`/en/jsonapi/node/recipe/${recipe.id}`).its('body.data.attributes.title').should('eq', 'Changed')
         cy.task('drupal:reset')
         cy.request(`/en/jsonapi/node/recipe/${recipe.id}`).its('body.data.attributes.title').should('eq', recipe.attributes.title)
       })

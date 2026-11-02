@@ -33,7 +33,7 @@ Every runner gets the same engine. Reset between tests, because a write stays un
 **Jest**, on CommonJS and Node 16 or later, in jsdom or node. Answer axios spies from the engine, so the assertions on their calls keep working:
 
 ```js
-import mockAxios from 'jest-mock-axios';
+const mockAxios = require('jest-mock-axios').default;
 const { axiosVerbs, loadPreset } = require('decoupled-drupal-mock/jest');
 
 const baseUrl = 'https://drupal.test';
@@ -131,11 +131,17 @@ The repository has a dev container, for VS Code or [DevPod](https://devpod.sh), 
 devpod up github.com/Decipher/decoupled-drupal-mock
 ```
 
-Inside it, run the mock's server with `--host 0.0.0.0` so the forwarded port 3005 reaches it, or tunnel it when a forwarded port does not reach the browser:
+Inside it, run the mock's server with `--host 0.0.0.0` so the forwarded port 3005 reaches it:
 
 ```sh
 node packages/engine/dist/cli.js serve umami --host 0.0.0.0 --port 3005
+```
+
+The answers' links name the address the server was given. Through a tunnel, start the tunnel first, then the server with the `https://*.trycloudflare.com` address it prints:
+
+```sh
 yarn tunnel 3005
+node packages/engine/dist/cli.js serve umami --port 3005 --base-url https://<printed>.trycloudflare.com
 ```
 
 Port 3000, for a frontend, is forwarded too. Run `yarn install` and `yarn workspace decoupled-drupal-mock build` after changing to another branch.

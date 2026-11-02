@@ -32,10 +32,23 @@ const headersOf = (headers: unknown): Record<string, string> => {
   return out
 }
 
+// As axios 1.x writes params and form bodies: `filter[status]=1` for a nested object, `id[]=1&id[]=2` for an array,
+// a date as ISO 8601, and nothing for undefined or null.
+const pairsOf = (value: unknown, name: string, out: [string, string][] = []): [string, string][] => {
+  if (value === undefined || value === null) return out
+  if (value instanceof Date) out.push([name, value.toISOString()])
+  else if (Array.isArray(value)) for (const item of value) pairsOf(item, `${name}[]`, out)
+  else if (typeof value === 'object') for (const [key, item] of Object.entries(value)) pairsOf(item, `${name}[${key}]`, out)
+  else out.push([name, String(value)])
+  return out
+}
+
+const encode = (values: unknown): string => new URLSearchParams(Object.entries((values || {}) as Record<string, unknown>).flatMap(([name, value]) => pairsOf(value, name))).toString()
+
 const urlOf = (config: AxiosLikeConfig, fallback: string): string => {
   const url = config.url || ''
   const full = /^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `${(config.baseURL || fallback).replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`
-  const params = new URLSearchParams(Object.entries((config.params || {}) as Record<string, unknown>).filter(([, value]) => value !== undefined && value !== null).map(([name, value]) => [name, String(value)])).toString()
+  const params = encode(config.params)
   return params ? `${full}${full.includes('?') ? '&' : '?'}${params}` : full
 }
 
@@ -49,8 +62,15 @@ const urlOf = (config: AxiosLikeConfig, fallback: string): string => {
  * @returns The response.
  */
 export const answerAxios = async (drupal: Drupal, config: AxiosLikeConfig, baseUrl = 'http://drupal.test'): Promise<AxiosLikeResponse> => {
-  const body = config.data === undefined || config.data === null || typeof config.data === 'string' ? config.data as string | undefined | null : JSON.stringify(config.data)
-  const { status, headers, body: data } = drupal.handle((config.method || 'get').toUpperCase(), urlOf(config, baseUrl), headersOf(config.headers), body ?? undefined)
+  const requestHeaders = headersOf(config.headers)
+  const method = (config.method || 'get').toUpperCase()
+  // An object for a form body is encoded as one, as axios does: the token route reads its grant that way.
+  const form = (requestHeaders['content-type'] || '').toLowerCase().startsWith('application/x-www-form-urlencoded')
+  const body = config.data === undefined || config.data === null || typeof config.data === 'string' ? config.data as string | undefined | null : form ? encode(config.data) : JSON.stringify(config.data)
+  const answered = drupal.handle(method, urlOf(config, baseUrl), requestHeaders, body ?? undefined)
+  const { status, headers } = answered
+  // A HEAD answer carries no body, as the transport leaves it out.
+  const data = method === 'HEAD' ? '' : answered.body
   const response: AxiosLikeResponse = { data, status, statusText: STATUS_TEXT[status] || '', headers, config, request: {} }
   const valid = config.validateStatus === null || (config.validateStatus || ((code: number) => code >= 200 && code < 300))(status)
   if (valid) return response

@@ -36,11 +36,14 @@ const freePort = (): Promise<number> => new Promise((resolve, reject) => {
   })
 })
 
+// A probe that gives up after a second, so a port held by something that never answers cannot stall the wait.
 const answers = (url: string): Promise<boolean> => new Promise((resolve) => {
-  get(`${url}/jsonapi`, (response) => {
+  const request = get(`${url}/jsonapi`, { timeout: 1000 }, (response) => {
     response.resume()
     resolve(true)
-  }).on('error', () => resolve(false))
+  })
+  request.on('timeout', () => request.destroy())
+  request.on('error', () => resolve(false))
 })
 
 /** A server in a process of its own, for a runner whose tests and browser live elsewhere. */
@@ -66,7 +69,15 @@ export const spawnMock = async (preset: string, options: { port?: number } = {})
   child.on('exit', () => { exited = true })
   for (let attempt = 0; attempt < 300 && !exited; attempt++) {
     if (await answers(url)) {
-      return { ...connectMock(url), close: () => new Promise((resolve) => { child.on('exit', () => resolve()); child.kill() }) }
+      return {
+        ...connectMock(url),
+        close: () => new Promise((resolve) => {
+          // A server that has already gone has no exit left to wait for.
+          if (exited) return resolve()
+          child.on('exit', () => resolve())
+          child.kill()
+        }),
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 100))
   }

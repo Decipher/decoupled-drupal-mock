@@ -20,7 +20,9 @@ export const presetDir = (target: string, from = process.cwd()): string => {
     try {
       return join(dirname(require.resolve(`${candidate}/package.json`)), 'dump')
     } catch {
-      // The next name.
+      // A package whose exports leave out its package.json is still found where Node looks for it.
+      const found = (require.resolve.paths(candidate) || []).map((path) => join(path, candidate)).find((root) => existsSync(join(root, 'package.json')))
+      if (found) return join(found, 'dump')
     }
   }
   throw new Error(`${target} is ${isPackage ? 'not an installed preset package' : 'not a directory'}. Name a preset package or a build directory holding manifest.json.`)
