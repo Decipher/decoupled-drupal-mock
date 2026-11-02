@@ -6008,7 +6008,7 @@ __metadata:
     graphql: "npm:^17.0.2"
     typescript: "npm:^5.9.0"
   peerDependencies:
-    graphql: "*"
+    graphql: ^16.0.0 || ^17.0.0
     msw: "*"
   peerDependenciesMeta:
     graphql:

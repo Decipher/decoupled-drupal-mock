@@ -2,6 +2,7 @@
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import type { Extension } from './extend.js'
+import { graphqlFactory } from './optional.js'
 import { createMock } from './mock.js'
 import { loadDump } from './load.js'
 import { presetDir } from './preset.js'
@@ -58,7 +59,9 @@ for (const [index, argument] of rest.entries()) {
     process.exit(1)
   }
 }
-const drupal = createMock(dump, { baseUrl, extensions })
+// With the graphql package installed, the schema's endpoint answers too, as it does under startMock.
+const create = await graphqlFactory()
+const drupal = createMock(dump, { baseUrl, extensions, ...(create ? { create } : {}) })
 const { url } = await listen(drupal, port, host, { files: dir, cors: !rest.includes('--no-cors'), control: rest.includes('--control') }).catch((error: NodeJS.ErrnoException) => {
   console.error(error.code === 'EADDRINUSE' ? `Port ${port} is in use: name another with --port.` : error.message)
   process.exit(1)

@@ -2,6 +2,7 @@ import { buildSchema, executeSync, GraphQLError, parse, validate } from 'graphql
 import type { GraphQLSchema } from 'graphql'
 import { createDrupal as createCore, fetchOver } from './engine.js'
 import type { Drupal, DrupalOptions, Internals } from './engine.js'
+import type { Session } from './identity.js'
 import type { ComposeField, ComposeMeta, ComposeType, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
 
 /**
@@ -45,6 +46,17 @@ const CANONICAL: Record<string, (attributes: Attributes) => string> = {
 
 const LABEL: Record<string, string> = { node: 'title', taxonomy_term: 'name', media: 'name', user: 'name', block_content: 'info', menu_link_content: 'title' }
 
+/** A URL's scheme, host and port, or none for a URL that cannot be read. */
+const originOf = (url: string): string | undefined => {
+  try {
+    return new URL(url).origin
+  } catch {
+    return undefined
+  }
+}
+
+const REVISION_ID = ['drupal_internal__vid', 'drupal_internal__revision_id', 'revision_id']
+
 const INTERNAL_ID: Record<string, string> = { node: 'drupal_internal__nid', taxonomy_term: 'drupal_internal__tid', media: 'drupal_internal__mid', user: 'drupal_internal__uid', block_content: 'drupal_internal__id', file: 'drupal_internal__fid' }
 
 /** GraphQL Compose's answers over the engine's internals. */
@@ -60,13 +72,16 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
   const typesByType = new Map(Object.entries(compose.types).map(([resourceType, meta]) => [resourceType, meta] as const))
   const menusByEnum = new Map(Object.entries(compose.menus || {}).map(([name, meta]) => [meta.enum, name] as const))
 
+  // Who asks, for the request being answered: execution is synchronous, so one request's session cannot meet another's.
+  let session: Session = { uid: 0, roles: ['anonymous'] }
   const prefixOf = (langcode: string): string => (languages[langcode] ? `/${languages[langcode]}` : '')
   const attributesOf = (resource: Resource | undefined): Attributes => (resource?.attributes || {}) as Attributes
   const entityTypeOf = (resource: Resource): string => resource.type.split('--')[0]!
   const labelOf = (resource: Resource): string => String(attributesOf(resource)[LABEL[entityTypeOf(resource)] || 'title'] ?? '')
-  const readable = (langcode: string, resource: Resource): boolean => internals.visible(langcode, resource) && !internals.phantom(langcode, resource)
+  // As the core engine reads: a signed-in user reads the whole dump, a visitor what was visible, and nobody a phantom.
+  const readable = (langcode: string, resource: Resource): boolean => !internals.phantom(langcode, resource) && (!!session.user || internals.visible(langcode, resource))
 
-  /** A resource in a language, or its default translation, when a visitor may read it. */
+  /** A resource in a language, or its default translation, when the reader may read it. */
   const translated = (langcode: string, identifier: ResourceIdentifier): Resource | undefined => {
     const resource = internals.find(langcode, identifier)
     return resource && readable(langcode, resource) ? resource : undefined
@@ -141,11 +156,14 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
     for (const [name, field] of Object.entries(meta.fields)) {
       Object.defineProperty(object, name, { enumerable: true, get: () => fieldValue(resource, langcode, field, attributes, relationships) })
     }
-    Object.defineProperty(object, 'translations', { enumerable: true, get: () => languagesOf(resource).map((code) => { const translation = internals.find(code, { type: resource.type, id: resource.id })!; return { title: labelOf(translation), langcode: languageObject(code, langcode), path: pathOf(translation, code) } }) })
+    // Only the translations the reader may read: an unpublished one names nothing.
+    Object.defineProperty(object, 'translations', { enumerable: true, get: () => languagesOf(resource).flatMap((code) => { const translation = translated(code, { type: resource.type, id: resource.id }); return translation ? [{ title: labelOf(translation), langcode: languageObject(code, langcode), path: pathOf(translation, code) }] : [] }) })
     return object
   }
 
   const fieldValue = (resource: Resource, langcode: string, field: ComposeField, attributes: Attributes, relationships: Record<string, { data?: ResourceIdentifier | ResourceIdentifier[] | null }>): unknown => {
+    // A field JSON:API hides from this reader, Compose's field access hides too.
+    if (internals.hidden(langcode, resource, session)?.includes(field.field)) return field.multiple ? [] : null
     const value = attributes[field.field]
     const each = <T>(convert: (item: unknown) => T): T | T[] | null => field.multiple ? (Array.isArray(value) ? value.map(convert) : []) : (value === null || value === undefined ? null : convert(value))
     switch (field.fieldType) {
@@ -177,7 +195,23 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
   const entitiesOf = (meta: ComposeType, langcode: string): Resource[] => {
     const type = [...typesByType.entries()].find(([, candidate]) => candidate === meta)![0]
     const base = internals.stored(defaultLanguage, type).filter((resource) => readable(defaultLanguage, resource))
-    return base.map((resource) => internals.find(langcode, { type, id: resource.id }) || resource)
+    return base.flatMap((resource) => translated(langcode, { type, id: resource.id }) || [])
+  }
+
+  /**
+   * A resource at a requested revision, as Compose loads one: the current or latest revision is the resource, another
+   * entity's revision is refused, and one the dump does not hold is nothing. The dump holds current revisions only, so
+   * an earlier revision of this entity is nothing too, where Drupal would answer it.
+   */
+  const atRevision = (resource: Resource, revision: string | null | undefined): Resource | null => {
+    if (revision === null || revision === undefined || revision === 'current' || revision === 'latest') return resource
+    const revisionOf = (candidate: Resource): string | undefined => { const attributes = attributesOf(candidate); const key = REVISION_ID.find((name) => attributes[name] !== undefined); return key === undefined ? undefined : String(attributes[key]) }
+    if (revisionOf(resource) === revision) return resource
+    if (!/^\d+$/.test(revision)) return null
+    const entityType = entityTypeOf(resource)
+    const owner = [...typesByType.keys()].filter((type) => type.startsWith(`${entityType}--`)).flatMap((type) => internals.stored(defaultLanguage, type)).find((candidate) => revisionOf(candidate) === revision)
+    if (owner) throw new UserError('The requested revision does not belong to the requested entity.')
+    return null
   }
 
   // Compose's routes: the recorded Decoupled Router answer for the path, the breadcrumbs from the path's ancestors.
@@ -185,8 +219,8 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
     const answer = internals.recorded('GET', '/router/translate-path', `path=${encodeURIComponent(path)}`)
     return answer && answer.status === 200 ? answer.body as Record<string, unknown> : undefined
   }
-  const route = (path: string, langcode: string | null | undefined): Record<string, unknown> | null => {
-    if (/^[a-z]+:\/\//i.test(path) && !path.startsWith(baseUrl)) return { __typename: 'RouteExternal', url: path, internal: false }
+  const route = (path: string, langcode: string | null | undefined, revision?: string | null): Record<string, unknown> | null => {
+    if (/^[a-z]+:\/\//i.test(path) && originOf(path) !== originOf(baseUrl)) return { __typename: 'RouteExternal', url: path, internal: false }
     const answer = routeAnswer(path)
     if (!answer) return null
     const { prefix } = internals.language(path)
@@ -214,7 +248,8 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
       get entity() {
         if (!target?.type || !target.bundle || !target.uuid) return null
         const resource = translated(requested, { type: `${target.type}--${target.bundle}`, id: target.uuid })
-        return resource ? entity(resource, requested) : null
+        const revised = resource ? atRevision(resource, revision) : null
+        return revised ? entity(revised, requested) : null
       },
     }
   }
@@ -344,11 +379,20 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
   }
 
   /** The root value: Compose's queries, each as a function of its arguments and the request's language. */
-  const rootValue = (context: string): Record<string, unknown> => {
+  const rootValue = (start: string): Record<string, unknown> => {
+    // As Compose does: a `langcode` on `route` or `menu` sets the language for that field and for every root field
+    // resolved after it, which in a query is the document's order. Fields before it keep the request's language.
+    let context = start
     const root: Record<string, unknown> = {
       info: () => ({ description: settings.schema_description ?? null, home: compose.front ?? null, version: settings.schema_version ?? null, languages: Object.keys(languages).map((code) => languageObject(code, context)) }),
-      route: (args: { path: string, langcode?: string | null }) => route(args.path, args.langcode),
-      menu: (args: { name: string, langcode?: string | null }) => menu(args.name, args.langcode || context),
+      route: (args: { path: string, langcode?: string | null, revision?: string | null }) => {
+        if (args.langcode) context = args.langcode
+        return route(args.path, args.langcode, args.revision)
+      },
+      menu: (args: { name: string, langcode?: string | null }) => {
+        if (args.langcode) context = args.langcode
+        return menu(args.name, context)
+      },
     }
     const byEntityType = new Map<string, ComposeType[]>()
     for (const [resourceType, meta] of typesByType) {
@@ -359,13 +403,15 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
     for (const [entityType, metas] of byEntityType) {
       const query = entityType === 'taxonomy_term' ? 'term' : entityType
       if (!metas.some((meta) => meta.queryLoad)) continue
-      root[query] = (args: { id: string, langcode?: string | null }) => {
+      root[query] = (args: { id: string, langcode?: string | null, revision?: string | null }) => {
         const langcode = args.langcode || context
         for (const meta of metas) {
           if (!meta.queryLoad) continue
           const type = [...typesByType.entries()].find(([, candidate]) => candidate === meta)![0]
           const resource = translated(langcode, { type, id: args.id })
-          if (resource) return entity(resource, langcode)
+          if (!resource) continue
+          const revised = atRevision(resource, args.revision)
+          return revised ? entity(revised, langcode) : null
         }
         return null
       }
@@ -395,12 +441,16 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
     const { langcode, rest } = internals.language(parsed.pathname)
     if (rest !== endpoint) return undefined
     const headers = { 'content-type': 'application/json' }
+    // The route takes GET, POST and HEAD, and Drupal answers anything else with its HTML 405.
+    const upper = method.toUpperCase()
+    if (upper !== 'GET' && upper !== 'POST' && upper !== 'HEAD') return { status: 405, headers: { 'content-type': 'text/html; charset=UTF-8', allow: 'GET, POST, HEAD' }, body: '<!DOCTYPE html><html><body><h1>Method Not Allowed</h1></body></html>' }
     const resolved = internals.session(requestHeaders)
     if ('invalid' in resolved) return { status: 401, headers: { 'content-type': 'text/html; charset=UTF-8', 'www-authenticate': `Bearer realm="OAuth", error="access_denied", error_description="${resolved.invalid}"` }, body: '<!DOCTYPE html><html><body><h1>Unauthorized</h1></body></html>' }
     const permission = `execute ${compose.server || 'graphql_compose_server'} arbitrary graphql requests`
     if (!internals.permissions(resolved).has(permission)) return { status: 403, headers, body: { message: `The '${permission}' permission is required.` } }
+    session = resolved
     let request: { query?: string, variables?: Record<string, unknown> | string | null, operationName?: string | null }
-    if (method.toUpperCase() === 'GET') {
+    if (upper === 'GET' || upper === 'HEAD') {
       request = { query: parsed.searchParams.get('query') || '', variables: parsed.searchParams.get('variables'), operationName: parsed.searchParams.get('operationName') }
     } else {
       const missing = { errors: [{ message: 'GraphQL Request must include at least one of those two parameters: "query" or "queryId"', extensions: { category: 'request' } }] }
@@ -419,7 +469,7 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
         else throw new SyntaxError('not an object')
       } catch {
         // Drupal runs a GET without variables it cannot read, and refuses them in a POST.
-        if (method.toUpperCase() !== 'GET') return { status: 200, headers, body: { errors: [{ message: `GraphQL Request parameter "variables" must be object or JSON string parsed to object, but got ${JSON.stringify(request.variables)}`, extensions: { category: 'request' } }] } }
+        if (upper === 'POST') return { status: 200, headers, body: { errors: [{ message: `GraphQL Request parameter "variables" must be object or JSON string parsed to object, but got ${JSON.stringify(request.variables)}`, extensions: { category: 'request' } }] } }
       }
     } else if (request.variables) {
       variables = request.variables

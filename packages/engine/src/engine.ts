@@ -38,6 +38,8 @@ export interface Internals {
   visible: (langcode: string, resource: Resource) => boolean
   /** Whether a resource is one no user reads, held for filtering and sorting alone. */
   phantom: (langcode: string, resource: Resource) => boolean
+  /** The fields a session may not read of a resource, as JSON:API leaves them out. */
+  hidden: (langcode: string, resource: { type: string, id?: string }, session: Session) => string[] | undefined
   /** A recorded answer, the default language's prefix tried as Drupal does. */
   recorded: (method: string, path: string, search?: string) => Recorded | undefined
   /** The language and the path after its prefix. */
@@ -694,6 +696,12 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     find,
     visible,
     phantom: isPhantom,
+    hidden: (langcode, resource, session) => {
+      if (!session.user) return accessOf(langcode, resource.type)?.hidden
+      const held = identity.permissions(session)
+      if (resource.type !== 'user--user' || held.admin || held.has('administer users')) return undefined
+      return resource.id && resource.id === session.user.id ? OWN_ACCOUNT_HIDDEN : accessOf(langcode, resource.type)?.hidden
+    },
     recorded: (method, path, search = '') => recorded(method, path, search),
     language,
   }

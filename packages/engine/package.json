@@ -60,7 +60,7 @@
   },
   "bin": "./dist/cli.js",
   "peerDependencies": {
-    "graphql": "*",
+    "graphql": "^16.0.0 || ^17.0.0",
     "msw": "*"
   },
   "peerDependenciesMeta": {

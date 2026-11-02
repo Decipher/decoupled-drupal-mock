@@ -91,7 +91,7 @@ export const passwordGrantInstalled = (status: number, text: string): boolean =>
 
 export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   // The engine cannot answer a schema without its mapping, and finding that out after the crawl wastes the crawl.
-  if (options.graphql && !options.graphql.meta) throw new Error('A GraphQL build needs the schema\'s mapping: set `drush` in the config, or `graphql.meta`.')
+  if (options.graphql && !options.graphql.meta?.types) throw new Error('A GraphQL build needs the schema\'s mapping, with its `types`: set `drush` in the config, or `graphql.meta`.')
   const base = options.baseUrl.replace(/\/+$/, '')
   const origin = (options.origin || PLACEHOLDER).replace(/\/+$/, '')
   const log = options.log || ((line: string) => console.log(line))
@@ -435,8 +435,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     const introspected = (await ask({ query: getIntrospectionQuery() })).answer as { data?: IntrospectionQuery, errors?: unknown }
     if (!introspected.data) throw new Error(`The GraphQL schema at ${endpoint} could not be introspected: ${JSON.stringify(introspected.errors)}`)
     writeText('graphql/schema.graphql', printSchema(buildClientSchema(introspected.data)))
-    // A build without drush has no mapping to write, and the engine still reads `types`.
-    write('graphql/compose.json', { endpoint, types: {}, ...(options.graphql.meta || {}) })
+    // The endpoint the schema was read from, whatever the mapping says.
+    write('graphql/compose.json', { types: {}, ...(options.graphql.meta || {}), endpoint })
     if (options.graphql.queries?.length) {
       const resourceId = (type: string, index: number) => all[options.defaultLanguage]?.[type]?.[index]?.id
       const recorded = []

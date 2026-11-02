@@ -36,8 +36,9 @@ const drushScript = (path: string): string => {
 const php = (value: unknown): string => `json_decode('${JSON.stringify(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', TRUE)`
 
 // The recorded writes fail sign-ins on purpose, and Drupal's flood control would answer the next build's with 403 instead
-// of 400: the build starts with a clean slate.
-if (config.drush) drush(`\\Drupal::database()->truncate('flood')->execute(); print 'ok';`)
+// of 400. Only a build that records writes clears it, and only the user module's sign-in and password events: a build is run against a Drupal of its
+// own, but a crawl alone should change nothing there.
+if (config.drush && scripts) drush(`\\Drupal::database()->delete('flood')->condition('event', 'user.%', 'LIKE')->execute(); print 'ok';`)
 
 // The accounts and consumers the preset signs in, created in the Drupal before the crawl so the oracle is real.
 if (config.identities && config.drush) {

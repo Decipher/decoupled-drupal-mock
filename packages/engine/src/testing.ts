@@ -3,6 +3,7 @@ import { connectMock } from './control.js'
 import type { MockClient } from './control.js'
 import type { ExtendedDrupal, Extension } from './extend.js'
 import { createMock } from './mock.js'
+import { graphqlFactory } from './optional.js'
 import { loadDump } from './load.js'
 import { presetDir } from './preset.js'
 import { listen } from './serve.js'
@@ -38,7 +39,7 @@ export const startMock = async (preset: string, options: { extensions?: Extensio
   const dir = presetDir(preset)
   const dump = loadDump(dir)
   // With the graphql package installed, the schema's endpoint answers too.
-  const { createDrupal: create } = await import('./graphql.js').catch(() => ({ createDrupal: undefined }))
+  const create = await graphqlFactory()
   for (let attempt = 0; ; attempt++) {
     const port = await freePort()
     const url = `http://127.0.0.1:${port}`

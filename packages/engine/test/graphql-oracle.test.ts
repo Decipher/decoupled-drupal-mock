@@ -94,6 +94,66 @@ describe.skipIf(!available)('the GraphQL endpoint as a transport', () => {
     expect(() => createDrupal(loaded, { baseUrl: loaded.manifest.origin })).not.toThrow()
   })
 
+  it('takes GET, POST and HEAD, and answers anything else 405 as Drupal does', () => {
+    const drupal = createDrupal(dump!, { baseUrl: dump!.manifest.origin })
+    const put = drupal.handle('PUT', `${dump!.manifest.origin}/graphql`, { 'content-type': 'application/json' }, JSON.stringify({ query: '{ info { version } }' }))
+    expect(put.status).toBe(405)
+    expect(put.headers).toMatchObject({ 'content-type': 'text/html; charset=UTF-8', allow: 'GET, POST, HEAD' })
+    expect(drupal.handle('HEAD', `${dump!.manifest.origin}/graphql?query=${encodeURIComponent('{ info { version } }')}`).status).toBe(200)
+  })
+
+  // Recorded from Drupal 11 with GraphQL Compose: a langcode on route sets the language for what follows it.
+  it('moves the language for the root fields after a route or menu that names one, as Compose does', () => {
+    const drupal = createDrupal(dump!, { baseUrl: dump!.manifest.origin })
+    const ask = (query: string) => (drupal.handle('POST', `${dump!.manifest.origin}/en/graphql`, { 'content-type': 'application/json' }, JSON.stringify({ query })).body as { data: { info: { languages: Array<{ name: string }> } } }).data.info.languages.map((language) => language.name)
+    expect(ask('{ info { languages { name } } route(path: "/es/recetas", langcode: "es") { __typename } }')).toEqual(['English', 'Spanish'])
+    expect(ask('{ route(path: "/es/recetas", langcode: "es") { __typename } info { languages { name } } }')).toEqual(['Inglés', 'Español'])
+  })
+
+  it('answers a revision argument as Compose loads one, as far as the dump holds revisions', () => {
+    const drupal = createDrupal(dump!, { baseUrl: dump!.manifest.origin })
+    const [recipe, other] = dump!.resources[dump!.manifest.defaultLanguage]!['node--recipe']!
+    const vid = (resource: Resource) => String((resource.attributes as { drupal_internal__vid: number }).drupal_internal__vid)
+    const ask = (revision: string) => drupal.handle('POST', `${dump!.manifest.origin}/graphql`, { 'content-type': 'application/json' }, JSON.stringify({ query: `{ node(id: "${recipe!.id}", revision: "${revision}") { __typename } }` })).body as { data: { node: unknown }, errors?: Array<{ message: string }> }
+    for (const revision of ['current', 'latest', vid(recipe!)]) expect(ask(revision).data.node).toEqual({ __typename: 'NodeRecipe' })
+    expect(ask(vid(other!)).errors![0]!.message).toBe('The requested revision does not belong to the requested entity.')
+    expect(ask('abc').data.node).toBeNull()
+    expect(ask('99999999').data.node).toBeNull()
+  })
+
+  it('reads as the core engine does: a visitor what was visible, a signed-in user the rest, and no hidden field', () => {
+    const lang = dump!.manifest.defaultLanguage
+    const [hidden, shown] = dump!.resources[lang]!['node--recipe']!
+    const ids = dump!.resources[lang]!['node--recipe']!.map((resource) => resource.id).filter((id) => id !== hidden!.id)
+    const access = { ...dump!.access, [lang]: { ...dump!.access?.[lang], 'node--recipe': { visible: ids, hidden: ['revision_log', 'field_cooking_time'] } } }
+    const drupal = createDrupal({ ...dump!, access }, { baseUrl: dump!.manifest.origin })
+    const ask = (id: string, headers: Record<string, string> = {}) => (drupal.handle('POST', `${dump!.manifest.origin}/graphql`, { 'content-type': 'application/json', ...headers }, JSON.stringify({ query: `{ node(id: "${id}") { ... on NodeRecipe { title cookingTime } } }` })).body as { data: { node: { title: string, cookingTime: number | null } | null } }).data.node
+    expect(ask(hidden!.id)).toBeNull()
+    expect(ask(shown!.id)).toMatchObject({ cookingTime: null })
+    const admin = { authorization: `Bearer ${drupal.tokenFor('admin').access}` }
+    expect(ask(hidden!.id, admin)?.title).toBe((hidden!.attributes as { title: string }).title)
+    expect(ask(shown!.id, admin)?.cookingTime).not.toBeNull()
+  })
+
+  it('names, and lists in a connection, only the translations a visitor may read', () => {
+    const es = Object.keys(dump!.manifest.languages).find((code) => code !== dump!.manifest.defaultLanguage)!
+    const recipes = dump!.resources[es]!['node--recipe']!
+    const [unpublished] = recipes
+    const access = { ...dump!.access, [es]: { ...dump!.access?.[es], 'node--recipe': { ...dump!.access?.[es]?.['node--recipe'], visible: recipes.map((resource) => resource.id).filter((id) => id !== unpublished!.id) } } }
+    const drupal = createDrupal({ ...dump!, access }, { baseUrl: dump!.manifest.origin })
+    const post = (query: string) => drupal.handle('POST', `${dump!.manifest.origin}/graphql`, { 'content-type': 'application/json' }, JSON.stringify({ query })).body as { data: Record<string, unknown> }
+    const node = post(`{ node(id: "${unpublished!.id}") { ... on NodeRecipe { translations { langcode { id } } } } }`).data.node as { translations: Array<{ langcode: { id: string } }> }
+    expect(node.translations.map((translation) => translation.langcode.id)).not.toContain(es)
+    const listed = post(`{ nodeRecipes(first: 100, langcode: "${es}") { nodes { id } } }`).data.nodeRecipes as { nodes: Array<{ id: string }> }
+    expect(listed.nodes.map((item) => item.id)).not.toContain(unpublished!.id)
+  })
+
+  it('treats a URL as external by its origin, not by how it starts', () => {
+    const drupal = createDrupal(dump!, { baseUrl: dump!.manifest.origin })
+    const ask = (path: string) => (drupal.handle('POST', `${dump!.manifest.origin}/graphql`, { 'content-type': 'application/json' }, JSON.stringify({ query: `{ route(path: "${path}") { __typename } }` })).body as { data: { route: { __typename: string } | null } }).data.route
+    expect(ask(`${dump!.manifest.origin}.evil/recipes`)).toEqual({ __typename: 'RouteExternal' })
+  })
+
   it('refuses a visitor whose role lacks the permission, as Drupal does', () => {
     const permission = 'execute graphql_compose_server arbitrary graphql requests'
     const roles = (dump!.resources[dump!.manifest.defaultLanguage]!['user_role--user_role'] || []).map((role): Resource => {
