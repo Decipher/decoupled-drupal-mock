@@ -68,7 +68,22 @@ describe.skipIf(!available)('the GraphQL endpoint as a transport', () => {
     expect(post('null')).toMatchObject({ status: 200, body: { errors: [{ extensions: { category: 'request' } }] } })
     expect(post('[1]').status).toBe(500)
     expect(post('{"query":"{ info { version } }","variables":"{"}').body).toEqual({ errors: [{ message: 'GraphQL Request parameter "variables" must be object or JSON string parsed to object, but got "{"', extensions: { category: 'request' } }] })
-    expect(drupal.handle('GET', `${dump!.manifest.origin}/graphql?query=${encodeURIComponent('{ info { version } }')}&variables=%7B`).body).toEqual({ data: { info: { version: '1' } } })
+  })
+
+  // Asked of Drupal 11 with GraphQL Compose, shape by shape: what each `variables` gets.
+  it.each([
+    ['[1]', '[1]'], ['"[1]"', '[1]'], ['5', '5'], ['true', 'true'], ['"{"', '"{"'], ['"5"', '"5"'],
+    ['null', undefined], ['{}', undefined], ['""', undefined], ['"null"', undefined], ['"{\\"a\\":1}"', undefined],
+  ])('reads POSTed variables %s as Drupal does', (variables, refused) => {
+    const drupal = createDrupal(dump!, { baseUrl: dump!.manifest.origin })
+    const got = drupal.handle('POST', `${dump!.manifest.origin}/graphql`, { 'content-type': 'application/json' }, `{"query":"{ info { version } }","variables":${variables}}`).body
+    expect(got).toEqual(refused === undefined ? { data: { info: { version: '1' } } } : { errors: [{ message: `GraphQL Request parameter "variables" must be object or JSON string parsed to object, but got ${refused}`, extensions: { category: 'request' } }] })
+  })
+
+  it.each([['%5B1%5D', '[1]'], ['5', '"5"'], ['%7B', '"{"']])('reads GET variables=%s as Drupal does', (variables, refused) => {
+    const drupal = createDrupal(dump!, { baseUrl: dump!.manifest.origin })
+    const got = drupal.handle('GET', `${dump!.manifest.origin}/graphql?query=${encodeURIComponent('{ info { version } }')}&variables=${variables}`).body
+    expect(got).toEqual({ errors: [{ message: `GraphQL Request parameter "variables" must be object or JSON string parsed to object, but got ${refused}`, extensions: { category: 'request' } }] })
   })
 
   it('answers behind the extensions, which can fail it like any other route', () => {

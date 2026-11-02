@@ -46,6 +46,27 @@ const CANONICAL: Record<string, (attributes: Attributes) => string> = {
 
 const LABEL: Record<string, string> = { node: 'title', taxonomy_term: 'name', media: 'name', user: 'name', block_content: 'info', menu_link_content: 'title' }
 
+/** Whether PHP 8's `==` calls a decoded JSON value equal to the string it came from. */
+const phpEqual = (decoded: unknown, text: string): boolean => {
+  if (typeof decoded === 'number') return text.trim() !== '' && Number(text) === decoded
+  if (typeof decoded === 'boolean') return decoded === (text !== '' && text !== '0')
+  return decoded === text
+}
+
+/**
+ * The GraphQL module's JsonHelper::decodeParams, for one value: only a string is decoded, and what it decodes to is
+ * decoded the same way, member by member.
+ */
+const drupalDecode = (value: unknown): unknown => {
+  if (typeof value !== 'string') return value
+  let decoded: unknown
+  try { decoded = JSON.parse(value) } catch { return value }
+  if (decoded === null || phpEqual(decoded, value)) return value
+  if (Array.isArray(decoded)) return decoded.map(drupalDecode)
+  if (decoded && typeof decoded === 'object') return Object.fromEntries(Object.entries(decoded).map(([key, item]) => [key, drupalDecode(item)]))
+  return decoded
+}
+
 /** A URL's scheme, host and port, or none for a URL that cannot be read. */
 const originOf = (url: string): string | undefined => {
   try {
@@ -461,18 +482,16 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
       if (given === null || typeof given !== 'object') return { status: 200, headers, body: missing }
       request = given as typeof request
     }
-    let variables: Record<string, unknown> = {}
-    if (typeof request.variables === 'string') {
-      try {
-        const decoded = JSON.parse(request.variables || '{}') as unknown
-        if (decoded && typeof decoded === 'object' && !Array.isArray(decoded)) variables = decoded as Record<string, unknown>
-        else throw new SyntaxError('not an object')
-      } catch {
-        // Drupal runs a GET without variables it cannot read, and refuses them in a POST.
-        if (upper === 'POST') return { status: 200, headers, body: { errors: [{ message: `GraphQL Request parameter "variables" must be object or JSON string parsed to object, but got ${JSON.stringify(request.variables)}`, extensions: { category: 'request' } }] } }
-      }
-    } else if (request.variables) {
-      variables = request.variables
+    // As Drupal reads them. The GraphQL module's JsonHelper::decodeParams first: a string that decodes to something PHP
+    // does not call equal to it is replaced, all the way down. Then webonyx: an empty string is none, a string that
+    // still decodes is decoded, and anything but an object is refused, printed as the module left it.
+    const given = drupalDecode(request.variables)
+    let variables: unknown = given === '' ? null : given
+    if (typeof variables === 'string') {
+      try { variables = JSON.parse(variables) } catch { /* Left as the string, which is refused below. */ }
+    }
+    if (variables !== null && variables !== undefined && (typeof variables !== 'object' || Array.isArray(variables) || '0' in variables)) {
+      return { status: 200, headers, body: { errors: [{ message: `GraphQL Request parameter "variables" must be object or JSON string parsed to object, but got ${JSON.stringify(given)}`, extensions: { category: 'request' } }] } }
     }
     let document
     try {
@@ -482,7 +501,7 @@ export const createGraphql = (internals: Internals): { handle: (method: string, 
     }
     const problems = validate(schema, document)
     if (problems.length) return { status: 200, headers, body: { errors: problems.map((problem) => formatted(problem, 'graphql')) } }
-    const result = executeSync({ schema, document, rootValue: rootValue(langcode), variableValues: variables, operationName: request.operationName || undefined })
+    const result = executeSync({ schema, document, rootValue: rootValue(langcode), variableValues: (variables || {}) as Record<string, unknown>, operationName: request.operationName || undefined })
     // Drupal leaves `data` out when a non-null root field failed and took the whole of it down.
     const body: Record<string, unknown> = {}
     if (result.errors?.length) body.errors = result.errors.map((error) => formatted(error, 'execute'))
