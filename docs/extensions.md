@@ -28,7 +28,7 @@ A function cannot cross into another process. A test there turns on what the fil
 
 - **`routes`:** new endpoints, by `METHOD /path`. `:name` matches one segment and `ANY` matches every method. A language prefix is matched for you and given as `prefix`.
 - **`answer`:** sees every request. Return what `next()` gives, change it, or replace it.
-- **`fixtures`:** resources by language and type, which read and write like the dump's own.
+- **`fixtures`:** resources by language and type, which read and write like the dump's own. A fixture joins its type's collection, and every listing built from it: a block added to a region is in that region's block list.
 - **`onWrite`:** runs after a successful JSON:API write. `send` calls another service, and its result lands in `sent()`.
 - **`scenarios`:** named `routes`, `answer` and `onWrite`, off until a test turns them on.
 

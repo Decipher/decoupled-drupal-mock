@@ -2,6 +2,7 @@
 module.exports = {
   testEnvironment: 'jsdom',
   testMatch: ['**/test/*.test.cjs'],
+  setupFilesAfterEnv: ['./test/setup.cjs'],
   globalSetup: './test/global-setup.cjs',
   globalTeardown: './test/global-teardown.cjs',
 }

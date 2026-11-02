@@ -2,21 +2,46 @@
 
 Every runner gets the same engine. Reset between tests, because a write stays until then. Each section has a working copy under [`examples/`](../examples), run in CI.
 
-**Jest**, on CommonJS and Node 16 or later, in jsdom or node. Answer axios spies from the engine, so the assertions on their calls keep working:
+**Jest**, on CommonJS and Node 16 or later, in jsdom or node. Answer axios spies from the engine, so the assertions on their calls keep working. The engine goes in a module of its own, which the tests and any manual mock of axios require:
 
 ```js
-const mockAxios = require('jest-mock-axios').default;
+// test/drupal.js
 const { axiosVerbs, loadPreset } = require('decoupled-drupal-mock/jest');
 
 const baseUrl = 'https://drupal.test';
-const drupal = loadPreset('umami', { baseUrl });
-const verbs = axiosVerbs(drupal, baseUrl);
+// Read once per test file, even when jest.resetModules() runs this module again.
+const drupal = (globalThis.__decoupledDrupalMock ||= loadPreset('umami', { baseUrl }));
 
-mockAxios.get = jest.fn(verbs.get);
-mockAxios.post = jest.fn(verbs.post);
-mockAxios.patch = jest.fn(verbs.patch);
+module.exports = { baseUrl, drupal, verbs: axiosVerbs(drupal, baseUrl) };
+```
+
+The reset goes in the file `setupFilesAfterEnv` names, not beside the engine: a module first required inside a test, as a manual mock of axios is after `jest.resetModules()`, cannot add a hook.
+
+```js
+// test/setup.js
+const { drupal } = require('./drupal');
+
 afterEach(() => drupal.reset());
 ```
+
+```js
+const mockAxios = require('jest-mock-axios').default;
+const { drupal, verbs } = require('./drupal');
+
+mockAxios.get = jest.fn(verbs.get);
+mockAxios.patch = jest.fn(verbs.patch);
+
+test('an editor saves a recipe', async () => {
+  // reset() revokes every token, so a test mints the one it uses.
+  const headers = {
+    Authorization: `Bearer ${drupal.tokenFor('editor').access}`,
+    'Content-Type': 'application/vnd.api+json',
+  };
+  // await mockAxios.patch(url, document, { headers }) ...
+});
+```
+
+A token the mock did not issue, or one from before a reset, is answered 401 with an HTML page, as Drupal answers a revoked one on every route, JSON:API's included.
 
 A client that takes an adapter gets `axios.create({ adapter: axiosAdapter(drupal) })`. For a server shared by the whole run, `globalSetup('umami')` and `globalTeardown` go in the files Jest's config names, and a test reaches it with `connectMock()`.
 
