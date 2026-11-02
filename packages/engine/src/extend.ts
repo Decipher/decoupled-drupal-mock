@@ -69,6 +69,8 @@ export interface RecordedOverlay {
   recorded?: Dump['recorded']
   removed?: string[]
   resources?: Dump['resources']
+  /** Types the recording does not have, by language. */
+  removedTypes?: Record<string, string[]>
   index?: Dump['index']
   access?: NonNullable<Dump['access']>
 }
@@ -124,6 +126,10 @@ export const withFixtures = (dump: Dump, extensions: Extension[] = []): Dump => 
     index = { ...index, ...overlay.index }
     access = { ...access, ...overlay.access }
     for (const [langcode, types] of Object.entries(overlay.resources || {})) resources[langcode] = { ...resources[langcode], ...types }
+    for (const [langcode, types] of Object.entries(overlay.removedTypes || {})) {
+      resources[langcode] = { ...resources[langcode] }
+      for (const type of types) delete resources[langcode]![type]
+    }
   }
   for (const extension of extensions) {
     for (const [langcode, types] of Object.entries(extension.fixtures || {})) {

@@ -48,6 +48,23 @@ describe('the difference between two builds', () => {
     expect(Object.keys(diffBuilds(base, variant, 'status').recorded)).toEqual(['page'])
   })
 
+  it('records a type the variant lacks as removed, and a content type that changed', () => {
+    const base = build({ 'manifest.json': manifest, 'recorded/routes.json.gz': { page: { status: 200, headers: { 'content-type': 'text/html' }, body: 'x' } }, 'resources/en/node--page.json.gz': [node('1', 'One')] })
+    const variant = build({ 'manifest.json': manifest, 'recorded/routes.json.gz': { page: { status: 200, headers: { 'content-type': 'application/json' }, body: 'x' } } })
+    const overlay = diffBuilds(base, variant, 'gone')
+    expect(overlay.removedTypes).toEqual({ en: ['node--page'] })
+    expect(overlay.resources).toEqual({})
+    expect(Object.keys(overlay.recorded)).toEqual(['page'])
+  })
+
+  it('stops at a build it cannot read, or a variant that lost its recordings', () => {
+    const base = build({ 'manifest.json': manifest, 'recorded/routes.json.gz': { page: route({}) } })
+    expect(() => diffBuilds(base, build({ 'manifest.json': manifest }), 'lost')).toThrow('has no recorded/routes.json.gz')
+    const broken = build({ 'manifest.json': manifest, 'recorded/routes.json.gz': {} })
+    writeFileSync(join(broken, 'recorded', 'routes.json.gz'), 'not gzip')
+    expect(() => diffBuilds(base, broken, 'broken')).toThrow('cannot be read')
+  })
+
   it('writes what a preset loads', () => {
     const out = mkdtempSync(join(tmpdir(), 'overlays-'))
     const overlay = diffBuilds(build({ 'manifest.json': manifest }), build({ 'manifest.json': manifest, 'recorded/routes.json.gz': { added: route({}) } }), 'written')

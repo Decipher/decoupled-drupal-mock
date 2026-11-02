@@ -1,6 +1,8 @@
 #!/usr/bin/env -S node --experimental-strip-types
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { composerPatches } from './composer.ts'
+import type { ComposerJson } from './composer.ts'
 import { crawl } from './crawl.ts'
 
 /**
@@ -62,10 +64,14 @@ const exclude = excludeUsers.size
   : undefined
 
 // What the site really runs, from its own lock file, so a preset cannot misstate it. Patches are applied by composer.
+if (config.patched && !config.composerDir) {
+  console.error('`patched` reads the patches from composer: set `composerDir` too.')
+  process.exit(1)
+}
 const composer = config.composerDir
   ? {
       lock: JSON.parse(readFileSync(`${config.composerDir}/composer.lock`, 'utf8')) as { packages: Array<{ name: string, version: string }> },
-      json: JSON.parse(readFileSync(`${config.composerDir}/composer.json`, 'utf8')) as { extra?: { patches?: Record<string, Record<string, string>> } },
+      json: JSON.parse(readFileSync(`${config.composerDir}/composer.json`, 'utf8')) as ComposerJson,
     }
   : undefined
 const drupal = composer
@@ -73,7 +79,7 @@ const drupal = composer
       ...config.drupal,
       core: composer.lock.packages.find((item) => item.name === 'drupal/core')?.version || config.drupal.core,
       modules: Object.fromEntries(composer.lock.packages.filter((item) => item.name.startsWith('drupal/') && !item.name.startsWith('drupal/core')).map((item) => [item.name.slice('drupal/'.length), item.version])),
-      ...(config.patched ? { patches: Object.fromEntries(Object.entries(composer.json.extra?.patches || {}).map(([name, list]) => [name.slice('drupal/'.length), Object.keys(list)])) } : {}),
+      ...(config.patched ? { patches: composerPatches(config.composerDir!, composer.json) } : {}),
     }
   : config.drupal
 const manifest = await crawl({ ...config, drupal, ...(oracle ? { oracle } : {}), ...(scripts ? { writes: scripts } : {}), ...(phantomData ? { phantomData } : {}), ...(exclude ? { exclude } : {}) })

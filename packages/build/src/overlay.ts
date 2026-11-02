@@ -13,16 +13,26 @@ export interface Overlay {
   removed: string[]
   /** The types that differ, whole, by language. */
   resources: Record<string, Record<string, Resource[]>>
+  /** The types the variant does not have, by language. */
+  removedTypes: Record<string, string[]>
   index: Record<string, Document>
   access: Record<string, unknown>
 }
 
+// A file that is not there is undefined. One that is there and cannot be read stops the diff: an overlay written from
+// half a build would misstate the variant.
 const read = <T>(dir: string, file: string): T | undefined => {
+  let bytes: Buffer
   try {
-    const bytes = readFileSync(join(dir, file))
+    bytes = readFileSync(join(dir, file))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
+  try {
     return JSON.parse((file.endsWith('.gz') ? gunzipSync(bytes) : bytes).toString('utf8')) as T
-  } catch {
-    return undefined
+  } catch (error) {
+    throw new Error(`${join(dir, file)} cannot be read: ${(error as Error).message}`)
   }
 }
 
@@ -37,7 +47,8 @@ const noise = (resource: Resource): Resource => {
 const quiet = (recording: Recorded | undefined): unknown => {
   if (!recording) return undefined
   const body = typeof recording.body === 'string' && recording.body.startsWith('<') ? '<html>' : recording.body
-  return { status: recording.status, body }
+  // The content type is the one header a recording keeps.
+  return { status: recording.status, type: recording.headers?.['content-type'], body }
 }
 
 /**
@@ -51,8 +62,11 @@ const quiet = (recording: Recorded | undefined): unknown => {
 export const diffBuilds = (base: string, variant: string, name: string): Overlay => {
   const manifest = read<{ drupal: Overlay['drupal'], languages: Record<string, string> }>(variant, 'manifest.json')!
   const fromRecorded = read<Record<string, Recorded>>(base, 'recorded/routes.json.gz') || {}
-  const toRecorded = read<Record<string, Recorded>>(variant, 'recorded/routes.json.gz') || {}
-  const overlay: Overlay = { name, drupal: manifest.drupal, recorded: {}, removed: [], resources: {}, index: {}, access: {} }
+  const toRecordedFile = read<Record<string, Recorded>>(variant, 'recorded/routes.json.gz')
+  // A variant without the recordings its baseline has is a crawl that failed, not a site that answers nothing.
+  if (Object.keys(fromRecorded).length && !toRecordedFile) throw new Error(`${variant} has no recorded/routes.json.gz, which ${base} has: build the variant again.`)
+  const toRecorded = toRecordedFile || {}
+  const overlay: Overlay = { name, drupal: manifest.drupal, recorded: {}, removed: [], resources: {}, removedTypes: {}, index: {}, access: {} }
   for (const [key, recording] of Object.entries(toRecorded)) if (!same(quiet(fromRecorded[key]), quiet(recording))) overlay.recorded[key] = recording
   overlay.removed = Object.keys(fromRecorded).filter((key) => !(key in toRecorded))
   for (const langcode of Object.keys(manifest.languages)) {
@@ -66,8 +80,10 @@ export const diffBuilds = (base: string, variant: string, name: string): Overlay
     }
     for (const type of types) {
       const from = read<Resource[]>(base, `resources/${langcode}/${type}.json.gz`) || []
-      const to = read<Resource[]>(variant, `resources/${langcode}/${type}.json.gz`) || []
-      if (!same(from.map(noise), to.map(noise))) (overlay.resources[langcode] ||= {})[type] = to
+      const to = read<Resource[]>(variant, `resources/${langcode}/${type}.json.gz`)
+      // A type the variant lacks is gone, not an empty collection.
+      if (!to) (overlay.removedTypes[langcode] ||= []).push(type)
+      else if (!same(from.map(noise), to.map(noise))) (overlay.resources[langcode] ||= {})[type] = to
     }
     const fromIndex = read<Document>(base, `index/${langcode}.json`)
     const toIndex = read<Document>(variant, `index/${langcode}.json`)

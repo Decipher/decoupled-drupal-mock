@@ -60,6 +60,15 @@ describe.skipIf(!available)('the recordings of a build', () => {
 const overlaysDir = join(oracleDir(dir), 'overlays')
 const overlays = available && existsSync(overlaysDir) ? readdirSync(overlaysDir).map((file) => file.replace(/\.json\.gz$/, '')) : []
 
+// The preset in this repository ships its overlays' recordings, so a missing one is a lost test, not a skipped one.
+describe.skipIf(!!process.env.DECOUPLED_DRUPAL_MOCK_DUMP)('the overlays this repository\'s preset ships', () => {
+  it('each have the real answers they are replayed against', () => {
+    const shipped = readdirSync(join(dir!, '..', 'overlays')).map((file) => file.replace(/\.json\.gz$/, '')).sort()
+    expect(shipped.length).toBeGreaterThan(0)
+    expect([...overlays].sort()).toEqual(shipped)
+  })
+})
+
 describe.skipIf(!overlays.length).each(overlays)('the %s overlay', (name) => {
   const dump = loadDump(dir!)
   const mock = createMock(dump, { baseUrl: dump.manifest.origin, extensions: [loadOverlay(dir!, name)] })

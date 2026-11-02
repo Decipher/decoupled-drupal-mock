@@ -188,6 +188,21 @@ describe('a recorded overlay', () => {
     expect(mock.handle('GET', `${BASE}/only/in/the/overlay`).body).toEqual({ ok: true })
     expect(Object.keys(dump.recorded)).toHaveLength(before)
     expect((mock.handle('GET', `${BASE}/jsonapi/node/page/p-1`).body as { data: { attributes: object } }).data.attributes).not.toHaveProperty('field_code')
+    // The recording it removes is not served, where the stock mock serves it.
+    const [method, path] = key!.split(' ') as [string, string]
+    const stock = createMock(dump, { baseUrl: BASE })
+    const served = stock.handle(method, `${BASE}${path}`)
+    expect(served.status).toBe(dump.recorded[key!]!.status)
+    expect(mock.handle(method, `${BASE}${path}`)).not.toEqual(served)
+  })
+
+  it('takes away a type the recording does not have', () => {
+    const stock = createMock(dump, { baseUrl: BASE })
+    expect(stock.handle('GET', `${BASE}/jsonapi/node/page`).status).toBe(200)
+    const links = Object.fromEntries(Object.entries(dump.index.en!.links || {}).filter(([type]) => type !== 'node--page'))
+    const index = { ...dump.index, en: { ...dump.index.en!, links } as typeof dump.index.en & object }
+    const mock = createMock(dump, { baseUrl: BASE, extensions: [{ overlay: { removedTypes: { en: ['node--page'] }, index } }] })
+    expect(mock.handle('GET', `${BASE}/jsonapi/node/page`).status).toBe(404)
   })
 })
 

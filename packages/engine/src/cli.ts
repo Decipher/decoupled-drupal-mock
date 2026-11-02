@@ -44,6 +44,20 @@ try {
 }
 const dump = loadDump(dir)
 const extensions: Extension[] = []
+// Overlays first, as loadPreset and startMock take them: an extension's own answers win.
+for (const [index, argument] of rest.entries()) {
+  if (argument !== '--overlay') continue
+  if (!rest[index + 1] || rest[index + 1]!.startsWith('--')) {
+    console.error('--overlay names one of the preset\'s overlays: --overlay language-routing-patches')
+    process.exit(1)
+  }
+  try {
+    extensions.push(loadOverlay(dir, rest[index + 1]!))
+  } catch (error) {
+    console.error((error as Error).message)
+    process.exit(1)
+  }
+}
 for (const [index, argument] of rest.entries()) {
   if (argument !== '--extension') continue
   if (!rest[index + 1] || rest[index + 1]!.startsWith('--')) {
@@ -56,15 +70,6 @@ for (const [index, argument] of rest.entries()) {
     extensions.push(loaded)
   } catch (error) {
     console.error(`The extension ${rest[index + 1]} did not load: ${(error as Error).message}`)
-    process.exit(1)
-  }
-}
-for (const [index, argument] of rest.entries()) {
-  if (argument !== '--overlay' || !rest[index + 1]) continue
-  try {
-    extensions.push(loadOverlay(dir, rest[index + 1]!))
-  } catch (error) {
-    console.error((error as Error).message)
     process.exit(1)
   }
 }
