@@ -109,12 +109,14 @@ describe('serving', () => {
 
 describe('the server as a backend for a frontend', () => {
   const bind = async (options: Parameters<typeof listen>[3]) => {
-    let bound: Awaited<ReturnType<typeof listen>> | undefined
-    for (let attempt = 0; attempt < 5 && !bound; attempt++) {
+    for (let attempt = 0; ; attempt++) {
       const port = 40000 + Math.floor(Math.random() * 20000)
-      bound = await listen(createDrupal(dump, { baseUrl: `http://127.0.0.1:${port}` }), port, '127.0.0.1', options).catch(() => undefined)
+      try {
+        return await listen(createDrupal(dump, { baseUrl: `http://127.0.0.1:${port}` }), port, '127.0.0.1', options)
+      } catch (error) {
+        if (attempt === 4) throw error
+      }
     }
-    return bound!
   }
 
   it('answers CORS for a browser-side client, and a preflight, unless told not to', async () => {
@@ -153,7 +155,8 @@ describe('the server as a backend for a frontend', () => {
       expect(styled.status).toBe(200)
       expect((await styled.arrayBuffer()).byteLength).toBe(4)
       expect((await fetch(`${url}/sites/default/files/a/missing.jpg`)).status).toBe(404)
-      expect((await fetch(`${url}/sites/default/files/../secret.txt`)).status).toBe(404)
+      // `..%2F`, as a URL parser collapses a plain `../` before the request is sent, and it never reaches the check.
+      expect((await fetch(`${url}/sites/default/files/..%2Fsecret.txt`)).status).toBe(404)
       expect((await fetch(`${url}/sites/default/files/a/quiche.jpg`, { method: 'HEAD' })).status).toBe(200)
     } finally {
       await close()
