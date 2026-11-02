@@ -37,6 +37,7 @@ The build writes the dump to `out`, and its recordings beside it in `<out>.oracl
 | `identities`                | The accounts and OAuth consumers the mock signs in. The build creates them on the site first, through drush                                                           |
 | `drush`                     | `{ bin, cwd }`. Reads, through `drush php-eval`, the configuration entities JSON:API leaves out for every user, such as a block whose visibility denies every request |
 | `excludeUsers`, `skipTypes` | Users to leave out of the dump, such as the build's own account. Types that the site lists in its index but answers with an error                                     |
+| `composerDir`, `patched`    | The site's Composer directory, so the manifest names what the site really runs from its lock file. With `patched`, its patches too                                    |
 
 ## Modules and settings on the site
 
@@ -51,11 +52,11 @@ Only JSON:API is required. Everything else widens what the build records:
 | `jsonapi.settings:read_only` set to `false`                            | Writes, for `writesFile`                                                                          |
 | The Simple OAuth Password Grant module                                 | The password grant, for an identity with a password                                               |
 
+To read as an administrator, `auth` needs a Simple OAuth 6 consumer with the client credentials grant and a secret, whose user has the administrator role. Its scope must grant the administrator role by role, as a token holds only the roles that the user and the scope both give. The site also needs an OAuth keypair in `simple_oauth.settings`.
+
 ## Recording a module or a patch
 
-A build of a site with a change the preset lacks becomes an overlay of that preset: see [Overlays](overlays.md). Set `composerDir` in the config, and the manifest names what the site really runs. Add `patched` to name its patches too.
-
-## Without `auth`
+A build of a site with a change the preset lacks becomes an overlay of that preset: see [Overlays](overlays.md).
 
 ## Building without administrator access
 

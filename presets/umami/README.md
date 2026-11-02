@@ -14,9 +14,31 @@ const index = await drupal.fetch('https://drupal.test/jsonapi');
 
 The baseline is the site as released modules answer it, and `dump/manifest.json` names each module's version.
 
+## Accounts and OAuth clients
+
+The build added these to the site, and the mock signs them in. Each password, and each client's secret, is the same as its name.
+
+| Account  | Role                            |
+| -------- | ------------------------------- |
+| `admin`  | Administrator, from the install |
+| `editor` | Editor                          |
+| `author` | Author                          |
+| `reader` | None beyond authenticated       |
+
+| OAuth client                   | Grants                                                                                                       | Acts as               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------ | --------------------- |
+| `decoupled-drupal-mock`        | Client credentials, refresh token                                                                            | `editor`              |
+| `decoupled-drupal-mock-author` | Client credentials                                                                                           | `author`              |
+| `decoupled-drupal-mock-reader` | Client credentials                                                                                           | `reader`              |
+| `decoupled-drupal-mock-public` | Authorization code with PKCE, refresh token. No secret, and it redirects to `http://127.0.0.1:3000/callback` | The user who signs in |
+
+The password grant is installed too. In a test, `tokenFor('editor')` returns a token for an account directly, without going through a grant.
+
 ## A site with more
 
 The preset is the stock site only. A site with a contrib module or a patch the preset lacks records the difference as an overlay of its own, from a build of that site: see [Overlays](../../docs/overlays.md). [`examples/overlays/`](../../examples/overlays) holds three made that way, Druxt's language routing patches among them, which the engine's tests replay. None is published with the preset.
+
+## Published files and evidence
 
 `dump/` is what the mock loads, and what this package publishes. `dump/manifest.json` names the Drupal core version the build came from, the hash of every file, and the hash of every recording the tests replay.
 
