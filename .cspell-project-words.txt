@@ -95,3 +95,4 @@ Ksection
 ddev
 DDEV
 lndo
+cacheinfo

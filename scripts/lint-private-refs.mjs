@@ -18,7 +18,6 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -41,6 +40,7 @@ const PRIVATE_HOST = [
   /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/,
   /^f[cd][0-9a-f]{2}:/i,
   /^fe[89ab][0-9a-f]:/i,
+  /^169\.254\.\d{1,3}\.\d{1,3}$/,
 ]
 
 /**
@@ -52,8 +52,10 @@ const PRIVATE_HOST = [
  */
 // The bracket class takes dots as well as hex: an IPv4-mapped literal such as
 // [::ffff:10.0.0.8] is a bracketed host that carries an RFC1918 address.
+// An scp-style remote is `user@host:path` for any user. The colon after the
+// host is what tells it from an email address.
 const URL_HOST =
-  /(?:[a-z][a-z0-9+.-]*:\/\/(?:[^/@\s]*@)?|\bgit@)(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)/g
+  /(?:[a-z][a-z0-9+.-]*:\/\/(?:[^/@\s]*@)?|(?<![\w.+-])[A-Za-z0-9._-]+@(?=[A-Za-z0-9._-]+:))(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)/g
 
 /**
  * The IPv4 address inside an IPv4-mapped IPv6 literal, else the host as given.
@@ -99,8 +101,11 @@ export function findPrivateRefs(text) {
   const found = []
   text.split('\n').forEach((line, index) => {
     for (const match of line.matchAll(URL_HOST)) {
+      // A bracketed literal is taken whole: `[fd00::]` ends in its own colons.
       const host = mappedToIpv4(
-        match[1].replace(/^\[|\]$/g, '').replace(/[.:]+$/, '')
+        match[1].startsWith('[')
+          ? match[1].slice(1, -1)
+          : match[1].replace(/[.:]+$/, '')
       )
       if (ALLOWED.some((pattern) => pattern.test(host))) {
         continue
@@ -113,13 +118,18 @@ export function findPrivateRefs(text) {
   return found
 }
 
-/** Tracked files, which is the set that actually gets published. */
+/**
+ * Tracked files, which is the set that actually gets published. A submodule
+ * is a commit, not a file, and its own repository is checked on its own.
+ */
 export function trackedFiles(root = ROOT) {
-  return execFileSync('git', ['-C', root, 'ls-files', '-z'], {
+  return execFileSync('git', ['-C', root, 'ls-files', '-s', '-z'], {
     encoding: 'utf8',
   })
     .split('\0')
     .filter(Boolean)
+    .filter((entry) => !entry.startsWith('160000 '))
+    .map((entry) => entry.slice(entry.indexOf('\t') + 1))
 }
 
 /**
@@ -130,9 +140,21 @@ export function trackedFiles(root = ROOT) {
  */
 const SELF = [
   'scripts/lint-private-refs.mjs',
+  'scripts/lint-private-refs.test.mjs',
   'test/private-refs.test.js',
   'test/scripts/private-refs.test.js',
 ]
+
+/**
+ * A file as the index holds it, which is what a commit takes: the worktree
+ * copy can differ from what was staged.
+ */
+function stagedText(root, file) {
+  return execFileSync('git', ['-C', root, 'show', `:${file}`], {
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+  })
+}
 
 export function lintPrivateRefs(root = ROOT) {
   const problems = []
@@ -140,11 +162,12 @@ export function lintPrivateRefs(root = ROOT) {
     if (SELF.includes(file)) {
       continue
     }
-    const absolute = path.join(root, file)
     let text
     try {
-      text = fs.readFileSync(absolute, 'utf8')
-    } catch {
+      text = stagedText(root, file)
+    } catch (error) {
+      // Unread is unchecked, so it fails rather than passing quietly.
+      problems.push(`${file}: could not be read (${error.message.split('\n')[0]})`)
       continue
     }
     if (text.includes('\0')) {

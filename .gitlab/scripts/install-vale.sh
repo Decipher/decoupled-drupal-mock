@@ -82,7 +82,7 @@ fetch() {
 
 # --- Vale --------------------------------------------------------------------
 
-if [ -x "$bin_dir/vale" ] && "$bin_dir/vale" --version 2>/dev/null | grep -q "$vale_version"; then
+if [ -x "$bin_dir/vale" ] && "$bin_dir/vale" --version 2>/dev/null | grep -qFw "$vale_version"; then
   echo "vale ${vale_version} already installed in ${bin_dir}"
 else
   archive="$work/vale.tar.gz"

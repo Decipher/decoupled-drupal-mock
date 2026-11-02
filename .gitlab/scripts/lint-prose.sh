@@ -133,7 +133,11 @@ if [ "${#generated[@]}" -gt 0 ]; then
   if [ -n "$out" ]; then
     printf '%s\n' "$out"
   fi
-  if [ "$rc" -ne 0 ]; then
+  if [ "$rc" -ge 2 ]; then
+    # Vale's 2 is its own failure, not a finding.
+    echo "[ERROR] vale could not run (exit ${rc})." >&2
+    exit 2
+  elif [ "$rc" -ne 0 ]; then
     findings=$((findings + 1))
   fi
 fi
@@ -146,7 +150,7 @@ if [ "$all" -eq 1 ]; then
 elif [ -n "$base" ]; then
   mapfile -d '' -t markdown < <(git -C "$root" diff -z --name-only --diff-filter=AMR "$base" HEAD -- '*.md')
 else
-  mapfile -d '' -t markdown < <(git -C "$root" diff-tree -z --no-commit-id -r --name-only --diff-filter=AMR HEAD -- '*.md')
+  mapfile -d '' -t markdown < <(git -C "$root" diff-tree -z --root --no-commit-id -r --name-only --diff-filter=AMR HEAD -- '*.md')
 fi
 existing=()
 for f in "${markdown[@]}"; do
@@ -163,7 +167,11 @@ if [ "${#existing[@]}" -gt 0 ]; then
   if [ -n "$out" ]; then
     printf '%s\n' "$out"
   fi
-  if [ "$rc" -ne 0 ]; then
+  if [ "$rc" -ge 2 ]; then
+    # Vale's 2 is its own failure, not a finding.
+    echo "[ERROR] vale could not run (exit ${rc})." >&2
+    exit 2
+  elif [ "$rc" -ne 0 ]; then
     findings=$((findings + 1))
   fi
 fi

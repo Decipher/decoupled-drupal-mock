@@ -127,10 +127,12 @@ lint:commit:
   stage: lint
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+  # The whole history, and the merge base GitLab names: a fork's `origin` may not have the target branch.
+  variables:
+    GIT_DEPTH: 0
   script:
     - section_start "commitlint" "Validating commit messages"
-    - git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --depth 50
-    - yarn commitlint --from "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --to HEAD --verbose
+    - yarn commitlint --from "$CI_MERGE_REQUEST_DIFF_BASE_SHA" --to HEAD --verbose
     - section_end "commitlint"
 
 lint:prose:
@@ -148,21 +150,36 @@ lint:prose:
     - yarn lint:prose
     - section_end "prose"
 
-# Allowed to fail: a site being down for an hour is not this change's fault.
-lint:links:
+# Two runs of one binary: links between the repository's own files must hold, and fail the pipeline; links to other
+# sites are allowed to fail, as a site being down for an hour is not this change's fault.
+.lychee:
   stage: lint
   image: alpine:3.21
   interruptible: true
-  allow_failure: true
   variables:
     LYCHEE_VERSION: '0.18.1'
     LYCHEE_SHA256: '2f70dcdee64ac19d17b9c501492202305b04ab24606737a5e3ce6c7294c1f8d6'
+
+.lychee-install: &lychee-install
+  - apk add --no-cache curl tar > /dev/null
+  - curl -sSLo lychee.tar.gz "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-musl.tar.gz"
+  - echo "${LYCHEE_SHA256}  lychee.tar.gz" | sha256sum -c -
+  - tar -xzf lychee.tar.gz lychee
+
+lint:links:local:
+  extends: .lychee
   script:
-    - section_start "lychee" "Checking documentation links"
-    - apk add --no-cache curl tar > /dev/null
-    - curl -sSLo lychee.tar.gz "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-musl.tar.gz"
-    - echo "${LYCHEE_SHA256}  lychee.tar.gz" | sha256sum -c -
-    - tar -xzf lychee.tar.gz lychee
+    - section_start "lychee" "Checking links between the repository's files"
+    - *lychee-install
+    - ./lychee --config .lychee.toml --offline './*.md' 'docs/*.md' 'presets/*/README.md' 'examples/*.md'
+    - section_end "lychee"
+
+lint:links:
+  extends: .lychee
+  allow_failure: true
+  script:
+    - section_start "lychee" "Checking links to other sites"
+    - *lychee-install
     - ./lychee --config .lychee.toml './*.md' 'docs/*.md' 'presets/*/README.md' 'examples/*.md'
     - section_end "lychee"
 
@@ -182,7 +199,7 @@ secret-detection:
     - ./gitleaks detect --source . --no-banner --redact --verbose
     # gitleaks cannot read inside a gzip, and the recordings are gzipped.
     - section_start "recordings" "Scanning the recordings"
-    - mkdir -p /tmp/recordings && for file in presets/*/oracle/*.gz presets/*/dump/recorded/*.gz; do gunzip -c "$file" > "/tmp/recordings/$(echo "$file" | tr / _).json"; done
+    - mkdir -p /tmp/recordings && for file in presets/*/oracle/*.gz presets/*/dump/recorded/*.gz; do [ -f "$file" ] || continue; gunzip -c "$file" > "/tmp/recordings/$(echo "$file" | tr / _).json"; done
     - ./gitleaks detect --no-git --source /tmp/recordings --no-banner --redact --verbose
     - section_end "recordings"
     - section_end "gitleaks"
@@ -252,8 +269,9 @@ test:pack:
     - for tarball in /tmp/pack/*.tgz; do if tar -xOzf "$tarball" package/package.json | grep -q '"workspace:'; then echo "$tarball has a workspace range"; exit 1; fi; done
     - cd /tmp/consumer && npm init -y > /dev/null
     - npm install /tmp/pack/*.tgz --no-audit --no-fund
-    - (npx decoupled-drupal-mock serve umami --port 3005 &) && sleep 5
-    - 'node -e "fetch(\"http://127.0.0.1:3005/jsonapi\").then((response) => process.exit(response.ok ? 0 : 1))"'
+    - (npx decoupled-drupal-mock serve umami --port 3005 &)
+    # Up to 30 seconds: the preset loads before the port opens.
+    - 'node -e "const until = Date.now() + 30000; const probe = () => fetch(\"http://127.0.0.1:3005/jsonapi\").then((response) => process.exit(response.ok ? 0 : 1), () => (Date.now() < until ? setTimeout(probe, 500) : process.exit(1))); probe()"'
     - section_end "pack"
 
 test:e2e:

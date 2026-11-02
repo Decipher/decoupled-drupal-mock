@@ -4,5 +4,10 @@
     "path": "packages/engine/dist/{engine,store,identity,writes,filter,query,own,hash,clone}.js",
     "limit": "40 KB"
   },
-  { "name": "CommonJS entry for Jest and Cypress", "path": "packages/engine/dist/runner.cjs", "limit": "60 KB" }
+  { "name": "CommonJS entry for Jest and Cypress", "path": "packages/engine/dist/runner.cjs", "limit": "60 KB" },
+  {
+    "name": "entry points, the loader, the server and the CLI",
+    "path": "packages/engine/dist/{index,load,serve,cli}.js",
+    "limit": "8 KB"
+  }
 ]

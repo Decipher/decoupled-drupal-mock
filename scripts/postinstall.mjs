@@ -1,12 +1,21 @@
 /**
- * Points git at the committed hooks directory, since `core.hooksPath` is a per-clone setting. Quiet on failure: a
- * published tarball or a container that never commits has nothing to gain from a failed install.
+ * Points git at the committed hooks directory, since `core.hooksPath` is a per-clone setting. Only in this
+ * repository's own checkout: an install inside another repository, as a published tarball unpacked in someone's
+ * project is, must not rewrite that repository's hooks.
  */
 import { execFileSync } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 
+let top
 try {
-  execFileSync('git', ['rev-parse', '--git-dir'], { stdio: 'ignore' })
-  execFileSync('git', ['config', 'core.hooksPath', '.githooks'], { stdio: 'ignore' })
+  top = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
 } catch {
-  // Not a git checkout, or nothing that will commit.
+  // Not a git checkout: nothing will commit.
+}
+if (top && realpathSync(top) === realpathSync(process.cwd())) {
+  try {
+    execFileSync('git', ['config', 'core.hooksPath', '.githooks'], { stdio: 'ignore' })
+  } catch (error) {
+    console.warn(`The commit hooks are not on: ${error.message.split('\n')[0]}. Run: git config core.hooksPath .githooks`)
+  }
 }
