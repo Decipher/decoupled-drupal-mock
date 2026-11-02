@@ -5,6 +5,7 @@ import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { createDrupal } from '../src/graphql.ts'
 import { loadDump } from '../src/load.ts'
+import { createMock } from '../src/mock.ts'
 import { listen } from '../src/serve.ts'
 import type { Resource } from '../src/types.ts'
 import { oracleDir } from './oracle-dir.ts'
@@ -66,6 +67,16 @@ describe.skipIf(!available)('the GraphQL endpoint as a transport', () => {
     expect(post('[1]').status).toBe(500)
     expect(post('{"query":"{ info { version } }","variables":"{"}').body).toEqual({ errors: [{ message: 'GraphQL Request parameter "variables" must be object or JSON string parsed to object, but got "{"', extensions: { category: 'request' } }] })
     expect(drupal.handle('GET', `${dump!.manifest.origin}/graphql?query=${encodeURIComponent('{ info { version } }')}&variables=%7B`).body).toEqual({ data: { info: { version: '1' } } })
+  })
+
+  it('answers behind the extensions, which can fail it like any other route', () => {
+    const mock = createMock(dump!, { baseUrl: dump!.manifest.origin, create: createDrupal, extensions: [{ scenarios: { down: { answer: () => ({ status: 503, body: 'down' }) } } }] })
+    const ask = () => mock.handle('POST', `${dump!.manifest.origin}/graphql`, { 'content-type': 'application/json' }, JSON.stringify({ query: '{ info { version } }' }))
+    expect(ask().body).toEqual({ data: { info: { version: '1' } } })
+    mock.scenario('down')
+    expect(ask().status).toBe(503)
+    mock.reset()
+    expect(ask().status).toBe(200)
   })
 
   it('refuses a visitor whose role lacks the permission, as Drupal does', () => {
