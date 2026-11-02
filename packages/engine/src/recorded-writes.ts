@@ -66,6 +66,8 @@ export const volatile = (value: unknown, key?: string): unknown => {
   }
   if (typeof value === 'number' && key && /^drupal_internal__(nid|vid|tid|mid|revision_id|id|fid|target_id)$/.test(key)) return '<id>'
   if (typeof value === 'number' && key === 'updated_at') return '<time>'
+  // Drupal counts this from the clock, so a request that crosses a second answers 299. The size still has to match.
+  if (typeof value === 'number' && key === 'expires_in') return Math.ceil(value / 10) * 10
   if (Array.isArray(value)) return value.map((item) => volatile(item))
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, item]) => [k, volatile(item, k)]))
   return value

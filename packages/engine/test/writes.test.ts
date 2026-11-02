@@ -467,3 +467,10 @@ describe('a PATCH of a field the user may not edit', () => {
   })
 })
 
+describe('comparing a token\'s lifetime', () => {
+  it('ignores a second of clock, and not a different lifetime', () => {
+    expect(volatile({ expires_in: 299 })).toEqual(volatile({ expires_in: 300 }))
+    expect(volatile({ expires_in: 3600 })).not.toEqual(volatile({ expires_in: 300 }))
+  })
+})
+
