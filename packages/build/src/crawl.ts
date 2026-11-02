@@ -299,6 +299,28 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   }
   write('recorded/routes.json.gz', recorded)
 
+  // The public files the content names, so a frontend against the server gets its images. Each is kept under
+  // `files/` at its path below Drupal's public files directory.
+  const publicFiles = new Set<string>()
+  for (const resources of Object.values(all)) {
+    for (const file of resources['file--file'] || []) {
+      const url = (file.attributes as { uri?: { url?: string } } | undefined)?.uri?.url
+      if (url && url.startsWith('/sites/default/files/')) publicFiles.add(url)
+    }
+  }
+  for (const url of publicFiles) {
+    let response: Response
+    try {
+      response = await fetch(`${base}${url}`)
+    } catch (error) {
+      log(`  file ${url}: ${(error as Error).message}, left out`)
+      continue
+    }
+    if (!response.ok) { log(`  file ${url}: ${response.status}, left out`); continue }
+    writeBytes(`files/${url.slice('/sites/default/files/'.length)}`, Buffer.from(await response.arrayBuffer()))
+  }
+  log(`${publicFiles.size} public files kept`)
+
   if (options.identities) {
     // Simple OAuth 6 ships the password grant as its own module: a grant the Drupal refuses as not installed is recorded as such.
     const consumer = options.identities.consumers.find((candidate) => candidate.grants.includes('password'))
