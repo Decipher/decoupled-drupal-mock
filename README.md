@@ -125,14 +125,21 @@ The engine runs on Node, including under a test runner's jsdom environment. It n
 
 ## Development
 
-The repository has a dev container, for VS Code or [DevPod](https://devpod.sh), with Node and Yarn set up:
+The repository has a dev container, for VS Code or [DevPod](https://devpod.sh), with Node, Yarn and the browsers the Playwright and Cypress examples use:
 
 ```sh
 devpod up github.com/Decipher/decoupled-drupal-mock
 ```
 
-Run the mock's server inside it with `--host 0.0.0.0` so the forwarded port 3005 reaches it. Run `yarn install` and `yarn workspace decoupled-drupal-mock build` after changing to another branch.
+Inside it, run the mock's server with `--host 0.0.0.0` so the forwarded port 3005 reaches it, or tunnel it when a forwarded port does not reach the browser:
+
+```sh
+node packages/engine/dist/cli.js serve umami --host 0.0.0.0 --port 3005
+yarn tunnel 3005
+```
+
+Port 3000, for a frontend, is forwarded too. Run `yarn install` and `yarn workspace decoupled-drupal-mock build` after changing to another branch.
 
 ## Licence
 
-GPL-2.0-or-later, as everything hosted on drupal.org is, and as the Umami preset must be: it carries Drupal's own demo content and configuration.\n
+GPL-2.0-or-later, as everything hosted on drupal.org is, and as the Umami preset must be: it carries Drupal's own demo content and configuration.
