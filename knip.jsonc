@@ -2,7 +2,6 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignoreDependencies": [
     // Optional peers of the engine, loaded with a dynamic import or brought by a consumer.
-    "graphql",
     "msw"
   ],
   "workspaces": {
