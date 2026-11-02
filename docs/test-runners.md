@@ -2,7 +2,9 @@
 
 Every runner gets the same engine. Reset it between tests, because a write stays until then. Each section has a working copy under [`examples/`](../examples), which CI runs.
 
-**Jest**, on CommonJS and Node 16 or later, in jsdom or node. Make your axios spies return the engine's answers, and your existing assertions on axios calls keep working. The engine goes in a module of its own, which the tests and any manual mock of axios require:
+The engine answers as the stock site does. A site with contrib modules or patches gets them as overlays, by name: `loadPreset('umami', { overlays: ['language-routing-patches'] })`, and the same option on `startMock`, `spawnMock` and `withDrupal`'s options. A multilingual client needs `language-routing-patches`, as stock Decoupled Router cannot resolve many translated paths. The preset's [README](../presets/umami/README.md#overlays) lists the overlays and what each changes.
+
+**Jest**, on CommonJS and Node 16 or later, in jsdom or node. Answer axios spies from the engine, so the assertions on their calls keep working. The engine goes in a module of its own, which the tests and any manual mock of axios require:
 
 ```js
 // test/drupal.js

@@ -30,6 +30,12 @@ npx decoupled-drupal-mock serve umami --overlay language-routing-patches
 
 In a test, pass `overlays: ['language-routing-patches']` to `loadPreset`, `startMock` or `spawnMock`.
 
+Overlays combine, and each changes what a suite that counts or snapshots the site sees, by design:
+
+- `language-routing-patches` changes Decoupled Router's answers only: the JSON:API index and resources are the baseline's.
+- `contact-storage` adds three types to the JSON:API index (`contact_form--contact_form`, `contact_message--feedback` and `contact_message--personal`) and changes the configuration resources the modules touch, such as `entity_view_display` and `user_role`.
+- `jsonapi-extras` adds one type to the index and changes the `entity_view_mode` resources. It remaps no paths in its default configuration.
+
 `dump/` is what the mock loads, and what this package publishes. `dump/manifest.json` names the Drupal core version the build came from and the hash of every file.
 
 The rest is evidence, kept in the repository and not published. `oracle.txt` and `writes.json` list the requests the build sends to a real Drupal. `oracle/` stores Drupal's answers, and the engine's tests check against them.
