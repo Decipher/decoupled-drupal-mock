@@ -14,7 +14,7 @@ Only JSON:API is required. Everything else widens what the build records:
 | Decoupled Router                                                                  | Router lookups                                                                         |
 | JSON:API Menu Items, JSON:API Views, Decoupled Settings                           | Their routes. A route the site does not answer is recorded as it answered, or left out |
 | `auth`, a Simple OAuth client credentials consumer whose user is an administrator | What a visitor may not read                                                            |
-| `drush` in the config                                                             | Resources no user may read through JSON:API, and the GraphQL mapping                   |
+| `drush` in the config                                                             | Resources no user may read through JSON:API                                            |
 
 ## Without `auth`
 
