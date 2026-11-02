@@ -146,6 +146,18 @@ describe('a site that gets in the way', () => {
     expect(lines).toContain('  view--view: nothing readable, and a second page the site cannot serve, left out')
   })
 
+  it('leaves no recording of an earlier build behind', async () => {
+    const out = mkdtempSync(join(tmpdir(), 'crawl-'))
+    const oracleOut = `${out}.oracle`
+    mkdirSync(oracleOut, { recursive: true })
+    writeFileSync(join(oracleOut, 'reads.json.gz'), 'old')
+    writeFileSync(join(oracleOut, 'writes.json.gz'), 'old')
+    const { manifest } = await build((path) => (path === '/jsonapi' ? { body: { links: {} } } : undefined), {}, out)
+    expect(existsSync(join(oracleOut, 'reads.json.gz'))).toBe(false)
+    expect(existsSync(join(oracleOut, 'writes.json.gz'))).toBe(false)
+    expect(manifest.oracle).toBeUndefined()
+  })
+
   it('leaves out a type it is told to', async () => {
     const { out } = await build(site({ admin: [], visitor: [] }), { skipTypes: ['user--user'] })
     expect(existsSync(join(out, 'resources/en/user--user.json.gz'))).toBe(false)

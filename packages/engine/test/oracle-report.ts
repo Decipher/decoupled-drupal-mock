@@ -6,11 +6,12 @@ import { gunzipSync } from 'node:zlib'
 import { createDrupal } from '../dist/index.js'
 import { loadDump } from '../dist/load.js'
 import { comparable } from './comparable.ts'
+import { oracleDir } from './oracle-dir.ts'
 
 const dir = process.argv[2]!
 const dump = loadDump(dir)
 const drupal = createDrupal(dump, { baseUrl: dump.manifest.origin })
-const entries = JSON.parse(gunzipSync(readFileSync(join(dir, 'oracle', 'queries.json.gz'))).toString('utf8')) as Array<{ request: string, status: number, body: unknown }>
+const entries = JSON.parse(gunzipSync(readFileSync(join(oracleDir(dir), 'reads.json.gz'))).toString('utf8')) as Array<{ request: string, status: number, body: unknown }>
 
 /** The first path where two values differ, with both sides. */
 const diff = (a: unknown, b: unknown, path = '$'): string | undefined => {

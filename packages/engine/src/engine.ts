@@ -5,6 +5,7 @@ import { Identity } from './identity.js'
 import type { Identities, Session, Token } from './identity.js'
 import { Store } from './store.js'
 import { Writes } from './writes.js'
+import type { WriteError } from './writes.js'
 // Named apart from the `own` URL each write builds, which would shadow it.
 import { own as member } from './own.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
@@ -40,10 +41,16 @@ const PAGE_LIMIT = 50
 
 const INFO: Record<number, string> = { 400: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.1', 403: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.4', 404: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.5', 405: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.6' }
 
+/** Whether a PATCH leaves a value as it was. */
+const unchanged = (before: unknown, after: unknown): boolean => JSON.stringify(before) === JSON.stringify(after)
+
+/** A relationship's targets, without the meta a client does not send. */
+const identifiers = (data: unknown): unknown => (Array.isArray(data) ? data.map(identifiers) : data && typeof data === 'object' ? `${(data as ResourceIdentifier).type}:${(data as ResourceIdentifier).id}` : data ?? null)
+
 /** A JSON:API error document as Drupal writes one: `via` is the request, `info` the RFC section. */
 const error = (JSONAPI: NonNullable<Document['jsonapi']>, status: number, title: string, detail: string | undefined, via: string, source?: Record<string, string>): Document => ({
   jsonapi: JSONAPI,
-  errors: [{ title, status: String(status), ...(detail ? { detail } : {}), links: { via: { href: via }, info: { href: INFO[status] || INFO[404]! } }, ...(source ? { source } : {}) }],
+  errors: [{ title, status: String(status), ...(detail !== undefined ? { detail } : {}), links: { via: { href: via }, info: { href: INFO[status] || INFO[404]! } }, ...(source ? { source } : {}) }],
 })
 
 const STATUS_TEXT: Record<number, string> = { 200: 'OK', 201: 'Created', 204: 'No Content', 302: 'Found', 303: 'See Other', 400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found', 405: 'Method Not Allowed', 422: 'Unprocessable Content', 500: 'Internal Server Error' }
@@ -308,7 +315,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       return { status, headers: { 'content-type': 'application/json; charset=UTF-8', 'cache-control': 'no-store, private' }, body }
     }
     if (path === '/oauth/userinfo') {
-      const claims = identity.userinfo(session, baseUrl, prefix0)
+      const claims = identity.userinfo(session, baseUrl, prefix0 || defaultPrefix)
       return claims ? { status: 200, headers: { 'content-type': 'application/json; charset=UTF-8' }, body: claims } : html(403, 'Access denied')
     }
     if (path === '/oauth/authorize') {
@@ -399,8 +406,9 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
         if (!relationship) return html404(path)
         if (hiddenFrom(langcode, resource, all)?.includes(relationName)) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', resource.type === 'user--user' && resource.id !== viewer.id ? "The current user is not allowed to view this relationship. The 'access user profiles' permission is required." : 'The current user is not allowed to view this relationship.', via) }
         const revision = (resource.attributes as Record<string, unknown> | undefined)?.drupal_internal__vid ?? (resource.attributes as Record<string, unknown> | undefined)?.drupal_internal__revision_id
-        const own = `${baseUrl}${prefix}${basePath}/${typePath(type)}/${id}`
-        const document: Document = { jsonapi: JSONAPI, data: relationship.data, links: { related: { href: `${own}/${relationName}${revision !== undefined ? `?resourceVersion=id%3A${revision}` : ''}` }, self: { href: `${own}/relationships/${relationName}` } } }
+        // The request's language, and the default's when it named none, as Drupal writes it.
+        const own = `${baseUrl}${prefix || defaultPrefix}${basePath}/${typePath(type)}/${id}`
+        const document: Document = { jsonapi: JSONAPI, data: relationship.data, links: { related: { href: `${own}/${relationName}${revision !== undefined ? `?resourceVersion=id%3A${revision}` : ''}` }, self: { href: `${baseUrl}${prefix}${rest}` } } }
         return { status: 200, headers, body: relink(document) }
       }
       if (related) {
@@ -494,7 +502,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const type = `${entityType}--${bundle}`
     if (!listed.has(type) && !store.get(dump.manifest.defaultLanguage, type)) return html404(path)
     const allow = CONTENT_TYPES.has(entityType) ? (id ? 'GET, PATCH, DELETE' : 'GET, POST') : 'GET'
-    if (!CONTENT_TYPES.has(entityType)) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: ${allow}, HEAD)`, via) }
+    if (!CONTENT_TYPES.has(entityType)) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${via}": Method Not Allowed (Allow: ${allow}, HEAD)`, via) }
     let document: { data?: Record<string, unknown> | Array<Record<string, unknown>> | null } = {}
     // A DELETE on a relationship names the members to remove in its body.
     if (requestBody) {
@@ -522,18 +530,26 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const current = Array.isArray(relationship.data) ? relationship.data : relationship.data ? [relationship.data] : []
       const updated = structuredClone(resource)
       const target = updated.relationships![name]!
-      if (upper === 'PATCH') target.data = Array.isArray(relationship.data) ? given : (given[0] ?? null)
-      else if (upper === 'POST') target.data = [...current, ...given.filter((item) => !current.some((held) => held.id === item.id))]
+      if (upper === 'PATCH') target.data = writes.withMeta(Array.isArray(relationship.data) ? given : (given[0] ?? null))
+      else if (upper === 'POST') target.data = writes.withMeta([...current, ...given.filter((item) => !current.some((held) => held.id === item.id))])
       else if (upper === 'DELETE') target.data = current.filter((item) => !given.some((gone) => gone.id === item.id))
-      else return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: GET, PATCH, POST, DELETE, HEAD)`, via) }
+      else return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${via}": Method Not Allowed (Allow: GET, PATCH, POST, DELETE, HEAD)`, via) }
       store.replace(langcode, type, updated)
+      // An add answers with the relationship, as Drupal does; a replacement and a removal answer nothing.
+      if (upper === 'POST') {
+        const revision = (updated.attributes as Record<string, unknown> | undefined)?.drupal_internal__vid ?? (updated.attributes as Record<string, unknown> | undefined)?.drupal_internal__revision_id
+        // The request's language, and the default's when it named none, as Drupal writes it.
+        const own = `${baseUrl}${prefix || defaultPrefix}${basePath}/${typePath(type)}/${id}`
+        return { status: 200, headers, body: relink({ jsonapi: JSONAPI, data: target.data, links: { related: { href: `${own}/${name}${revision !== undefined ? `?resourceVersion=id%3A${revision}` : ''}` }, self: { href: `${baseUrl}${prefix}${rest}` } } }) }
+      }
       return { status: 204, headers: {}, body: '' }
     }
     if (id && relation) return html404(path)
 
     if (upper === 'POST') {
       if (id) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: ${allow}, HEAD)`, via) }
-      if (!writes.canCreate(session, entityType, bundle)) return forbidden('The current user is not allowed to POST the selected resource.', '/data')
+      // Drupal's 403 on a refused POST says nothing in its detail.
+      if (!writes.canCreate(session, entityType, bundle)) return forbidden(entityType === 'path_alias' ? "The 'administer url aliases' permission is required." : '')
       const attributes = data?.attributes || {}
       const relationships = data?.relationships || {}
       for (const field of [...Object.keys(attributes), ...Object.keys(relationships)]) {
@@ -550,6 +566,9 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const own = `${baseUrl}${prefix || defaultPrefix}${basePath}/${typePath(type)}/${created.id}`
       const moderated = 'moderation_state' in (created.attributes || {})
       created.links = { self: { href: revision !== undefined ? `${own}?resourceVersion=id%3A${revision}` : own }, ...(moderated ? { 'working-copy': { href: `${own}?resourceVersion=rel%3Aworking-copy` } } : {}) }
+      // Every relationship carries its related and self links, as a stored resource does.
+      const version = revision !== undefined ? `?resourceVersion=id%3A${revision}` : ''
+      for (const [name, relationship] of Object.entries(created.relationships || {})) relationship.links = { related: { href: `${own}/${name}${version}` }, self: { href: `${own}/relationships/${name}${version}` } }
       if (entityType !== 'contact_message') store.add(dump.manifest.defaultLanguage, type, created)
       return { status: 201, headers: { ...headers, location: created.links.self!.href }, body: relink({ jsonapi: JSONAPI, data: created, links: { self: { href: `${baseUrl}${prefix}${rest}` } } }) }
     }
@@ -559,7 +578,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     if (!resource || (!all && !visible(langcode, resource) && upper !== 'DELETE')) return { status: 404, headers, body: error(JSONAPI, 404, 'Not Found', `The "entity" parameter was not converted for the path "${basePath}/${entityType}/${bundle}/{entity}" (route name: "jsonapi.${type}.individual.${upper.toLowerCase()}")`, via) }
 
     if (upper === 'DELETE') {
-      if (!writes.canDelete(session, resource)) return forbidden('The current user is not allowed to DELETE the selected resource.')
+      const may = writes.canDelete(session, resource)
+      if (!may.allowed) return forbidden(may.detail)
       if (langcode !== dump.manifest.defaultLanguage) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', 'Deleting a resource object translation is not yet supported. See https://www.drupal.org/docs/8/modules/jsonapi/translations.', via) }
       // An entity goes with all its translations.
       for (const code of Object.keys(languages)) store.remove(code, type, id)
@@ -567,20 +587,25 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     }
 
     if (upper === 'PATCH') {
+      // The resource's own URL, which a field refusal names.
+      const own = `${baseUrl}${defaultPrefix}${basePath}/${typePath(type)}/${id}`
       if (data?.id && data.id !== id) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `The selected entity (${id}) does not match the ID in the payload (${data.id}).`, via) }
       const may = writes.canUpdate(session, resource)
       if (!may.allowed) return forbidden(may.detail)
+      // Both kinds of field are refused by one line of Drupal's: the error names the resource, not the request.
+      const refusedBody = (refused: WriteError) => ({ status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', refused.detail, own, refused.pointer ? { pointer: refused.pointer } : undefined) })
       const attributes = data?.attributes || {}
       const relationships = data?.relationships || {}
       for (const name of Object.keys(attributes)) {
-        if (!Object.hasOwn(resource.attributes || {}, name)) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The attribute ${name} does not exist on the ${type} resource type.`, source: { pointer: `/data/attributes/${name}` } }] } }
-        const refused = writes.refusedField(session, resource, name)
-        if (refused) return forbidden(refused.detail, refused.pointer)
+        if (!Object.hasOwn(resource.attributes || {}, name)) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The attribute ${name} does not exist on the ${type} resource type.`, links: { via: { href: via } } }] } }
+        // Drupal lets a field the user may not edit through when its value does not change.
+        const refused = unchanged(resource.attributes?.[name], attributes[name]) ? undefined : writes.refusedField(session, resource, name)
+        if (refused) return refusedBody(refused)
       }
       for (const name of Object.keys(relationships)) {
         if (!Object.hasOwn(resource.relationships || {}, name)) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The relationship ${name} does not exist on the ${type} resource type.`, source: { pointer: `/data/relationships/${name}` } }] } }
-        const refused = writes.refusedField(session, resource, name)
-        if (refused) return forbidden(refused.detail, refused.pointer)
+        const refused = unchanged(identifiers(resource.relationships?.[name]?.data), identifiers((relationships[name] as { data?: unknown } | undefined)?.data)) ? undefined : writes.refusedField(session, resource, name)
+        if (refused) return refusedBody(refused)
       }
       const merged: Record<string, unknown> = { ...resource.attributes, ...attributes }
       const invalid = writes.validate(entityType, bundle, merged, { ...resource.relationships, ...relationships })
@@ -589,14 +614,24 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (invalid.length) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: invalid.map((problem) => ({ title: problem.title, status: '422', detail: problem.detail, source: { pointer: problem.pointer } })) } }
       const updated: Resource = structuredClone(resource)
       updated.attributes = merged
-      updated.relationships = { ...updated.relationships, ...Object.fromEntries(Object.entries(relationships).map(([name, value]) => [name, { ...(updated.relationships?.[name] || {}), data: value.data }])) }
+      if ('moderation_state' in attributes) {
+        const published = writes.publishedFor(entityType, bundle, String(attributes.moderation_state))
+        if (published !== undefined) updated.attributes.status = published
+      }
+      updated.relationships = { ...updated.relationships, ...Object.fromEntries(Object.entries(relationships).map(([name, value]) => [name, { ...(updated.relationships?.[name] || {}), data: writes.withMeta(value.data) }])) }
       const revisionKey = 'drupal_internal__vid' in merged ? 'drupal_internal__vid' : 'drupal_internal__revision_id' in merged ? 'drupal_internal__revision_id' : undefined
       if (revisionKey) updated.attributes[revisionKey] = store.nextId(dump.manifest.defaultLanguage, entityType, revisionKey)
       if ('changed' in merged) updated.attributes.changed = stampOf()
       if ('revision_timestamp' in merged) updated.attributes.revision_timestamp = stampOf()
       if (updated.relationships.revision_uid && session.user) updated.relationships.revision_uid = { ...updated.relationships.revision_uid, data: { type: 'user--user', id: session.user.id, meta: { drupal_internal__target_id: session.uid } } }
-      const own = `${baseUrl}${defaultPrefix}${basePath}/${typePath(type)}/${id}`
       if (updated.links?.self && revisionKey) updated.links = { ...updated.links, self: { href: `${own}?resourceVersion=id%3A${updated.attributes[revisionKey]}` } }
+      // Every relationship's links name the revision too.
+      if (revisionKey) {
+        const version = `resourceVersion=id%3A${updated.attributes[revisionKey]}`
+        for (const relationship of Object.values(updated.relationships)) {
+          for (const link of Object.values(relationship.links || {})) if (link?.href) link.href = link.href.replace(/resourceVersion=id%3A\d+/, version)
+        }
+      }
       store.replace(langcode, type, updated)
       return { status: 200, headers, body: relink({ jsonapi: JSONAPI, data: updated, links: { self: { href: `${baseUrl}${prefix}${rest}` } } }) }
     }

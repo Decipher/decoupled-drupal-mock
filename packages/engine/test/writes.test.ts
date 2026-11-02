@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import { createDrupal } from '../src'
+import { resolve, volatile } from '../src/recorded-writes'
 import type { Document, Resource } from '../src'
+import { loadDump } from '../src/load'
 import { dump } from './dump'
 
 const BASE = 'https://drupal.test'
@@ -116,7 +118,9 @@ describe('writes', () => {
     const recipe = await read(await d.fetch(`${BASE}/jsonapi/node/recipe`, { method: 'POST', headers: { ...JSON_API, ...bearer(admin.access) }, body: JSON.stringify({ data: { type: 'node--recipe', attributes: { title: 'Soup', field_cooking_time: 20 } } }) }))
     const resource = recipe.data as Resource
     expect(resource.attributes).toMatchObject({ status: false, moderation_state: 'draft', field_cooking_time: 20 })
-    expect(resource.relationships!.field_tags).toEqual({ data: [] })
+    // Every relationship of a created resource carries its links, as a stored one does.
+    expect(resource.relationships!.field_tags).toEqual({ data: [], links: { related: { href: expect.stringContaining('/jsonapi/node/recipe/') }, self: { href: expect.stringContaining('/relationships/field_tags') } } })
+    expect(resource.relationships!.node_type!.data).toMatchObject({ type: 'node_type--node_type', id: 'nt-recipe', meta: { drupal_internal__target_id: 'recipe' } })
     expect(resource.links!['working-copy']!.href).toContain('resourceVersion=rel%3Aworking-copy')
     expect((await d.fetch(`${BASE}/jsonapi/block/block`, { method: 'POST', headers: { ...JSON_API, ...bearer(admin.access) }, body: '{}' })).status).toBe(405)
   })
@@ -158,7 +162,10 @@ describe('writes', () => {
     expect(relationship.links!.self!.href).toBe(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`)
     expect((await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`, { method: 'DELETE', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: [{ type: 'taxonomy_term--tags', id: 't-1' }] }) })).status).toBe(204)
     expect((await read(await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`))).data).toEqual([{ type: 'taxonomy_term--tags', id: 't-2' }])
-    expect((await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`, { method: 'POST', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: [{ type: 'taxonomy_term--tags', id: 't-1' }] }) })).status).toBe(204)
+    // An add answers 200 with the relationship, as Drupal does; a replacement and a removal answer 204.
+    const added = await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`, { method: 'POST', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: [{ type: 'taxonomy_term--tags', id: 't-1' }] }) })
+    expect(added.status).toBe(200)
+    expect((await read(added)).data).toHaveLength(2)
     expect((await read(await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`))).data).toHaveLength(2)
     expect((await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/field_tags`, { method: 'PATCH', headers: JSON_API, body: '{"data":[]}' })).status).toBe(403)
   })
@@ -406,6 +413,77 @@ describe('writes across languages, and accounts without a user', () => {
   it('refuses a grant for an account whose user is gone, rather than throwing', async () => {
     const d = createDrupal({ ...dump, resources: { ...dump.resources, en: { ...dump.resources.en, 'user--user': dump.resources.en!['user--user']!.filter((user) => (user.attributes as { name?: string }).name !== 'umami') } } }, { baseUrl: BASE })
     expect(await token(d, { grant_type: 'password', client_id: 'druxt', client_secret: 's3cret', username: 'umami', password: 'secret' })).toMatchObject({ status: 400, body: { error: 'invalid_grant' } })
+  })
+})
+
+describe('what the review of the scripts found', () => {
+  it('moves every relationship link to the new revision, and keeps a translation\'s prefix in them', async () => {
+    const d = drupal()
+    const admin = bearer(d.tokenFor('admin').access)
+    const created = (await read(await d.fetch(`${BASE}/jsonapi/node/page`, { method: 'POST', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: { type: 'node--page', attributes: { title: 'New' } } }) }))).data as Resource
+    const updated = (await read(await d.fetch(`${BASE}/jsonapi/node/page/${created.id}`, { method: 'PATCH', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: { type: 'node--page', id: created.id, attributes: { title: 'Newer' } } }) }))).data as Resource
+    const version = updated.links!.self!.href.split('?')[1]!
+    expect(updated.relationships!.uid!.links!.related!.href).toContain(version)
+    expect(created.relationships!.uid!.links!.related!.href).not.toContain(version)
+    const spanish = await read(await d.fetch(`${BASE}/es/jsonapi/node/recipe/r-1/relationships/uid`))
+    expect(spanish.links!.related!.href).toContain(`${BASE}/es/jsonapi/`)
+    const english = await read(await d.fetch(`${BASE}/jsonapi/node/recipe/r-1/relationships/uid`))
+    expect(english.links!.related!.href).toContain(`${BASE}/jsonapi/`)
+  })
+})
+
+describe('the script helpers', () => {
+  it('refuses a step that names what an earlier answer did not give, and resolves a machine name with digits', () => {
+    expect(() => resolve('/x/{1.data.id}', [{ status: 403, headers: {}, body: {} }], () => undefined)).toThrow(/not in the answer of step 1/)
+    expect(resolve('/x/{node--article2:0}', [], () => 'found')).toBe('/x/found')
+  })
+
+  it('masks what Drupal generated, and not a title that looks like a uuid', () => {
+    const uuid = '9af15b20-9480-459c-bce5-d00b5d41fa32'
+    expect(volatile({ id: uuid, title: uuid, href: `https://x/${uuid}` })).toEqual({ id: '<uuid>', title: uuid, href: 'https://x/<uuid>' })
+    expect(volatile({ detail: `The selected entity (${uuid})` })).toEqual({ detail: 'The selected entity (<uuid>)' })
+  })
+})
+
+describe('a PATCH of a field the user may not edit', () => {
+  const author = () => {
+    const d = createDrupal(dump, { baseUrl: BASE })
+    return { d, headers: { ...JSON_API, authorization: `Bearer ${d.tokenFor('umami', ['editor']).access}` } }
+  }
+  const patch = (d: ReturnType<typeof drupal>, headers: Record<string, string>, id: string, data: Record<string, unknown>, query = '') => d.fetch(`${BASE}/jsonapi/node/recipe/${id}${query}`, { method: 'PATCH', headers, body: JSON.stringify({ data: { type: 'node--recipe', id, ...data } }) })
+
+  it('goes through when the value does not change', async () => {
+    const { d, headers } = author()
+    const before = (await read(await d.fetch(`${BASE}/jsonapi/node/recipe/r-1`))).data as Resource
+    const response = await patch(d, headers, 'r-1', { relationships: { uid: { data: before.relationships!.uid!.data } } })
+    expect(response.status).toBe(200)
+  })
+
+  it('is refused naming the resource and not the request', async () => {
+    const { d, headers } = author()
+    const response = await patch(d, headers, 'r-1', { relationships: { uid: { data: { type: 'user--user', id: 'someone-else' } } } }, '?a=1')
+    expect(response.status).toBe(403)
+    const [refusal] = (await read(response)).errors as unknown as Array<{ links: { via: { href: string } }, source: { pointer: string } }>
+    expect(refusal!.links.via.href).toBe(`${BASE}/jsonapi/node/recipe/r-1`)
+  })
+})
+
+describe('comparing a token\'s lifetime', () => {
+  it('ignores a second of clock, and not a different lifetime', () => {
+    expect(volatile({ expires_in: 299 })).toEqual(volatile({ expires_in: 300 }))
+    expect(volatile({ expires_in: 3600 })).not.toEqual(volatile({ expires_in: 300 }))
+  })
+})
+
+describe('a new resource\'s bundle', () => {
+  it('names a term\'s vocabulary, which keeps its id in `drupal_internal__vid`', () => {
+    const umami = loadDump(new URL('../../../presets/umami/dump', import.meta.url).pathname)
+    const d = createDrupal(umami, { baseUrl: BASE })
+    const vocabulary = umami.resources.en!['taxonomy_vocabulary--taxonomy_vocabulary']!.find((candidate) => (candidate.attributes as { drupal_internal__vid?: string }).drupal_internal__vid === 'tags')!
+    const headers = { ...JSON_API, ...bearer(d.tokenFor('editor').access) }
+    const created = d.handle('POST', `${BASE}/en/jsonapi/taxonomy_term/tags`, headers, JSON.stringify({ data: { type: 'taxonomy_term--tags', attributes: { name: 'New' } } }))
+    expect(created.status).toBe(201)
+    expect((created.body as { data: Resource }).data.relationships!.vid!.data).toEqual({ type: vocabulary.type, id: vocabulary.id, meta: { drupal_internal__target_id: 'tags' } })
   })
 })
 

@@ -2,8 +2,10 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import type { Answer, RecordedWrite, WriteScript } from 'decoupled-drupal-mock/recorded-writes'
 import type { Document, Dump, Manifest, Recorded, Resource } from 'decoupled-drupal-mock'
 import { sortedSearch } from 'decoupled-drupal-mock'
+import { KEPT_HEADERS, resolve } from 'decoupled-drupal-mock/recorded-writes'
 
 export interface CrawlOptions {
   /** The Drupal to crawl, such as `http://127.0.0.1:8888`. */
@@ -30,6 +32,10 @@ export interface CrawlOptions {
   exclude?: (resource: Resource) => boolean
   /** The accounts and consumers the mock signs in, written to the dump. The CLI creates them in the Drupal first. */
   identities?: NonNullable<Dump['identities']>
+  /** Write and sign-in scripts, run against the Drupal as their accounts and recorded for the engine's replay. */
+  writes?: WriteScript[]
+  /** Where the oracle's recordings go: the evidence for the engine's tests, which a consumer has no use for. Beside the dump by default, as `<out>.oracle`. */
+  oracleOut?: string
   /**
    * Reads a resource no user may read through JSON:API, such as a block whose visibility denies every request, so
    * the dump can place it in a collection and report it omitted as Drupal does. The CLI reads it through drush.
@@ -93,6 +99,17 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     mkdirSync(join(path, '..'), { recursive: true })
     writeFileSync(path, bytes)
     files[file] = createHash('sha256').update(bytes).digest('hex')
+  }
+  // The recordings live outside the dump: a consumer loads the dump, and only the engine's tests read these.
+  const oracleOut = (options.oracleOut || `${options.out.replace(/\/+$/, '')}.oracle`).replace(/\/+$/, '')
+  const oracleFiles: Record<string, string> = {}
+  // A recording this build does not make would be replayed against a dump it was not made with.
+  for (const file of ['reads.json.gz', 'writes.json.gz', 'graphql.json.gz']) rmSync(join(oracleOut, file), { force: true })
+  const recordOracle = (file: string, body: unknown): void => {
+    const bytes = gzipSync(Buffer.from(relink(JSON.stringify(body))), { level: 9 })
+    mkdirSync(oracleOut, { recursive: true })
+    writeFileSync(join(oracleOut, file), bytes)
+    oracleFiles[file] = createHash('sha256').update(bytes).digest('hex')
   }
   const write = (file: string, body: unknown): void => {
     const text = relink(JSON.stringify(body))
@@ -252,9 +269,15 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     const nodes = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('node--')).flatMap(([, list]) => list.map((node) => `/node/${String((node.attributes as { drupal_internal__nid?: number } | undefined)?.drupal_internal__nid)}`))
     const terms = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('taxonomy_term--')).flatMap(([, list]) => list.map((term) => `/taxonomy/term/${String((term.attributes as { drupal_internal__tid?: number } | undefined)?.drupal_internal__tid)}`))
     const systemPaths = [...nodes, ...terms]
-    const prefixed = [lang || '/', `${lang}/node`, ...aliases.map((alias) => `${lang}${alias}`), ...systemPaths.map((path) => `${lang}${path}`)]
+    // The pages views give: every enabled page display with a path a client can ask for, such as /recipes.
+    const viewPages = (all[langcode]!['view--view'] || []).flatMap((view) => {
+      const attributes = view.attributes as { status?: boolean, display?: Record<string, { display_plugin?: string, display_options?: { path?: string } }> }
+      if (!attributes.status) return []
+      return Object.values(attributes.display || {}).map((display) => display.display_plugin === 'page' ? display.display_options?.path : undefined).filter((path): path is string => !!path && !path.includes('%') && !path.startsWith('admin/')).map((path) => `/${path}`)
+    })
+    const prefixed = [lang || '/', `${lang}/node`, ...aliases.map((alias) => `${lang}${alias}`), ...systemPaths.map((path) => `${lang}${path}`), ...viewPages.map((path) => `${lang}${path}`)]
     // The default language answers unprefixed too, as a client asks for `/` or `/node/1`.
-    const unprefixed = langcode === options.defaultLanguage && lang ? ['/', '/node', ...aliases, ...systemPaths] : []
+    const unprefixed = langcode === options.defaultLanguage && lang ? ['/', '/node', ...aliases, ...systemPaths, ...viewPages] : []
     const paths = [...new Set([...prefixed, ...unprefixed])]
     log(`${langcode}: ${paths.length} router lookups`)
     for (const path of paths) await record(`/router/translate-path?path=${encodeURIComponent(path)}`)
@@ -294,7 +317,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         if (plain.status === 403 || plain.status === 405) recorded[`GET ${pathname}`] = recorded[`GET ${pathname}`] || plain
       }
     }
-    write('oracle/queries.json.gz', entries)
+    recordOracle('reads.json.gz', entries)
     log(`${entries.length} oracle entries`)
   }
   write('recorded/routes.json.gz', recorded)
@@ -321,6 +344,61 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   }
   log(`${publicFiles.size} public files kept`)
 
+  // The scripts: each step as its account, every answer recorded, and what they created deleted afterwards.
+  if (options.writes?.length) {
+    const identities = options.identities
+    const tokenFor = async (name: string): Promise<string | undefined> => {
+      if (name === 'anonymous') return undefined
+      const consumer = identities?.consumers.find((candidate) => candidate.user === name && candidate.grants.includes('client_credentials'))
+      if (!consumer) throw new Error(`No consumer with the client credentials grant acts as "${name}".`)
+      const scope = Object.keys(consumer.scopes || {})[0]
+      const response = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'client_credentials', client_id: consumer.clientId, ...(consumer.secret ? { client_secret: consumer.secret } : {}), ...(scope ? { scope } : {}) }) })
+      const granted = await response.json() as { access_token?: string }
+      if (!granted.access_token) throw new Error(`No token for "${name}".`)
+      return granted.access_token
+    }
+    const recorded: RecordedWrite[] = []
+    const resourceId = (type: string, index: number) => all[options.defaultLanguage]?.[type]?.[index]?.id
+    /** What a script left in the Drupal, deleted before the next one reads it. A refusal stops the build: the site would keep it. */
+    const clean = async (created: string[]): Promise<void> => {
+      for (const path of created) {
+        const response = await fetch(`${base}${path}`, { method: 'DELETE', headers: { ...authorized() } })
+        log(`  cleaned up ${path}: ${response.status}`)
+        if (response.status !== 204 && response.status !== 404) throw new Error(`DELETE ${path} answered ${response.status}: the script's content is still in the Drupal.`)
+      }
+    }
+    for (const script of options.writes) {
+      const answers: Answer[] = []
+      const tokens = new Map<string, string | undefined>()
+      const created: string[] = []
+      try {
+        for (const step of script.steps) {
+          const as = step.as || script.as
+          if (!tokens.has(as)) tokens.set(as, await tokenFor(as))
+          const resolved = resolve(step, answers, resourceId)
+          const headers: Record<string, string> = { accept: 'application/vnd.api+json, application/json;q=0.9, */*;q=0.8' }
+          const bearer = resolved.bearer ?? tokens.get(as)
+          if (bearer) headers.authorization = `Bearer ${bearer}`
+          let body: string | undefined
+          if (resolved.form) { headers['content-type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(resolved.form).toString() }
+          else if (resolved.json !== undefined) { headers['content-type'] = 'application/json'; body = JSON.stringify(resolved.json) }
+          else if (resolved.body !== undefined) { headers['content-type'] = 'application/vnd.api+json'; body = JSON.stringify(resolved.body) }
+          const response = await fetch(`${base}${resolved.path}`, { method: resolved.method, headers, ...(body !== undefined ? { body } : {}), redirect: 'manual' })
+          const text = await response.text()
+          const type = response.headers.get('content-type') || ''
+          const answer: Answer = { status: response.status, headers: Object.fromEntries(KEPT_HEADERS.map((name) => [name, response.headers.get(name)]).filter(([, value]) => value).map(([name, value]) => [name, name === 'content-type' ? String(value).split(';')[0]!.trim() : String(value)])), body: type.includes('json') && text ? JSON.parse(text) : text }
+          answers.push(answer)
+          if (response.status === 201 && answer.headers.location) created.push(pathOf(answer.headers.location).split('?')[0]!)
+        }
+      } finally {
+        await clean(created)
+      }
+      recorded.push({ ...script, answers })
+      log(`script "${script.name}": ${answers.map((answer) => answer.status).join(' ')}`)
+    }
+    recordOracle('writes.json.gz', recorded)
+  }
+
   if (options.identities) {
     // Simple OAuth 6 ships the password grant as its own module: a grant the Drupal refuses as not installed is recorded as such.
     const consumer = options.identities.consumers.find((candidate) => candidate.grants.includes('password'))
@@ -342,6 +420,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     languages: options.languages,
     defaultLanguage: options.defaultLanguage,
     files,
+
+    ...(Object.keys(oracleFiles).length ? { oracle: oracleFiles } : {}),
   }
   writeFileSync(join(options.out, 'manifest.json'), JSON.stringify(manifest, null, 2))
   return manifest

@@ -36,6 +36,8 @@ export interface Manifest {
   /** The default langcode. */
   defaultLanguage: string
   files: Record<string, string>
+  /** The hash of each recording of the oracle, kept beside the dump and not in it. */
+  oracle?: Record<string, string>
 }
 
 /** A preset build, in memory. */

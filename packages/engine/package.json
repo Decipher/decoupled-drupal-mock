@@ -19,6 +19,10 @@
     "./msw": {
       "types": "./dist/msw.d.ts",
       "import": "./dist/msw.js"
+    },
+    "./recorded-writes": {
+      "types": "./dist/recorded-writes.d.ts",
+      "import": "./dist/recorded-writes.js"
     }
   },
   "files": [
