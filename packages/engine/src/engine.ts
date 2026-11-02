@@ -546,10 +546,11 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (invalid.length) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: invalid.map((problem) => ({ title: problem.title, status: '422', detail: problem.detail, source: { pointer: problem.pointer } })) } }
       const created = writes.create(session, entityType, bundle, attributes, relationships as Record<string, NonNullable<Resource['relationships']>[string]>)
       const revision = (created.attributes as Record<string, unknown>).drupal_internal__vid ?? (created.attributes as Record<string, unknown>).drupal_internal__revision_id
-      const own = `${baseUrl}${defaultPrefix}${basePath}/${typePath(type)}/${created.id}`
+      // Drupal names the prefix the request came through, and the new resource is in the default language whichever it was.
+      const own = `${baseUrl}${prefix || defaultPrefix}${basePath}/${typePath(type)}/${created.id}`
       const moderated = 'moderation_state' in (created.attributes || {})
       created.links = { self: { href: revision !== undefined ? `${own}?resourceVersion=id%3A${revision}` : own }, ...(moderated ? { 'working-copy': { href: `${own}?resourceVersion=rel%3Aworking-copy` } } : {}) }
-      if (entityType !== 'contact_message') store.add(langcode, type, created)
+      if (entityType !== 'contact_message') store.add(dump.manifest.defaultLanguage, type, created)
       return { status: 201, headers: { ...headers, location: created.links.self!.href }, body: relink({ jsonapi: JSONAPI, data: created, links: { self: { href: `${baseUrl}${prefix}${rest}` } } }) }
     }
 
@@ -560,7 +561,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     if (upper === 'DELETE') {
       if (!writes.canDelete(session, resource)) return forbidden('The current user is not allowed to DELETE the selected resource.')
       if (langcode !== dump.manifest.defaultLanguage) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', 'Deleting a resource object translation is not yet supported. See https://www.drupal.org/docs/8/modules/jsonapi/translations.', via) }
-      store.remove(langcode, type, id)
+      // An entity goes with all its translations.
+      for (const code of Object.keys(languages)) store.remove(code, type, id)
       return { status: 204, headers: {}, body: '' }
     }
 
@@ -571,12 +573,12 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const attributes = data?.attributes || {}
       const relationships = data?.relationships || {}
       for (const name of Object.keys(attributes)) {
-        if (!(name in (resource.attributes || {}))) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The attribute ${name} does not exist on the ${type} resource type.`, source: { pointer: `/data/attributes/${name}` } }] } }
+        if (!Object.hasOwn(resource.attributes || {}, name)) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The attribute ${name} does not exist on the ${type} resource type.`, source: { pointer: `/data/attributes/${name}` } }] } }
         const refused = writes.refusedField(session, resource, name)
         if (refused) return forbidden(refused.detail, refused.pointer)
       }
       for (const name of Object.keys(relationships)) {
-        if (!(name in (resource.relationships || {}))) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The relationship ${name} does not exist on the ${type} resource type.`, source: { pointer: `/data/relationships/${name}` } }] } }
+        if (!Object.hasOwn(resource.relationships || {}, name)) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The relationship ${name} does not exist on the ${type} resource type.`, source: { pointer: `/data/relationships/${name}` } }] } }
         const refused = writes.refusedField(session, resource, name)
         if (refused) return forbidden(refused.detail, refused.pointer)
       }
@@ -589,7 +591,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       updated.attributes = merged
       updated.relationships = { ...updated.relationships, ...Object.fromEntries(Object.entries(relationships).map(([name, value]) => [name, { ...(updated.relationships?.[name] || {}), data: value.data }])) }
       const revisionKey = 'drupal_internal__vid' in merged ? 'drupal_internal__vid' : 'drupal_internal__revision_id' in merged ? 'drupal_internal__revision_id' : undefined
-      if (revisionKey) updated.attributes[revisionKey] = store.nextId(langcode, entityType, revisionKey)
+      if (revisionKey) updated.attributes[revisionKey] = store.nextId(dump.manifest.defaultLanguage, entityType, revisionKey)
       if ('changed' in merged) updated.attributes.changed = stampOf()
       if ('revision_timestamp' in merged) updated.attributes.revision_timestamp = stampOf()
       if (updated.relationships.revision_uid && session.user) updated.relationships.revision_uid = { ...updated.relationships.revision_uid, data: { type: 'user--user', id: session.user.id, meta: { drupal_internal__target_id: session.uid } } }

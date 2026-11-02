@@ -364,3 +364,48 @@ describe('what a signed-in user reaches', () => {
   })
 })
 
+describe('writes across languages, and accounts without a user', () => {
+  const es = { ...dump.resources.en!, 'node--recipe': dump.resources.en!['node--recipe']!.filter((recipe) => recipe.id === 'r-1').map((recipe) => ({ ...recipe, attributes: { ...recipe.attributes, title: 'Quiche' } })) }
+  const multilingual = () => createDrupal({ ...dump, manifest: { ...dump.manifest, languages: { en: '', es: 'es' } }, resources: { ...dump.resources, es } }, { baseUrl: BASE })
+  const admin = (d: ReturnType<typeof drupal>) => ({ ...JSON_API, ...bearer(d.tokenFor('admin').access) })
+
+  it('stores what is created under a prefix in the default language, and names the prefix in its links', async () => {
+    const d = multilingual()
+    const created = await d.fetch(`${BASE}/es/jsonapi/node/recipe`, { method: 'POST', headers: admin(d), body: JSON.stringify({ data: { type: 'node--recipe', attributes: { title: 'Nueva', field_cooking_time: 5 } } }) })
+    expect(created.status).toBe(201)
+    expect(created.headers.get('location')).toContain('/es/jsonapi/node/recipe/')
+    const { id } = (await read(created)).data as Resource
+    expect((await d.fetch(`${BASE}/jsonapi/node/recipe/${id}`)).status).toBe(200)
+    expect((await d.fetch(`${BASE}/es/jsonapi/node/recipe/${id}`)).status).toBe(200)
+    expect((await d.fetch(`${BASE}/jsonapi/node/recipe/${id}`, { method: 'DELETE', headers: admin(d) })).status).toBe(204)
+  })
+
+  it('deletes an entity with all its translations', async () => {
+    const d = multilingual()
+    expect((await d.fetch(`${BASE}/es/jsonapi/node/recipe/r-1`)).status).toBe(200)
+    expect((await d.fetch(`${BASE}/jsonapi/node/recipe/r-1`, { method: 'DELETE', headers: admin(d) })).status).toBe(204)
+    expect((await d.fetch(`${BASE}/es/jsonapi/node/recipe/r-1`)).status).toBe(404)
+    expect(((await read(await d.fetch(`${BASE}/es/jsonapi/node/recipe`))).data as Resource[]).map((recipe) => recipe.id)).not.toContain('r-1')
+  })
+
+  it('refuses a field name only an object inherits', async () => {
+    const d = drupal()
+    const patch = (data: string) => d.fetch(`${BASE}/jsonapi/node/recipe/r-1`, { method: 'PATCH', headers: admin(d), body: `{"data":{"type":"node--recipe","id":"r-1",${data}}}` })
+    expect((await patch('"attributes":{"constructor":1}')).status).toBe(422)
+    expect((await patch('"relationships":{"toString":{"data":null}}')).status).toBe(422)
+  })
+
+  it('takes the next revision id from the default language, under a prefix too', async () => {
+    const d = multilingual()
+    const vids = (dump.resources.en!['node--recipe'] || []).map((recipe) => Number((recipe.attributes as { drupal_internal__vid?: number }).drupal_internal__vid))
+    const patched = await d.fetch(`${BASE}/es/jsonapi/node/recipe/r-1`, { method: 'PATCH', headers: admin(d), body: JSON.stringify({ data: { type: 'node--recipe', id: 'r-1', attributes: { title: 'Otra' } } }) })
+    expect(patched.status).toBe(200)
+    expect(((await read(patched)).data as Resource).attributes!.drupal_internal__vid).toBeGreaterThan(Math.max(...vids))
+  })
+
+  it('refuses a grant for an account whose user is gone, rather than throwing', async () => {
+    const d = createDrupal({ ...dump, resources: { ...dump.resources, en: { ...dump.resources.en, 'user--user': dump.resources.en!['user--user']!.filter((user) => (user.attributes as { name?: string }).name !== 'umami') } } }, { baseUrl: BASE })
+    expect(await token(d, { grant_type: 'password', client_id: 'druxt', client_secret: 's3cret', username: 'umami', password: 'secret' })).toMatchObject({ status: 400, body: { error: 'invalid_grant' } })
+  })
+})
+
