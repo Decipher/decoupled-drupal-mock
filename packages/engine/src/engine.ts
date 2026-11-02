@@ -18,6 +18,8 @@ export interface DrupalOptions {
   basePath?: string
   /** The accounts and consumers the mock signs in. A preset carries its own; these replace them. */
   identities?: Identities
+  /** The time, for a token's expiry. A test moves it on through `createMock`'s `advanceTime`. */
+  now?: () => number
 }
 
 export interface Drupal {
@@ -71,7 +73,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   const identities: Identities = options.identities || dump.identities || { accounts: [], consumers: [] }
   const store = new Store(dump)
   const rolesByUuid = () => new Map((store.get(dump.manifest.defaultLanguage, 'user_role--user_role') || []).map((role) => [role.id, role]))
-  const identity = new Identity(dump, identities, () => store.get(dump.manifest.defaultLanguage, 'user--user') || [], rolesByUuid)
+  const identity = new Identity(dump, identities, () => store.get(dump.manifest.defaultLanguage, 'user--user') || [], rolesByUuid, options.now)
   const writes = new Writes(store, identity, dump.manifest.defaultLanguage)
   // The `jsonapi` object as the dump's Drupal writes it: the version it speaks.
   const JSONAPI = (dump.index[dump.manifest.defaultLanguage]?.jsonapi || JSONAPI_DEFAULT) as NonNullable<Document['jsonapi']>

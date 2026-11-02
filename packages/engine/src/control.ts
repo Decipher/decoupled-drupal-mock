@@ -1,4 +1,5 @@
 import { request as httpRequest } from 'node:http'
+import type { RecordedRequest, SentRequest } from './extend.js'
 import type { Token } from './identity.js'
 
 /** The path under which a server started for tests takes its orders: on only when asked for, and never Drupal's own. */
@@ -14,6 +15,14 @@ export interface MockClient {
   reset: () => Promise<void>
   /** A token for a user of the preset, past the grant: a test's shortcut to a signed-in request. */
   tokenFor: (name: string, scopes?: string[]) => Promise<Token>
+  /** Turns on a scenario an extension names, until the next `reset()`. */
+  scenario: (name: string) => Promise<void>
+  /** What the mock was asked, oldest first, since the last `reset()`. */
+  requests: () => Promise<RecordedRequest[]>
+  /** What an extension's `onWrite` called, since the last `reset()`. */
+  sent: () => Promise<SentRequest[]>
+  /** Moves the mock's clock on, for a token's expiry. */
+  advanceTime: (seconds: number) => Promise<void>
 }
 
 // node:http and not fetch: Node 16 has no fetch, and neither has Jest's jsdom environment on any Node.
@@ -44,5 +53,9 @@ export const connectMock = (url: string | undefined = process.env[URL_VARIABLE])
     url,
     reset: async () => { await order(url, 'reset') },
     tokenFor: async (name, scopes) => JSON.parse(await order(url, 'token', { name, ...(scopes ? { scopes } : {}) })) as Token,
+    scenario: async (name) => { await order(url, 'scenario', { name }) },
+    requests: async () => JSON.parse(await order(url, 'requests')) as RecordedRequest[],
+    sent: async () => JSON.parse(await order(url, 'sent')) as SentRequest[],
+    advanceTime: async (seconds) => { await order(url, 'time', { seconds }) },
   }
 }

@@ -57,7 +57,7 @@ export class Identity {
   private readonly codes = new Map<string, { clientId: string, name: string, scopes?: string[], challenge?: string, method?: string, redirectUri: string, expires: number }>()
   private readonly cookies = new Map<string, { name: string, csrf: string }>()
 
-  constructor(private readonly dump: Dump, private readonly identities: Identities, private readonly users: () => Resource[], private readonly roleIds: () => Map<string, Resource>) {}
+  constructor(private readonly dump: Dump, private readonly identities: Identities, private readonly users: () => Resource[], private readonly roleIds: () => Map<string, Resource>, private readonly now: () => number = () => Date.now()) {}
 
   /** A user of the dump by name. */
   userNamed(name: string): Resource | undefined {
@@ -96,7 +96,7 @@ export class Identity {
       if (scheme?.toLowerCase() !== 'bearer' || !value) return { invalid: 'The JWT string must have two dots' }
       const token = this.tokens.get(value)
       if (!token) return { invalid: value.split('.').length === 3 ? 'The JWT string is invalid' : 'The JWT string must have two dots' }
-      if (token.expires < Date.now()) return { invalid: 'The access token has expired' }
+      if (token.expires < this.now()) return { invalid: 'The access token has expired' }
       const user = this.userNamed(token.name)
       return user ? this.sessionFor(user, token.scopes, token.clientId) : ANONYMOUS
     }
@@ -119,7 +119,7 @@ export class Identity {
   private issue({ clientId, name, scopes, refresh }: { clientId: string, name: string, scopes?: string[] | undefined, refresh: boolean }): Token {
     const user = this.userNamed(name)!
     const roles = this.sessionFor(user, scopes, clientId).roles
-    const token: Token = { access: mint(), ...(refresh ? { refresh: mint() } : {}), name, roles, ...(scopes ? { scopes } : {}), clientId, issued: Date.now(), expires: Date.now() + 300_000 }
+    const token: Token = { access: mint(), ...(refresh ? { refresh: mint() } : {}), name, roles, ...(scopes ? { scopes } : {}), clientId, issued: this.now(), expires: this.now() + 300_000 }
     this.tokens.set(token.access, token)
     if (token.refresh) this.refreshes.set(token.refresh, token)
     return token
@@ -164,7 +164,7 @@ export class Identity {
       }
       case 'authorization_code': {
         const code = this.codes.get(form.get('code') || '')
-        if (!code || code.clientId !== clientId || code.expires < Date.now()) return fail(400, 'invalid_grant', 'Authorization code has expired', 'Cannot decrypt the authorization code')
+        if (!code || code.clientId !== clientId || code.expires < this.now()) return fail(400, 'invalid_grant', 'Authorization code has expired', 'Cannot decrypt the authorization code')
         if (code.redirectUri !== form.get('redirect_uri')) return fail(400, 'invalid_request', 'The request is missing a required parameter, includes an invalid parameter value, includes a parameter more than once, or is otherwise malformed.', 'Check the `redirect_uri` parameter')
         if (code.challenge) {
           const verifier = form.get('code_verifier') || ''
@@ -193,7 +193,7 @@ export class Identity {
     if (scopes.some((scope) => !consumer.scopes?.[scope])) return { status: 400 }
     if (!session.user) return { status: 403 }
     const code = base64url(randomBytes(32))
-    this.codes.set(code, { clientId, expires: Date.now() + 300_000, name: String((session.user.attributes as { name?: string }).name), ...(scopes.length ? { scopes } : {}), ...(query.code_challenge ? { challenge: String(query.code_challenge), method: String(query.code_challenge_method || 'plain') } : {}), redirectUri })
+    this.codes.set(code, { clientId, expires: this.now() + 300_000, name: String((session.user.attributes as { name?: string }).name), ...(scopes.length ? { scopes } : {}), ...(query.code_challenge ? { challenge: String(query.code_challenge), method: String(query.code_challenge_method || 'plain') } : {}), redirectUri })
     const url = new URL(redirectUri)
     url.searchParams.set('code', code)
     if (query.state) url.searchParams.set('state', String(query.state))
