@@ -371,7 +371,7 @@ describe('writes across languages, and accounts without a user', () => {
 
   it('stores what is created under a prefix in the default language, and names the prefix in its links', async () => {
     const d = multilingual()
-    const created = await d.fetch(`${BASE}/es/jsonapi/node/recipe`, { method: 'POST', headers: admin(d), body: JSON.stringify({ data: { type: 'node--recipe', attributes: { title: 'Nueva', field_cooking_time: 5 } } }) })
+    const created = await d.fetch(`${BASE}/es/jsonapi/node/recipe`, { method: 'POST', headers: admin(d), body: JSON.stringify({ data: { type: 'node--recipe', attributes: { title: 'Created', field_cooking_time: 5 } } }) })
     expect(created.status).toBe(201)
     expect(created.headers.get('location')).toContain('/es/jsonapi/node/recipe/')
     const { id } = (await read(created)).data as Resource
@@ -398,7 +398,7 @@ describe('writes across languages, and accounts without a user', () => {
   it('takes the next revision id from the default language, under a prefix too', async () => {
     const d = multilingual()
     const vids = (dump.resources.en!['node--recipe'] || []).map((recipe) => Number((recipe.attributes as { drupal_internal__vid?: number }).drupal_internal__vid))
-    const patched = await d.fetch(`${BASE}/es/jsonapi/node/recipe/r-1`, { method: 'PATCH', headers: admin(d), body: JSON.stringify({ data: { type: 'node--recipe', id: 'r-1', attributes: { title: 'Otra' } } }) })
+    const patched = await d.fetch(`${BASE}/es/jsonapi/node/recipe/r-1`, { method: 'PATCH', headers: admin(d), body: JSON.stringify({ data: { type: 'node--recipe', id: 'r-1', attributes: { title: 'Patched' } } }) })
     expect(patched.status).toBe(200)
     expect(((await read(patched)).data as Resource).attributes!.drupal_internal__vid).toBeGreaterThan(Math.max(...vids))
   })
