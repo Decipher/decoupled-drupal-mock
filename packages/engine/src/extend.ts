@@ -131,6 +131,13 @@ const settled = (answer: ExtensionAnswer | undefined, name: string): Answered =>
   return { status: answer.status ?? 200, headers, body }
 }
 
+// A loop, not `/\/+$/`: a regular expression that backtracks is slow on a path of many slashes.
+const trimSlashes = (text: string): string => {
+  let end = text.length
+  while (end > 0 && text[end - 1] === '/') end--
+  return text.slice(0, end)
+}
+
 type Layer = Pick<Extension, 'name' | 'routes' | 'answer' | 'onWrite'>
 
 /**
@@ -143,7 +150,7 @@ type Layer = Pick<Extension, 'name' | 'routes' | 'answer' | 'onWrite'>
  * @returns The extended mock.
  */
 export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: MockClock, basePath = '/jsonapi'): ExtendedDrupal => {
-  const base = basePath.replace(/\/+$/, '') || '/jsonapi'
+  const base = trimSlashes(basePath) || '/jsonapi'
   const state = new Map<string, unknown>()
   const added: Layer[] = []
   const active: Layer[] = []
@@ -180,7 +187,7 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
   const handle: Drupal['handle'] = (method, input, headers = {}, body) => {
     const url = new URL(input, 'http://drupal.invalid')
     const upper = method.toUpperCase()
-    const path = url.pathname.replace(/\/+$/, '') || '/'
+    const path = trimSlashes(url.pathname) || '/'
     const prefix = prefixes.find((candidate) => path === `/${candidate}` || path.startsWith(`/${candidate}/`))
     const route = prefix ? path.slice(prefix.length + 1) || '/' : path
     let json: unknown
