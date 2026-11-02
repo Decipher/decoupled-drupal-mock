@@ -251,7 +251,7 @@ test:pack:
     - cd /tmp/consumer && npm init -y > /dev/null
     - npm install /tmp/pack/decoupled-drupal-mock-*.tgz /tmp/pack/umami.tgz --no-audit --no-fund
     - (npx decoupled-drupal-mock serve umami --port 3005 &) && sleep 5
-    - node -e "fetch('http://127.0.0.1:3005/jsonapi').then((response) => process.exit(response.ok ? 0: 1))"
+    - 'node -e "fetch(\"http://127.0.0.1:3005/jsonapi\").then((response) => process.exit(response.ok ? 0 : 1))"'
     - section_end "pack"
 
 test:e2e:
