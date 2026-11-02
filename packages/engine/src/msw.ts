@@ -1,4 +1,5 @@
 import type { Drupal } from './engine.js'
+import { withoutTrailingSlashes } from './slashes.js'
 
 /** The part of msw's `http` this needs, so msw stays a peer a consumer brings. */
 export interface MswHttp<Handler> {
@@ -14,5 +15,5 @@ export interface MswHttp<Handler> {
  * const server = setupServer(...handlers(drupal, http, 'https://drupal.test'))
  */
 export const handlers = <Handler>(drupal: Drupal, http: MswHttp<Handler>, baseUrl: string): Handler[] => [
-  http.all(`${baseUrl.replace(/\/+$/, '')}/*`, ({ request }) => drupal.fetch(request)),
+  http.all(`${withoutTrailingSlashes(baseUrl)}/*`, ({ request }) => drupal.fetch(request)),
 ]

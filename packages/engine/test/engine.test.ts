@@ -258,6 +258,12 @@ describe('what the first review found', () => {
     expect(Object.keys((media.body.meta as { omitted: { links: object } }).omitted.links).some((key) => key.startsWith('item--'))).toBe(true)
   })
 
+  it('answers a path of many slashes at once, as a backtracking regular expression would not', () => {
+    const started = Date.now()
+    expect(drupal.handle('GET', `https://drupal.test/jsonapi${'/'.repeat(100000)}x`).status).toBe(404)
+    expect(Date.now() - started).toBeLessThan(1000)
+  })
+
   it('refuses extra path segments, a filter on a field the type lacks, and a group named @root', async () => {
     expect((await get('/jsonapi/node/recipe/r-1/uid/extra')).status).toBe(404)
     const unknown = await get('/jsonapi/node/page?filter[nope]=1')

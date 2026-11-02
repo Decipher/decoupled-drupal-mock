@@ -36,6 +36,9 @@ describe('serving', () => {
       const client = connectMock(on.url)
       await client.reset()
       await expect(client.tokenFor('nobody-at-all')).rejects.toThrow('No user named')
+      const malformed = await fetch(`${on.url}/__decoupled-drupal-mock/token`, { method: 'POST', body: '{' })
+      expect(malformed.status).toBe(400)
+      expect(Object.keys(await malformed.json() as object)).toEqual(['message'])
       const accounts = (dump.resources.en?.['user--user'] || []).map((user) => (user.attributes as { name?: string, display_name?: string }).name).filter(Boolean) as string[]
       if (accounts[0]) expect((await client.tokenFor(accounts[0])).access.split('.')).toHaveLength(3)
     } finally {

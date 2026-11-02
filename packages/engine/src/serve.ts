@@ -4,6 +4,7 @@ import type { Server } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { CONTROL_PATH } from './control.js'
 import type { Drupal } from './engine.js'
+import type { ExtendedDrupal } from './extend.js'
 
 export interface ListenOptions {
   /** The dump directory, whose `files/` answers `/sites/default/files/...` as Drupal's public files directory does. */
@@ -49,15 +50,18 @@ export const publicFile = (dir: string, pathname: string): { path: string, mime:
  * @param options - The public files directory and CORS.
  */
 /** A test's order to a server: reset, or a token for a user. */
-const control = (drupal: Drupal, order: string, body: string | undefined): { status: number, text: string } => {
-  if (order === 'reset') {
-    drupal.reset()
-    return { status: 200, text: '{}' }
-  }
-  if (order !== 'token') return { status: 404, text: JSON.stringify({ message: `No order named ${order}.` }) }
-  const { name, scopes } = JSON.parse(body || '{}') as { name?: string, scopes?: string[] }
+const control = (drupal: Drupal | ExtendedDrupal, order: string, body: string | undefined): { status: number, text: string } => {
+  const extended = 'scenario' in drupal ? drupal : undefined
   try {
-    return { status: 200, text: JSON.stringify(drupal.tokenFor(name || '', scopes)) }
+    const given = JSON.parse(body || '{}') as { name?: string, scopes?: string[], seconds?: number }
+    if (order === 'reset') drupal.reset()
+    else if (order === 'token') return { status: 200, text: JSON.stringify(drupal.tokenFor(given.name || '', given.scopes)) }
+    else if (extended && order === 'scenario') extended.scenario(given.name || '')
+    else if (extended && order === 'requests') return { status: 200, text: JSON.stringify(extended.requests()) }
+    else if (extended && order === 'sent') return { status: 200, text: JSON.stringify(extended.sent()) }
+    else if (extended && order === 'time') extended.advanceTime(given.seconds || 0)
+    else return { status: 404, text: JSON.stringify({ message: `No order named ${order}.` }) }
+    return { status: 200, text: '{}' }
   } catch (error) {
     return { status: 400, text: JSON.stringify({ message: (error as Error).message }) }
   }

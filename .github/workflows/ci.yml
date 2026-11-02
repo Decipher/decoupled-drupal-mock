@@ -40,6 +40,7 @@ jobs:
       - run: yarn workspace decoupled-drupal-mock build
       - run: yarn workspace example-playwright playwright install --with-deps chromium
       - run: yarn workspace example-playwright test
+      - run: yarn workspace example-nextjs test
       - run: yarn workspace example-cypress cypress install
       - run: yarn workspace example-cypress test
       - uses: actions/setup-node@v4

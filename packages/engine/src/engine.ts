@@ -10,6 +10,7 @@ import type { WriteError } from './writes.js'
 import { own as member } from './own.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
 import { clone } from './clone.js'
+import { withoutTrailingSlashes } from './slashes.js'
 
 export interface DrupalOptions {
   /** The origin the server answers for, written into every link. Default `https://drupal.invalid`. */
@@ -18,6 +19,8 @@ export interface DrupalOptions {
   basePath?: string
   /** The accounts and consumers the mock signs in. A preset carries its own; these replace them. */
   identities?: Identities
+  /** The time, for a token's expiry. A test moves it on through `createMock`'s `advanceTime`. */
+  now?: () => number
 }
 
 export interface Drupal {
@@ -63,15 +66,15 @@ const STATUS_TEXT: Record<number, string> = { 200: 'OK', 201: 'Created', 204: 'N
  * @param options - The origin and base path to answer for.
  */
 export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal => {
-  const baseUrl = (options.baseUrl || 'https://drupal.invalid').replace(/\/+$/, '')
+  const baseUrl = withoutTrailingSlashes(options.baseUrl || 'https://drupal.invalid')
   // A trailing slash on the base path would make every route an HTML 404.
-  const basePath = (options.basePath || '/jsonapi').replace(/\/+$/, '') || '/jsonapi'
-  const placeholder = dump.manifest.origin.replace(/\/+$/, '')
+  const basePath = withoutTrailingSlashes(options.basePath || '/jsonapi') || '/jsonapi'
+  const placeholder = withoutTrailingSlashes(dump.manifest.origin)
   const languages = dump.manifest.languages
   const identities: Identities = options.identities || dump.identities || { accounts: [], consumers: [] }
   const store = new Store(dump)
   const rolesByUuid = () => new Map((store.get(dump.manifest.defaultLanguage, 'user_role--user_role') || []).map((role) => [role.id, role]))
-  const identity = new Identity(dump, identities, () => store.get(dump.manifest.defaultLanguage, 'user--user') || [], rolesByUuid)
+  const identity = new Identity(dump, identities, () => store.get(dump.manifest.defaultLanguage, 'user--user') || [], rolesByUuid, options.now)
   const writes = new Writes(store, identity, dump.manifest.defaultLanguage)
   // The `jsonapi` object as the dump's Drupal writes it: the version it speaks.
   const JSONAPI = (dump.index[dump.manifest.defaultLanguage]?.jsonapi || JSONAPI_DEFAULT) as NonNullable<Document['jsonapi']>
@@ -291,7 +294,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
 
   const handle: Drupal['handle'] = (method, input, requestHeaders = {}, requestBody) => {
     const url = new URL(input, baseUrl)
-    const path = url.pathname.replace(/\/+$/, '') || '/'
+    const path = withoutTrailingSlashes(url.pathname) || '/'
     const search = url.search.replace(/^\?/, '')
     const query = parseQuery(search)
     const upper = method.toUpperCase()

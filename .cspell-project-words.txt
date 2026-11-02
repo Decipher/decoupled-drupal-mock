@@ -82,3 +82,5 @@ devpod
 dbaeumer
 esbenp
 jsdom
+nextjs
+drupalcms

@@ -32,6 +32,32 @@ describe('the engine in the test process', () => {
   })
 })
 
+describe('an extension, for a module the preset does not have', () => {
+  const extended = loadPreset('umami', {
+    baseUrl,
+    extensions: [{
+      routes: { 'GET /jsonapi/node/:bundle/:uuid/preview': ({ params }) => ({ body: { data: { id: params.uuid, attributes: { title: 'Unsaved' } } } }) },
+      scenarios: { down: { answer: () => ({ status: 503, body: 'down' }) } },
+    }],
+  })
+  afterEach(() => extended.reset())
+
+  it('answers axios spies from its route, and records the request', async () => {
+    mockAxios.get = jest.fn(axiosVerbs(extended, baseUrl).get)
+    const { data } = await mockAxios.get('/jsonapi/node/recipe/n-1/preview')
+    expect(data.data.attributes.title).toBe('Unsaved')
+    expect(extended.requests().map((request) => request.path)).toEqual(['/jsonapi/node/recipe/n-1/preview'])
+  })
+
+  it('fails every request in a scenario, until a reset', async () => {
+    const verbs = axiosVerbs(extended, baseUrl)
+    extended.scenario('down')
+    await expect(verbs.get('/en/jsonapi/node/recipe')).rejects.toMatchObject({ response: { status: 503 } })
+    extended.reset()
+    expect((await verbs.get('/en/jsonapi/node/recipe')).status).toBe(200)
+  })
+})
+
 describe('the server globalSetup started', () => {
   it('answers real axios over HTTP, and takes orders', async () => {
     const mock = connectMock()

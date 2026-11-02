@@ -28,68 +28,31 @@ npx decoupled-drupal-mock serve decoupled-drupal-mock-umami --port 3005
 
 ## In a test runner
 
-Every runner gets the same engine. Reset between tests, because a write stays until then. Each section has a working copy under [`examples/`](examples), run in CI.
+Jest (including CommonJS on Node 16 in jsdom), Vitest, Playwright and Cypress each have an entry point and a working example, run in CI. See [Test runners](docs/test-runners.md).
 
-**Jest**, on CommonJS and Node 16 or later, in jsdom or node. Answer axios spies from the engine, so the assertions on their calls keep working:
+## What the preset does not have
 
-```js
-const mockAxios = require('jest-mock-axios').default;
-const { axiosVerbs, loadPreset } = require('decoupled-drupal-mock/jest');
-
-const baseUrl = 'https://drupal.test';
-const drupal = loadPreset('umami', { baseUrl });
-const verbs = axiosVerbs(drupal, baseUrl);
-
-mockAxios.get = jest.fn(verbs.get);
-mockAxios.post = jest.fn(verbs.post);
-mockAxios.patch = jest.fn(verbs.patch);
-afterEach(() => drupal.reset());
-```
-
-A client that takes an adapter gets `axios.create({ adapter: axiosAdapter(drupal) })`. For a server shared by the whole run, `globalSetup('umami')` and `globalTeardown` go in the files Jest's config names, and a test reaches it with `connectMock()`.
-
-**Vitest**, or anything else that imports ESM:
-
-```ts
-import { startMock } from 'decoupled-drupal-mock/testing';
-
-const mock = await startMock('umami');
-afterEach(() => mock.reset());
-afterAll(() => mock.close());
-// mock.url, await mock.tokenFor('admin'), mock.drupal
-```
-
-**Playwright** gets a `drupal` fixture, with a server per worker, reset after each test:
+A module of your own has endpoints no preset records. An extension adds them, changes or fails a stock answer, keeps state across requests, and calls your site back on a save:
 
 ```js
-import { test as base } from '@playwright/test';
-import { withDrupal } from 'decoupled-drupal-mock/testing';
-
-const test = withDrupal(base, 'umami');
-test('a recipe', async ({ page, drupal }) => {
-  await page.goto(`${drupal.url}/en/jsonapi/node/recipe`);
-});
+export default {
+  routes: {
+    'POST /next/draft-url': ({ json }) =>
+      json?.secret === 'test'
+        ? { body: { path: json.path, maxAge: 30 } }
+        : { status: 422, body: { message: 'Invalid secret.' } },
+  },
+  scenarios: {
+    'drupal-down': { answer: () => ({ status: 503, body: 'Service unavailable' }) },
+  },
+};
 ```
-
-**Cypress** gets tasks, in `setupNodeEvents`:
-
-```js
-const { cypressTasks, spawnMock } = require('decoupled-drupal-mock/cypress');
-
-const mock = await spawnMock('umami');
-on('task', cypressTasks(mock.url));
-on('after:run', () => mock.close());
-```
-
-A test then calls `cy.task('drupal:reset')` and `cy.task('drupal:token', { name: 'admin' })`.
-
-**A frontend the runner does not start** points at a server on a port you choose, for example from `start-server-and-test`:
 
 ```sh
-npx decoupled-drupal-mock serve umami --port 3005 --control
+npx decoupled-drupal-mock serve umami --control --extension ./next.mjs
 ```
 
-Set `DECOUPLED_DRUPAL_MOCK_URL` to its URL and `connectMock()` or `withDrupal` use it. Run one test worker at a time against a shared server, or their writes meet. `--control` opens `POST /__decoupled-drupal-mock/reset` and `/token`. It lets anyone who reaches the port sign in as anyone, so it is for a test's server only.
+See [Extensions](docs/extensions.md). `examples/nextjs` runs a real Next.js site with next-drupal against one.
 
 ## Writes and sign-in
 
@@ -119,7 +82,7 @@ Not released yet. The packages will install from this repository's releases once
 
 ## Building a preset
 
-The build crawls a running Drupal as an administrator for the dump and as a visitor for what a visitor may read, records the router lookups, menus, views and decoupled settings, and the oracle, then rewrites the site's origin to a placeholder and writes a manifest with the hash of every file. `packages/build/src/cli.ts` takes a JSON config naming the site, the languages, the credentials and the oracle list.
+A preset can be built from any Drupal with JSON:API on, including your own site. See [Building a preset](docs/building-a-preset.md).
 
 The engine runs on Node, including under a test runner's jsdom environment. It needs `node:crypto` from its root entry, so it does not run in a browser or a service worker: a browser test reaches it over HTTP.
 

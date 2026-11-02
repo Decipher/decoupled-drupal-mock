@@ -1,8 +1,8 @@
 import { createServer } from 'node:net'
 import { connectMock } from './control.js'
 import type { MockClient } from './control.js'
-import { createDrupal as createCore } from './engine.js'
-import type { Drupal } from './engine.js'
+import type { ExtendedDrupal, Extension } from './extend.js'
+import { createMock } from './mock.js'
 import { loadDump } from './load.js'
 import { presetDir } from './preset.js'
 import { listen } from './serve.js'
@@ -12,7 +12,7 @@ export type { MockClient } from './control.js'
 
 /** A server in this process, with the engine behind it in reach. */
 export interface Mock extends MockClient {
-  drupal: Drupal
+  drupal: ExtendedDrupal
   /** Stops it. */
   close: () => Promise<void>
 }
@@ -31,18 +31,19 @@ const freePort = (): Promise<number> => new Promise((resolve, reject) => {
  * Jest with its ESM support on.
  *
  * @param preset - A directory, a preset package or its short name.
+ * @param options - The extensions.
  * @returns The running server.
  */
-export const startMock = async (preset: string): Promise<Mock> => {
+export const startMock = async (preset: string, options: { extensions?: Extension[] } = {}): Promise<Mock> => {
   const dir = presetDir(preset)
   const dump = loadDump(dir)
   for (let attempt = 0; ; attempt++) {
     const port = await freePort()
     const url = `http://127.0.0.1:${port}`
-    const drupal = createCore(dump, { baseUrl: url })
+    const drupal = createMock(dump, { baseUrl: url, extensions: options.extensions || [] })
     try {
       const { close } = await listen(drupal, port, '127.0.0.1', { files: dir, control: true })
-      return { ...connectMock(url), reset: async () => drupal.reset(), tokenFor: async (name, scopes) => drupal.tokenFor(name, scopes), drupal, close }
+      return { ...connectMock(url), reset: async () => drupal.reset(), tokenFor: async (name, scopes) => drupal.tokenFor(name, scopes), scenario: async (name) => drupal.scenario(name), requests: async () => drupal.requests(), sent: async () => drupal.sent(), advanceTime: async (seconds) => drupal.advanceTime(seconds), drupal, close }
     } catch (error) {
       // Another process can take the port between finding it free and binding it.
       if (attempt === 4) throw error
@@ -62,14 +63,19 @@ interface Extendable<Test> {
  *
  * @param test - Playwright's `test`.
  * @param preset - A directory, a preset package or its short name.
+ * @param options - The extensions.
  * @returns The extended `test`.
  */
-export const withDrupal = <Test>(test: Extendable<Test>, preset: string): Test => test.extend({
+export const withDrupal = <Test>(test: Extendable<Test>, preset: string, options: { extensions?: Extension[] } = {}): Test => test.extend({
   // Playwright reads a fixture's dependencies from this pattern, so it must be written as one even when it is empty.
   // eslint-disable-next-line no-empty-pattern
   drupalServer: [async ({}, use: (mock: MockClient) => Promise<void>) => {
-    if (process.env.DECOUPLED_DRUPAL_MOCK_URL) return use(connectMock())
-    const mock = await startMock(preset)
+    if (process.env.DECOUPLED_DRUPAL_MOCK_URL) {
+      // That server has the extensions it was started with, which may or may not be these.
+      if (options.extensions?.length) console.warn(`withDrupal is using the server at ${process.env.DECOUPLED_DRUPAL_MOCK_URL}, so the extensions passed here are not loaded: start that server with them.`)
+      return use(connectMock())
+    }
+    const mock = await startMock(preset, options)
     await use(mock)
     await mock.close()
   }, { scope: 'worker' }],
