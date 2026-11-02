@@ -4,14 +4,6 @@ import type { Server } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import type { Drupal } from './engine.js'
 
-/**
- * An HTTP server answering as the Drupal would, for an end-to-end suite or a developer's browser.
- *
- * @param drupal - The engine, created with the base URL the server is reached at.
- * @param port - The port, or 0 for one the system picks.
- * @param host - The interface to listen on.
- * @param options - The public files directory and CORS.
- */
 export interface ListenOptions {
   /** The dump directory, whose `files/` answers `/sites/default/files/...` as Drupal's public files directory does. */
   files?: string
@@ -44,18 +36,27 @@ export const publicFile = (dir: string, pathname: string): { path: string, mime:
   return { path, mime: MIME[extname(path).toLowerCase()] || 'application/octet-stream' }
 }
 
+/**
+ * An HTTP server answering as the Drupal would, for a frontend pointed at it, an end-to-end suite or a developer's
+ * browser.
+ *
+ * @param drupal - The engine, created with the base URL the server is reached at.
+ * @param port - The port, or 0 for one the system picks.
+ * @param host - The interface to listen on: `0.0.0.0` for a devpod with the port forwarded.
+ * @param options - The public files directory and CORS.
+ */
 /** A host as a URL names it: an IPv6 address goes in brackets. */
 const urlHost = (host: string): string => (host.includes(':') && !host.startsWith('[') ? `[${host}]` : host)
 
 export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: ListenOptions = {}): Promise<{ server: Server, url: string, close: () => Promise<void> }> => new Promise((resolve, reject) => {
   const cors = options.cors !== false ? CORS : {}
   const server = createServer((request, response) => {
-    if (request.method === 'OPTIONS' && options.cors !== false) {
+    const method = request.method || 'GET'
+    if (method === 'OPTIONS' && options.cors !== false) {
       response.writeHead(204, cors)
       response.end()
       return
     }
-    const method = request.method || 'GET'
     let file: ReturnType<typeof publicFile>
     try {
       if (options.files) file = publicFile(options.files, new URL(request.url || '/', `http://${urlHost(host)}:${port}`).pathname)
@@ -73,13 +74,13 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
     const chunks: Buffer[] = []
     request.on('data', (chunk: Buffer) => chunks.push(chunk))
     request.on('end', () => {
-      // A request target no URL can be made of, such as `OPTIONS *`, fails this request and not the server.
+      // A request target no URL can be made of fails this request and not the server.
       try {
         const requestBody = chunks.length ? Buffer.concat(chunks).toString('utf8') : undefined
-        const { status, headers: responseHeaders, body } = drupal.handle(request.method || 'GET', `http://${urlHost(host)}:${port}${request.url || '/'}`, headers, requestBody)
+        const { status, headers: responseHeaders, body } = drupal.handle(method, `http://${urlHost(host)}:${port}${request.url || '/'}`, headers, requestBody)
         const text = status === 204 || body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body)
         response.writeHead(status, { ...cors, ...responseHeaders, ...(status === 204 ? {} : { 'content-length': Buffer.byteLength(text) }) })
-        response.end(request.method === 'HEAD' || status === 204 ? undefined : text)
+        response.end(method === 'HEAD' || status === 204 ? undefined : text)
       } catch {
         response.writeHead(400, { ...cors, 'content-type': 'text/plain' })
         response.end('Bad Request')

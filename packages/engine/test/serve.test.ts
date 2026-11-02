@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,28 +22,6 @@ const bind = async (host = '127.0.0.1') => {
 }
 
 describe('serving', () => {
-  it('serves the public files from the dump, an image style with the original, and nothing outside', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'mock-files-'))
-    mkdirSync(join(dir, 'files', 'a'), { recursive: true })
-    writeFileSync(join(dir, 'files', 'a', 'quiche.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
-    writeFileSync(join(dir, 'secret.txt'), 'not public')
-    const { url, close } = await listen(createDrupal(dump), 0, '127.0.0.1', { files: dir })
-    try {
-      const original = await fetch(`${url}/sites/default/files/a/quiche.jpg`)
-      expect(original.status).toBe(200)
-      expect(original.headers.get('content-type')).toBe('image/jpeg')
-      expect((await original.arrayBuffer()).byteLength).toBe(4)
-      const styled = await fetch(`${url}/sites/default/files/styles/medium/public/a/quiche.jpg`)
-      expect(styled.status).toBe(200)
-      expect((await styled.arrayBuffer()).byteLength).toBe(4)
-      expect((await fetch(`${url}/sites/default/files/a/missing.jpg`)).status).toBe(404)
-      expect((await fetch(`${url}/sites/default/files/../secret.txt`)).status).toBe(404)
-      expect((await fetch(`${url}/sites/default/files/a/quiche.jpg`, { method: 'HEAD' })).status).toBe(200)
-    } finally {
-      await close()
-    }
-  })
-
   it('answers CORS for a browser-side client and a preflight, unless told not to', async () => {
     const { url, close } = await bind()
     try {
@@ -125,6 +103,63 @@ describe('serving', () => {
       expect(document.data.map((resource) => resource.id)).toEqual(['r-3'])
     } finally {
       server.close()
+    }
+  })
+})
+
+describe('the server as a backend for a frontend', () => {
+  const bind = async (options: Parameters<typeof listen>[3]) => {
+    for (let attempt = 0; ; attempt++) {
+      const port = 40000 + Math.floor(Math.random() * 20000)
+      try {
+        return await listen(createDrupal(dump, { baseUrl: `http://127.0.0.1:${port}` }), port, '127.0.0.1', options)
+      } catch (error) {
+        if (attempt === 4) throw error
+      }
+    }
+  }
+
+  it('answers CORS for a browser-side client, and a preflight, unless told not to', async () => {
+    const { url, close } = await bind({})
+    try {
+      const preflight = await fetch(`${url}/jsonapi`, { method: 'OPTIONS', headers: { origin: 'http://localhost:3000', 'access-control-request-method': 'GET' } })
+      expect(preflight.status).toBe(204)
+      expect(preflight.headers.get('access-control-allow-origin')).toBe('*')
+      const answer = await fetch(`${url}/jsonapi/node/page/p-1`, { headers: { origin: 'http://localhost:3000' } })
+      expect(answer.headers.get('access-control-allow-origin')).toBe('*')
+      expect(answer.headers.get('content-type')).toBe('application/vnd.api+json')
+    } finally {
+      await close()
+    }
+    const quiet = await bind({ cors: false })
+    try {
+      expect((await fetch(`${quiet.url}/jsonapi`)).headers.get('access-control-allow-origin')).toBeNull()
+      expect((await fetch(`${quiet.url}/jsonapi`, { method: 'OPTIONS' })).status).not.toBe(204)
+    } finally {
+      await quiet.close()
+    }
+  })
+
+  it('serves the public files from the dump, an image style with the original, and nothing outside', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mock-files-'))
+    mkdirSync(join(dir, 'files', 'a'), { recursive: true })
+    writeFileSync(join(dir, 'files', 'a', 'quiche.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
+    writeFileSync(join(dir, 'secret.txt'), 'not public')
+    const { url, close } = await bind({ files: dir })
+    try {
+      const original = await fetch(`${url}/sites/default/files/a/quiche.jpg`)
+      expect(original.status).toBe(200)
+      expect(original.headers.get('content-type')).toBe('image/jpeg')
+      expect((await original.arrayBuffer()).byteLength).toBe(4)
+      const styled = await fetch(`${url}/sites/default/files/styles/medium/public/a/quiche.jpg`)
+      expect(styled.status).toBe(200)
+      expect((await styled.arrayBuffer()).byteLength).toBe(4)
+      expect((await fetch(`${url}/sites/default/files/a/missing.jpg`)).status).toBe(404)
+      // `..%2F`, as a URL parser collapses a plain `../` before the request is sent, and it never reaches the check.
+      expect((await fetch(`${url}/sites/default/files/..%2Fsecret.txt`)).status).toBe(404)
+      expect((await fetch(`${url}/sites/default/files/a/quiche.jpg`, { method: 'HEAD' })).status).toBe(200)
+    } finally {
+      await close()
     }
   })
 })
