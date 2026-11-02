@@ -246,10 +246,12 @@ test:pack:
   script:
     - section_start "pack" "Packing and installing the packages"
     - mkdir -p /tmp/pack /tmp/consumer
+    # npm pack, as the strictest packer: it rewrites no `workspace:` range, so one left in a manifest shows here.
     - (cd packages/engine && npm pack --pack-destination /tmp/pack)
-    - yarn workspace decoupled-drupal-mock-umami pack --out /tmp/pack/umami.tgz
+    - (cd presets/umami && npm pack --pack-destination /tmp/pack)
+    - for tarball in /tmp/pack/*.tgz; do if tar -xOzf "$tarball" package/package.json | grep -q '"workspace:'; then echo "$tarball has a workspace range"; exit 1; fi; done
     - cd /tmp/consumer && npm init -y > /dev/null
-    - npm install /tmp/pack/decoupled-drupal-mock-*.tgz /tmp/pack/umami.tgz --no-audit --no-fund
+    - npm install /tmp/pack/*.tgz --no-audit --no-fund
     - (npx decoupled-drupal-mock serve umami --port 3005 &) && sleep 5
     - 'node -e "fetch(\"http://127.0.0.1:3005/jsonapi\").then((response) => process.exit(response.ok ? 0 : 1))"'
     - section_end "pack"
