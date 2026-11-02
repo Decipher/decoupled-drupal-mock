@@ -30,9 +30,9 @@ npx decoupled-drupal-mock serve decoupled-drupal-mock-umami --port 3005
 
 Jest (including CommonJS on Node 16 in jsdom), Vitest, Playwright and Cypress each have an entry point and a working example, run in CI. See [Test runners](docs/test-runners.md).
 
-## Modules no preset records
+## Extending the mock
 
-A module of your own has endpoints no preset records, and an extension adds them. It can also change or fail a stock answer, and call your site back on a save:
+If your site has a module with its own endpoints, the preset won't include them. An extension adds them, and it can also change or fail a stock answer, or call your site back when something is saved:
 
 ```js
 export default {
@@ -58,9 +58,9 @@ See [Extensions](docs/extensions.md). `examples/nextjs` runs a real Next.js site
 
 The engine answers POST, PATCH and DELETE on JSON:API resources and relationships with Drupal's own validation, permission and moderation answers, and Simple OAuth's token grants, userinfo and authorize beside Drupal's cookie sign-in. Each `createDrupal()` keeps its own copy of what it writes, so one test's writes never reach another's, and `reset()` restores the preset. `tokenFor('editor')` is a test's shortcut past the grant.
 
-## A frontend with no Drupal
+## Running a frontend against the mock
 
-The server is a backend for any frontend that reads Drupal over HTTP. Run it and point the site at it:
+Any frontend that reads Drupal over HTTP can use the mock's server as its Drupal. Start the server, then point the frontend's Drupal URL at it:
 
 ```sh
 npx decoupled-drupal-mock serve umami --port 3005
@@ -70,7 +70,7 @@ npx decoupled-drupal-mock serve umami --port 3005
 - Next.js with next-drupal: `NEXT_PUBLIC_DRUPAL_BASE_URL=http://127.0.0.1:3005` and `NEXT_IMAGE_DOMAIN=127.0.0.1`.
 - Any other client: its base URL.
 
-The public files the content names are in the preset and served from `/sites/default/files/`, with an image style URL answered by the original. CORS is on for a browser-side client, off with `--no-cors`. In a devpod or a container, `--host 0.0.0.0` and forward the port.
+The images and other files the content links to are included in the preset and served from `/sites/default/files/`. A request for an image style returns the original image. CORS is enabled so a browser-side client can call the server. Turn it off with `--no-cors`. In a devpod or a container, start the server with `--host 0.0.0.0` and forward the port.
 
 ## Fidelity
 
