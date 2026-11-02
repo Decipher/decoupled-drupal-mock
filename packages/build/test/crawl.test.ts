@@ -117,21 +117,21 @@ describe('a site that gets in the way', () => {
     await expect(build((path) => (path === '/jsonapi' ? { body: '<html>Install</html>' } : undefined))).rejects.toThrow('not a JSON:API index')
   })
 
-  it('reads a config type by id when Drupal cannot take an offset', async () => {
-    const view = (id: string) => ({ type: 'view--view', id: `u-${id}`, attributes: { drupal_internal__id: id }, relationships: {} })
-    const first = [view('a'), view('b')]
+  it('reads a type by id when the site cannot take an offset, past a page that exposes no machine name', async () => {
+    const view = (id: string) => ({ type: 'view--view', id, attributes: { label: id } })
+    const refused = { status: 500, body: { errors: [{ detail: 'array_slice(): Argument #2 ($offset) must be of type int, string given' }] } }
     const routes = (path: string) => {
       if (path === '/jsonapi') return { body: { links: { self: { href: 'x' }, 'view--view': { href: 'http://x.test/jsonapi/view/view' } } } }
-      if (path === `/jsonapi/view/view${LIMIT}`) return { body: { data: first, links: { next: { href: 'http://x.test/jsonapi/view/view?page%5Boffset%5D=2&page%5Blimit%5D=50' } } } }
-      if (path.includes('page%5Boffset%5D')) return { status: 500, body: { errors: [] } }
-      if (path.startsWith('/jsonapi/view/view?sort=drupal_internal__id')) {
-        if (!path.includes('filter')) return { body: { data: first, links: {} } }
+      if (path === `/jsonapi/view/view${LIMIT}`) return { body: { data: [view('a'), view('b')], links: { next: { href: 'http://x.test/jsonapi/view/view?page%5Boffset%5D=2&page%5Blimit%5D=50' } } } }
+      if (path.includes('page%5Boffset%5D')) return refused
+      if (path.startsWith('/jsonapi/view/view?sort=id')) {
+        if (!path.includes('filter')) return { body: { data: [view('a'), view('b')], links: {} } }
         return { body: { data: path.endsWith('%5D=b') ? [view('c')] : [], links: {} } }
       }
       return undefined
     }
     const { out } = await build(routes)
-    expect((read(out, 'resources/en/view--view.json.gz') as Array<{ id: string }>).map((resource) => resource.id)).toEqual(['u-a', 'u-b', 'u-c'])
+    expect((read(out, 'resources/en/view--view.json.gz') as Array<{ id: string }>).map((resource) => resource.id)).toEqual(['a', 'b', 'c'])
   })
 
   it('says so when it reads none of a type and cannot go past the first page', async () => {
