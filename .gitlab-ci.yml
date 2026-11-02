@@ -151,7 +151,8 @@ lint:prose:
 # Allowed to fail: a site being down for an hour is not this change's fault.
 lint:links:
   stage: lint
-  image: alpine:3.21
+  # glibc: lychee's release binary does not run on Alpine.
+  image: debian:trixie-slim
   interruptible: true
   allow_failure: true
   variables:
@@ -159,7 +160,7 @@ lint:links:
     LYCHEE_SHA256: '0d48569e2dc11c1917fa98321dfd7aa675fba03b79f41e8e74afa3223e30d379'
   script:
     - section_start "lychee" "Checking documentation links"
-    - apk add --no-cache curl tar gcompat > /dev/null
+    - apt-get update -qq && apt-get install -y -qq curl ca-certificates > /dev/null
     - curl -sSLo lychee.tar.gz "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz"
     - echo "${LYCHEE_SHA256}  lychee.tar.gz" | sha256sum -c -
     - tar -xzf lychee.tar.gz lychee
@@ -259,6 +260,13 @@ test:e2e:
   image: mcr.microsoft.com/playwright:v1.64.1-noble
   stage: test
   needs: []
+  before_script:
+    - !reference [default, before_script]
+    # This image ships Node without corepack.
+    - npm install --global corepack
+    - corepack enable
+    - yarn install --immutable
+    - yarn workspace decoupled-drupal-mock build
   script:
     - section_start "e2e" "Running the examples in a browser"
     - yarn workspace example-playwright test

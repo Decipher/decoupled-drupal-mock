@@ -86,7 +86,6 @@ nextjs
 drupalcms
 actionlint
 codeql
-gcompat
 gitleaks
 knip
 lychee
