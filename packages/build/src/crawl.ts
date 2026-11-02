@@ -24,6 +24,8 @@ export interface CrawlOptions {
    * scope that gives an administrator's roles. The anonymous crawl beside it records what a visitor may read.
    */
   auth?: { tokenUrl: string, clientId: string, clientSecret: string, scope?: string }
+  /** Resource types to leave out, such as ones the site lists in its index and cannot answer. */
+  skipTypes?: string[]
   /** Resources the dump leaves out, such as the build's own user: a function of each resource. */
   exclude?: (resource: Resource) => boolean
   /**
@@ -38,6 +40,9 @@ const PLACEHOLDER = 'https://drupal.invalid'
 
 /** The resource types the crawl leaves out: they hold secrets or vary per install. */
 const SKIP = new Set(['consumer--consumer', 'oauth2_scope--oauth2_scope', 'oauth2_token_type--oauth2_token_type', 'user_role--user_role', 'action--action'])
+
+/** The attribute that holds a config entity's machine name. A content entity's internal id is a number, and it has none. */
+const configId = (resource: Resource | undefined): string | undefined => Object.entries(resource?.attributes || {}).find(([name, value]) => name.startsWith('drupal_internal__') && typeof value === 'string')?.[0]
 
 export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   const base = options.baseUrl.replace(/\/+$/, '')
@@ -124,6 +129,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     log(`${langcode}: the index`)
     const index = await get(`${lang}/jsonapi`)
     if (index.status !== 200) throw new Error(`${lang}/jsonapi answered ${index.status}.`)
+    // An installer or a login page also answers 200, and an empty dump would look like a build.
+    if (!(index.body as Document | undefined)?.links) throw new Error(`${lang}/jsonapi is not a JSON:API index: is Drupal installed, with JSON:API on?`)
     write(`index/${langcode}.json`, index.body)
     const links = ((index.body as Document).links || {}) as Record<string, { href: string } | null>
     all[langcode] = {}
@@ -137,10 +144,22 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       const resources: Resource[] = []
       let next: string | undefined = `${pathOf(href)}?page%5Blimit%5D=50`
       let first = true
+      let idField: string | undefined
       while (next) {
         let page = await get(next, headers)
         // A server's failure is tried again; one that stays, or a later page refused, would leave a type half read.
         for (let attempt = 0; attempt < 2 && page.status >= 500; attempt++) page = await get(next, headers)
+        // Drupal 11.4's config entity query cannot take JSON:API's offset, so a config type past one page is read by id.
+        if (page.status >= 500 && !first && !idField) {
+          // Nothing readable so far means no id to go on from, and nothing the crawl could have read of the rest.
+          if (!resources.length && /array_slice/.test(JSON.stringify(page.body))) return 403
+          idField = configId(resources[0])
+          if (idField) {
+            resources.length = 0
+            next = `${pathOf(href)}?sort=${idField}&page%5Blimit%5D=50`
+            continue
+          }
+        }
         if (page.status >= 500 || (!first && page.status !== 200)) throw new Error(`GET ${next} answered ${page.status}: the build would hold part of ${href}.`)
         if (page.status !== 200) return page.status
         first = false
@@ -152,11 +171,15 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         }
         const link = document.links?.next
         next = link ? pathOf(link.href) : undefined
+        if (idField) {
+          const last = (document.data as Resource[]).at(-1)?.attributes?.[idField]
+          next = last === undefined ? undefined : `${pathOf(href)}?sort=${idField}&page%5Blimit%5D=50&filter%5Bafter%5D%5Bcondition%5D%5Bpath%5D=${idField}&filter%5Bafter%5D%5Bcondition%5D%5Boperator%5D=%3E&filter%5Bafter%5D%5Bcondition%5D%5Bvalue%5D=${encodeURIComponent(String(last))}`
+        }
       }
       return resources
     }
     for (const [type, link] of Object.entries(links)) {
-      if (type === 'self' || !link || SKIP.has(type)) continue
+      if (type === 'self' || !link || SKIP.has(type) || options.skipTypes?.includes(type)) continue
       const collected = await collect(link.href, authorized())
       if (typeof collected === 'number') {
         log(`  ${type}: ${collected}, left out`)

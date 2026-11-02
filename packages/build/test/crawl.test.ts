@@ -111,3 +111,32 @@ describe('the crawl', () => {
     expect(read(out, 'recorded/routes.json.gz')).toHaveProperty(['GET /router/translate-path?path=%2Ftaxonomy%2Fterm%2F7'])
   })
 })
+
+describe('a site that gets in the way', () => {
+  it('stops on an index that is not JSON:API, rather than building nothing', async () => {
+    await expect(build((path) => (path === '/jsonapi' ? { body: '<html>Install</html>' } : undefined))).rejects.toThrow('not a JSON:API index')
+  })
+
+  it('reads a config type by id when Drupal cannot take an offset', async () => {
+    const view = (id: string) => ({ type: 'view--view', id: `u-${id}`, attributes: { drupal_internal__id: id }, relationships: {} })
+    const first = [view('a'), view('b')]
+    const routes = (path: string) => {
+      if (path === '/jsonapi') return { body: { links: { self: { href: 'x' }, 'view--view': { href: 'http://x.test/jsonapi/view/view' } } } }
+      if (path === `/jsonapi/view/view${LIMIT}`) return { body: { data: first, links: { next: { href: 'http://x.test/jsonapi/view/view?page%5Boffset%5D=2&page%5Blimit%5D=50' } } } }
+      if (path.includes('page%5Boffset%5D')) return { status: 500, body: { errors: [] } }
+      if (path.startsWith('/jsonapi/view/view?sort=drupal_internal__id')) {
+        if (!path.includes('filter')) return { body: { data: first, links: {} } }
+        return { body: { data: path.endsWith('%5D=b') ? [view('c')] : [], links: {} } }
+      }
+      return undefined
+    }
+    const { out } = await build(routes)
+    expect((read(out, 'resources/en/view--view.json.gz') as Array<{ id: string }>).map((resource) => resource.id)).toEqual(['u-a', 'u-b', 'u-c'])
+  })
+
+  it('leaves out a type it is told to', async () => {
+    const { out } = await build(site({ admin: [], visitor: [] }), { skipTypes: ['user--user'] })
+    expect(existsSync(join(out, 'resources/en/user--user.json.gz'))).toBe(false)
+  })
+})
+
