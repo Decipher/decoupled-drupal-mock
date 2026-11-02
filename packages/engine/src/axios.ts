@@ -1,4 +1,5 @@
 import type { Drupal } from './engine.js'
+import { withoutTrailingSlashes } from './slashes.js'
 
 /** The parts of an axios request config the engine reads. */
 export interface AxiosLikeConfig {
@@ -47,7 +48,7 @@ const encode = (values: unknown): string => new URLSearchParams(Object.entries((
 
 const urlOf = (config: AxiosLikeConfig, fallback: string): string => {
   const url = config.url || ''
-  const full = /^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `${(config.baseURL || fallback).replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`
+  const full = /^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `${withoutTrailingSlashes(config.baseURL || fallback)}/${url.replace(/^\/+/, '')}`
   const params = encode(config.params)
   return params ? `${full}${full.includes('?') ? '&' : '?'}${params}` : full
 }

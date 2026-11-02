@@ -10,6 +10,7 @@ import type { WriteError } from './writes.js'
 import { own as member } from './own.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
 import { clone } from './clone.js'
+import { withoutTrailingSlashes } from './slashes.js'
 
 export interface DrupalOptions {
   /** The origin the server answers for, written into every link. Default `https://drupal.invalid`. */
@@ -65,10 +66,10 @@ const STATUS_TEXT: Record<number, string> = { 200: 'OK', 201: 'Created', 204: 'N
  * @param options - The origin and base path to answer for.
  */
 export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal => {
-  const baseUrl = (options.baseUrl || 'https://drupal.invalid').replace(/\/+$/, '')
+  const baseUrl = withoutTrailingSlashes(options.baseUrl || 'https://drupal.invalid')
   // A trailing slash on the base path would make every route an HTML 404.
-  const basePath = (options.basePath || '/jsonapi').replace(/\/+$/, '') || '/jsonapi'
-  const placeholder = dump.manifest.origin.replace(/\/+$/, '')
+  const basePath = withoutTrailingSlashes(options.basePath || '/jsonapi') || '/jsonapi'
+  const placeholder = withoutTrailingSlashes(dump.manifest.origin)
   const languages = dump.manifest.languages
   const identities: Identities = options.identities || dump.identities || { accounts: [], consumers: [] }
   const store = new Store(dump)
@@ -293,7 +294,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
 
   const handle: Drupal['handle'] = (method, input, requestHeaders = {}, requestBody) => {
     const url = new URL(input, baseUrl)
-    const path = url.pathname.replace(/\/+$/, '') || '/'
+    const path = withoutTrailingSlashes(url.pathname) || '/'
     const search = url.search.replace(/^\?/, '')
     const query = parseQuery(search)
     const upper = method.toUpperCase()
