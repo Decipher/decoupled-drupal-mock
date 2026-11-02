@@ -52,20 +52,11 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
   const cors = options.cors !== false ? CORS : {}
   const server = createServer((request, response) => {
     const method = request.method || 'GET'
-    if (method === 'OPTIONS' && options.cors !== false) { response.writeHead(204, cors); response.end(); return }
-    let file: ReturnType<typeof publicFile>
-    try {
-      if (options.files) file = publicFile(options.files, new URL(request.url || '/', `http://${urlHost(host)}:${port}`).pathname)
-    } catch {
-      // A target or an escape that does not parse names no file, and the engine answers it.
-    }
-    if (file && (method === 'GET' || method === 'HEAD')) {
-      const bytes = readFileSync(file.path)
-      response.writeHead(200, { ...cors, 'content-type': file.mime, 'content-length': bytes.length, 'cache-control': 'max-age=1209600' })
-      response.end(method === 'HEAD' ? undefined : bytes)
+    if (method === 'OPTIONS' && options.cors !== false) {
+      response.writeHead(204, cors)
+      response.end()
       return
     }
-    const method = request.method || 'GET'
     let file: ReturnType<typeof publicFile>
     try {
       if (options.files) file = publicFile(options.files, new URL(request.url || '/', `http://${urlHost(host)}:${port}`).pathname)
