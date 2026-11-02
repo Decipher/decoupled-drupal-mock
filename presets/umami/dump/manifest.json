@@ -5,7 +5,7 @@
     "profile": "demo_umami",
     "modules": {}
   },
-  "built": "2026-11-02T01:05:55.109Z",
+  "built": "2026-11-02T01:50:57.042Z",
   "origin": "https://drupal.invalid",
   "languages": {
     "en": "en",
@@ -46,10 +46,11 @@
     "resources/en/taxonomy_term--recipe_category.json.gz": "7e82a2fe1f2a598c8f56083251a624cc46f0d3ebafa0d789be082cde4d7bcd68",
     "resources/en/taxonomy_term--tags.json.gz": "a634fda98f9c8a2b4630a2938afad833073a052626ded8d731809367609e5a54",
     "resources/en/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "4044493e7f6ad0275b83213bbe7212f486d9a112cb010ea0fb7a177707edbce3",
-    "resources/en/user--user.json.gz": "1e1cbc1f924b94b566fae0d8f9a14482d9415ee63e9401b28c8c162df792dda1",
+    "resources/en/user--user.json.gz": "c1168af237dd4617d6987a6fddd3eeac9892401c9832693e6537dd28ee6bc24d",
+    "resources/en/user_role--user_role.json.gz": "e44b7f292a83e2fb9c5075873a50a2344b858aa896797722da596fcd91214251",
     "resources/en/view--view.json.gz": "d453c7240665428d34e19ed777ec48044e3068a39ace49e071186f0a5138ad29",
     "resources/en/workflow--workflow.json.gz": "06389f848b971071fff89025b6d8b7baf2c259b71783aaffb8b863281d9903c7",
-    "access/en.json.gz": "4f4e7fe742808c23e7999ce29d88430cebe84d012e978822723d19314507c297",
+    "access/en.json.gz": "f9ad08d4efe2f179964721947fc7b827990fb01e334c854363647bfd3c284a8f",
     "index/es.json": "fdef4b283cd8029315c1e3c19e1032a6072d0a5b57da0dc67f231bba59bb0f10",
     "resources/es/base_field_override--base_field_override.json.gz": "1c8451fb3fcdeac5779ba096420ddffb5e13e57ded2c2efda8ae32ac7b41d373",
     "resources/es/block--block.json.gz": "26da9dbb2ca4dd9169e84210789576d3877301a189126edd958bcf3b9390a665",
@@ -83,12 +84,13 @@
     "resources/es/taxonomy_term--recipe_category.json.gz": "3ed85293b0c1eda4f16bc8d9e70c9f8b911099ea69e51a7ae9e33677d7c30a2e",
     "resources/es/taxonomy_term--tags.json.gz": "954e169439bab400927fbb3107435b0592495fd622aa8caf7f1fca94c1c5f79b",
     "resources/es/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "8000c5c0d72fbcac3e17d56fe1c724e414db2f48393850f805b9ac4dbe92ff2a",
-    "resources/es/user--user.json.gz": "a2490026b2471ede3272378a61f9c459ef81c4c48878ab4aa0ed76e637c3d612",
+    "resources/es/user--user.json.gz": "ab1129d91917a240fab477935462cd7884a1205e5fd7f0fd42175340d2072a75",
+    "resources/es/user_role--user_role.json.gz": "156a9917e4d7b973a8bf00ef4077431ba219847d5baceb7d3371f99af1e6eb07",
     "resources/es/view--view.json.gz": "7d5750438da8a2cd89a164667fb33b86c0e5cbf7daf10df4432f3f05553853e4",
     "resources/es/workflow--workflow.json.gz": "b35b075af5e0d7e7cc254cd823f31a2f8af2c0057dd5417a12a1a8ccc4815dfc",
-    "access/es.json.gz": "4f4e7fe742808c23e7999ce29d88430cebe84d012e978822723d19314507c297",
-    "oracle/queries.json.gz": "dbcc7ec4cea7894e012bc4ecd5629063b6ec34cc9eaf0a3dfacec165a0a505b3",
-    "recorded/routes.json.gz": "621ad8b1ca20e65af48e1f9e42ba337cd5967bd6dda6661f41c9d8e006ac78c6",
+    "access/es.json.gz": "f9ad08d4efe2f179964721947fc7b827990fb01e334c854363647bfd3c284a8f",
+    "oracle/queries.json.gz": "8ffbb968cc9e5ec2e2a19bd1789b8e7e02188658ef31c96fdd800e141ed7fee7",
+    "recorded/routes.json.gz": "6c820ee9761ace96a10cb40ff6e47c91c4aeab49cfff80c3985bbf355c8333f2",
     "files/mediterranean-quiche-umami.jpg": "095b9d287d4c5d1cef61884d3a87a531980a8b97ca94e334a78e8063cbfba3b8",
     "files/vegan-chocolate-nut-brownies.jpg": "5463b279a7907aeb42a59c129da8be7fc5650af62f4fc664346c12124d6c8861",
     "files/veggie-pasta-bake-umami.jpg": "3c6c7188276deb374286b9a896ff868955bc0b5eb6fe5a92bb89f45818b7ba52",
@@ -109,6 +111,7 @@
     "files/veggie-pasta-bake-hero-umami.jpg": "0211e1f5394d953446f76acbe4225a44fc4b5d1118714282ab2dfa84d664b004",
     "files/umami-bundle.png": "fbdf538ecc9a46011fe6867f7756393801d6f17af75091c90e1f27c8f19bfe68",
     "files/vegan-brownies-hero-umami.jpg": "8bd4522290902dc6cd46f544a23e5cb98987a562ded00dc4f1f83cd99e279e84",
-    "files/borscht-with-pork-ribs-umami.jpg": "71e70b275690211d92b52ca514529fb58bdeeb76c46b3da683d52f611e366023"
+    "files/borscht-with-pork-ribs-umami.jpg": "71e70b275690211d92b52ca514529fb58bdeeb76c46b3da683d52f611e366023",
+    "identities.json": "20e3e8469eecb74c8d14df1840e199991b20bf746d229373b97a8b42be6a8d96"
   }
 }

@@ -70,16 +70,21 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
     }
     const headers: Record<string, string> = {}
     for (const [name, value] of Object.entries(request.headers)) if (typeof value === 'string') headers[name] = value
-    // A request target no URL can be made of, such as `OPTIONS *`, fails this request and not the server.
-    try {
-      const { status, headers: responseHeaders, body } = drupal.handle(request.method || 'GET', `http://${urlHost(host)}:${port}${request.url || '/'}`, headers)
-      const text = typeof body === 'string' ? body : body === undefined ? '' : JSON.stringify(body)
-      response.writeHead(status, { ...cors, ...responseHeaders, 'content-length': Buffer.byteLength(text) })
-      response.end(request.method === 'HEAD' ? undefined : text)
-    } catch {
-      response.writeHead(400, { ...cors, 'content-type': 'text/plain' })
-      response.end('Bad Request')
-    }
+    const chunks: Buffer[] = []
+    request.on('data', (chunk: Buffer) => chunks.push(chunk))
+    request.on('end', () => {
+      // A request target no URL can be made of, such as `OPTIONS *`, fails this request and not the server.
+      try {
+        const requestBody = chunks.length ? Buffer.concat(chunks).toString('utf8') : undefined
+        const { status, headers: responseHeaders, body } = drupal.handle(request.method || 'GET', `http://${urlHost(host)}:${port}${request.url || '/'}`, headers, requestBody)
+        const text = status === 204 || body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body)
+        response.writeHead(status, { ...cors, ...responseHeaders, ...(status === 204 ? {} : { 'content-length': Buffer.byteLength(text) }) })
+        response.end(request.method === 'HEAD' || status === 204 ? undefined : text)
+      } catch {
+        response.writeHead(400, { ...cors, 'content-type': 'text/plain' })
+        response.end('Bad Request')
+      }
+    })
   })
   server.on('error', reject)
   server.listen(port, host, () => {

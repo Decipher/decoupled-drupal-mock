@@ -29,3 +29,13 @@ describe.skipIf(!available)('the engine against the oracle', () => {
     if (typeof entry.body !== 'string') expect(comparable(answer.body)).toEqual(comparable(entry.body))
   })
 })
+
+describe.skipIf(!available)('the public files of a build', () => {
+  it('holds every file its content names', () => {
+    const dump = loadDump(dir!)
+    const urls = Object.values(dump.resources).flatMap((types) => types['file--file'] || []).map((file) => (file.attributes as { uri?: { url?: string } } | undefined)?.uri?.url).filter((url): url is string => !!url?.startsWith('/sites/default/files/'))
+    expect(urls.length).toBeGreaterThan(0)
+    expect([...new Set(urls)].filter((url) => !existsSync(join(dir!, 'files', decodeURIComponent(url.slice('/sites/default/files/'.length)))))).toEqual([])
+  })
+})
+
