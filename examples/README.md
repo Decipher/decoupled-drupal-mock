@@ -1,6 +1,6 @@
 # Examples
 
-Each is a project that uses the mock as a consumer would, run in CI.
+Each example is a project that uses the mock as a consumer would. CI runs them all.
 
 | Example      | Shows                                                                                      |
 | ------------ | ------------------------------------------------------------------------------------------ |

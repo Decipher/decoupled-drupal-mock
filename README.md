@@ -1,16 +1,47 @@
 # Decoupled Drupal mock
 
-Drupal's decoupled APIs without a Drupal site: JSON:API, Decoupled Router, menu linksets and Simple OAuth, answered from fixtures built from real Drupal releases, in process, through msw, or over HTTP as the backend of any frontend.
+**Built by a human using an AI assistant.** Much of the code and documentation in this repository was written with an AI coding assistant ([Claude Code](https://www.anthropic.com/claude-code)), directed and reviewed by its maintainer. The mock's answers are checked against answers recorded from a real Drupal. See [AI use](CONTRIBUTING.md#ai-use).
 
-Built for [Druxt](https://druxtjs.org), the decoupled Drupal and Nuxt framework, and usable by any client of Drupal's JSON:API.
+This package answers requests to Drupal's decoupled APIs without a running Drupal site. It covers JSON:API, Decoupled Router, menus through JSON:API Menu Items, and Simple OAuth, with answers from a preset: a recording of a real Drupal site. Your tests can call the mock directly, or run it as an HTTP server for a frontend.
+
+It was built for [Druxt](https://druxtjs.org), the decoupled Drupal and Nuxt framework, and works with any client of Drupal's JSON:API.
+
+## Status
+
+Not released yet. Once the first release is cut, the packages will install from this repository's releases, and from npm after that:
+
+```sh
+npm install --save-dev decoupled-drupal-mock decoupled-drupal-mock-umami
+```
+
+## Terms
+
+- **Preset:** a packaged recording of one Drupal site, such as `decoupled-drupal-mock-umami`. A preset can be named by its package, by its short name (`umami`) or by its build directory.
+- **Dump:** the files in a preset that the mock serves. They hold every resource the build recorded, and what a visitor may read of each.
+- **Oracle:** real requests with the answers a real Drupal gave them, kept beside the dump. The mock's tests compare its answers with these.
+- **Extension:** answers you write by hand, for what the preset does not have. A **scenario** is a set of them, with a name, that a test turns on.
 
 ## Packages
 
-- `decoupled-drupal-mock`, the engine. `createDrupal(dump, { baseUrl })` serves the index, individual and related resources, and collections with Drupal's filter, sort, page, sparse fieldset and include semantics, under each language prefix. A visitor reads what the dump says a visitor may, with Drupal's omissions, and a signed-in user reads the rest. Decoupled Router lookups, menus and views come from the build's recordings.
-- `decoupled-drupal-mock-umami`, the Umami preset, which is Drupal's demo site in English and Spanish, built from a real Drupal 11 install.
-- `decoupled-drupal-mock-build`, the crawler that builds a preset from a running Drupal.
+- `decoupled-drupal-mock`, the engine. `createDrupal(dump, { baseUrl })` serves the JSON:API index, individual and related resources, and collections with Drupal's filter, sort, page, sparse fieldset and include rules, under each language prefix. Anonymous requests see only what Drupal shows a visitor, with the same resources left out. Signed-in requests see the rest. Router lookups, menus and views are answered from what the build recorded.
+- `decoupled-drupal-mock-umami`, the Umami preset. It holds Drupal's demo site in English and Spanish, recorded from a real Drupal 11 install. Its README lists the accounts and OAuth clients it holds.
+- `packages/build`, the crawler that records a preset from a running Drupal. It is part of this repository and is not published.
 
-## In a test
+The engine runs on Node, including under a test runner's jsdom environment. Its root entry uses `node:crypto`, so it does not run in a browser or a service worker. A browser test reaches it over HTTP.
+
+| Entry point                             | What it holds                                                               |
+| --------------------------------------- | --------------------------------------------------------------------------- |
+| `decoupled-drupal-mock`                 | `createDrupal`, `createMock` and the types                                  |
+| `decoupled-drupal-mock/node`            | `loadDump`, to read a build directory                                       |
+| `decoupled-drupal-mock/serve`           | `listen`, the HTTP server                                                   |
+| `decoupled-drupal-mock/msw`             | `handlers`, for msw                                                         |
+| `decoupled-drupal-mock/axios`           | `axiosAdapter` and `axiosVerbs`                                             |
+| `decoupled-drupal-mock/testing`         | `startMock` and `withDrupal`, for Vitest, Playwright and other ESM runners  |
+| `decoupled-drupal-mock/jest`            | `loadPreset`, `spawnMock`, `globalSetup` and the axios helpers, in CommonJS |
+| `decoupled-drupal-mock/cypress`         | `spawnMock` and `cypressTasks`, in CommonJS                                 |
+| `decoupled-drupal-mock/recorded-writes` | Helpers for replaying recorded writes                                       |
+
+## Using the mock in a test
 
 ```ts
 import { createDrupal } from 'decoupled-drupal-mock';
@@ -20,19 +51,29 @@ const drupal = createDrupal(umami(), { baseUrl: 'https://drupal.test' });
 const response = await drupal.fetch('https://drupal.test/jsonapi/node/recipe?filter[status]=1&page[limit]=5');
 ```
 
-A client that takes a `fetch` gets `drupal.fetch`. One that intercepts with msw gets `handlers(drupal, http, baseUrl)` from `decoupled-drupal-mock/msw`. An end-to-end suite or a browser gets a server:
+The `baseUrl` is the address your client calls: the links in every answer name it. If your client accepts a `fetch` function, pass it `drupal.fetch`. If your tests use msw, mount the mock's handlers:
+
+```ts
+import { http } from 'msw';
+import { setupServer } from 'msw/node';
+import { handlers } from 'decoupled-drupal-mock/msw';
+
+const server = setupServer(...handlers(drupal, http, 'https://drupal.test'));
+```
+
+End-to-end suites and browsers need a server:
 
 ```sh
 npx decoupled-drupal-mock serve decoupled-drupal-mock-umami --port 3005
 ```
 
-## In a test runner
+## Test runner support
 
-Jest (including CommonJS on Node 16 in jsdom), Vitest, Playwright and Cypress each have an entry point and a working example, run in CI. See [Test runners](docs/test-runners.md).
+Jest (including CommonJS on Node 16 in jsdom), Vitest, Playwright and Cypress each have an entry point and a working example that CI runs. See [Test runners](docs/test-runners.md).
 
 ## Extending the mock
 
-If your site has a module with its own endpoints, the preset won't include them. An extension adds them, and it can also change or fail a stock answer, or call your site back when something is saved:
+If your site has a module with its own endpoints, the preset won't include them. An extension adds them. It can also change one of the mock's recorded answers or make it fail, or call your site back when something is saved:
 
 ```js
 export default {
@@ -52,11 +93,11 @@ export default {
 npx decoupled-drupal-mock serve umami --control --extension ./next.mjs
 ```
 
-See [Extensions](docs/extensions.md). `examples/nextjs` runs a real Next.js site with next-drupal against one.
+`--control` adds the routes a test uses to reset the mock, sign in and turn on scenarios. Never use it on a shared or public port. See [Extensions](docs/extensions.md). `examples/nextjs` runs a real Next.js site with next-drupal against one.
 
 ## Writes and sign-in
 
-The engine answers POST, PATCH and DELETE on JSON:API resources and relationships with Drupal's own validation, permission and moderation answers, and Simple OAuth's token grants, userinfo and authorize beside Drupal's cookie sign-in. Each `createDrupal()` keeps its own copy of what it writes, so one test's writes never reach another's, and `reset()` restores the preset. `tokenFor('editor')` is a test's shortcut past the grant.
+The engine accepts POST, PATCH and DELETE requests on JSON:API resources and relationships. It answers them with Drupal's own validation, permission and content moderation errors. It also supports Drupal's cookie sign-in, and Simple OAuth's token, userinfo and authorize endpoints. Each `createDrupal()` keeps its own copy of what it writes, so one test's writes never reach another's, and `reset()` restores the preset. In a test, `tokenFor('editor')` returns a token for the `editor` user directly, without the OAuth flow. It takes the Drupal username.
 
 ## Running a frontend against the mock
 
@@ -74,17 +115,11 @@ The images and other files the content links to are included in the preset and s
 
 ## Fidelity
 
-Each preset keeps an oracle beside its dump, which holds real requests with Drupal's real answers, drawn from what clients ask. It covers reads, writes and sign-in. The engine's fidelity tests answer every one and compare the documents, apart from Drupal's themed HTML pages, whose status and headers are compared but whose markup is not. The Umami preset's 151 read entries and 52 write steps all match.
-
-## Status
-
-Not released yet. The packages will install from this repository's releases once the first one is cut, and from npm and drupal.org after that.
+Each preset includes an oracle: a list of real client requests, with the answers a real Drupal gave. It covers reads as well as writes and sign-in, errors included. The fidelity tests send each request to the engine and compare its answer with Drupal's. For Drupal's themed HTML pages they compare the status and headers, not the markup. All 151 of the Umami preset's read entries match, of which 10 are 404s and 1 is a 403, and so do all 52 write steps. The oracle covers Umami's request list, not every request a client could make.
 
 ## Building a preset
 
-A preset can be built from any Drupal with JSON:API on, including your own site. See [Building a preset](docs/building-a-preset.md).
-
-The engine runs on Node, including under a test runner's jsdom environment. It needs `node:crypto` from its root entry, so it does not run in a browser or a service worker: a browser test reaches it over HTTP.
+A preset can be recorded from any Drupal with JSON:API enabled, including your own site. See [Building a preset](docs/building-a-preset.md).
 
 ## Development
 
@@ -94,23 +129,23 @@ The repository has a dev container, for VS Code or [DevPod](https://devpod.sh), 
 devpod up github.com/Decipher/decoupled-drupal-mock
 ```
 
-Inside it, run the mock's server with `--host 0.0.0.0` so the forwarded port 3005 reaches it:
+Inside it, run `yarn install` and `yarn workspace decoupled-drupal-mock build` first, and again after changing branch. Then run the mock's server with `--host 0.0.0.0` so the forwarded port 3005 reaches it:
 
 ```sh
 node packages/engine/dist/cli.js serve umami --host 0.0.0.0 --port 3005
 ```
 
-The answers' links name the address the server was given. Through a tunnel, start the tunnel first, then the server with the `https://*.trycloudflare.com` address it prints:
+Links in the server's answers use the address you started it with. To use a tunnel, start the tunnel first. Then start the server with the `https://*.trycloudflare.com` address that the tunnel prints:
 
 ```sh
 yarn tunnel 3005
 node packages/engine/dist/cli.js serve umami --port 3005 --base-url https://<printed>.trycloudflare.com
 ```
 
-Port 3000, for a frontend, is forwarded too. Run `yarn install` and `yarn workspace decoupled-drupal-mock build` after changing to another branch.
+The container also forwards port 3000 for a frontend.
 
 [Contributing](CONTRIBUTING.md) covers the checks and how a change gets recorded.
 
 ## Licence
 
-GPL-2.0-or-later, as everything hosted on drupal.org is, and as the Umami preset must be: it carries Drupal's own demo content and configuration.
+GPL-2.0-or-later. This is the licence of all code on drupal.org. The Umami preset must use it too, because it includes Drupal's demo content and configuration.

@@ -11,8 +11,8 @@
 # those the files and message of HEAD alone are read.
 #
 # Description: MERGE_REQUEST_DESCRIPTION, then CI_MERGE_REQUEST_DESCRIPTION.
-# A merge request pipeline with neither is refused, as check-attribution.sh
-# does and for the same reason.
+# A merge request pipeline with neither is refused, as a description that
+# cannot be read cannot be linted.
 #
 # Environment:
 #   VALE_BIN          path to vale; PATH otherwise. See install-vale.sh.

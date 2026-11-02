@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# The fast half of CI: every linter, then the unit tests. The browser examples
+# The fast half of CI: every linter in `yarn lint`, then the unit tests. The browser examples
 # are not here: minutes rather than seconds, and a hook that slow gets bypassed.
 set -e
 yarn workspace decoupled-drupal-mock build

@@ -1,15 +1,14 @@
 /**
  * Fail if a tracked file points at a host only the author can reach.
  *
- * This repository is public, and its README and example are what people
- * copy to set up authentication, so a private URL here is not a buried
- * comment: it ends up in front of everyone who follows the module's
- * documentation.
+ * This repository is public, and its README, docs and examples are what
+ * people copy, so a private URL here ends up in front of everyone who
+ * follows them.
  *
- * The rule is the shape of the host, not a list of known hostnames -
+ * The rule is the shape of the host, not a list of known hostnames:
  * anything resolvable only inside a LAN. localhost, loopback and the
- * DDEV and Lando development domains are how the example runs locally,
- * so they are the exceptions.
+ * DDEV and Lando development domains are how local sites run, so they
+ * are the exceptions.
  *
  * Known gap: this matches host shape, so it catches `scheme://host/...`
  * and scp-style git remotes. It cannot catch an internal project or

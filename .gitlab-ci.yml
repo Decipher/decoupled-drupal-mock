@@ -1,5 +1,6 @@
-# Lint, test and the checks that a consumer's install works. GitHub Actions runs the same lint and test set, because
-# this repository is public there. Nothing on the GitHub side lints that workflow, so lint:yaml here does.
+# Lint, test and the checks that a consumer's install works. This is the full gate. GitHub Actions runs the lint, type
+# checks, tests and examples, as the repository is public there. Nothing on the GitHub side lints that workflow, so
+# lint:yaml here does.
 #
 # Secret scanning is gitleaks, not GitLab's Security/Secret-Detection template, which produces no job on a
 # non-Ultimate instance and so reads as coverage while scanning nothing.
