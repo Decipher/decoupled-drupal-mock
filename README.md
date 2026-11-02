@@ -1,6 +1,6 @@
 # Decoupled Drupal mock
 
-**Built by a human using an AI assistant.** Much of the code and documentation in this repository was written with an AI coding assistant ([Claude Code](https://www.anthropic.com/claude-code)), directed and reviewed by its maintainer. The mock's answers are checked against answers recorded from a real Drupal. See [AI use](CONTRIBUTING.md#ai-use).
+**Built by a human using an AI assistant.** Much of the code and documentation in this repository was written with an AI coding assistant, directed and reviewed by its maintainer. The mock's answers are checked against answers recorded from a real Drupal. See [AI use](CONTRIBUTING.md#ai-use).
 
 This package answers requests to Drupal's decoupled APIs without a running Drupal site. It covers JSON:API, Decoupled Router, menus through JSON:API Menu Items, and Simple OAuth, with answers from a preset: a recording of a real Drupal site. Your tests can call the mock directly, or run it as an HTTP server for a frontend.
 
