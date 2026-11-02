@@ -179,3 +179,15 @@ describe('what a test does to the mock', () => {
     }
   })
 })
+
+describe('a recorded overlay', () => {
+  it('replaces and removes what the preset recorded, and leaves the dump alone', () => {
+    const before = Object.keys(dump.recorded).length
+    const [key] = Object.keys(dump.recorded)
+    const mock = createMock(dump, { baseUrl: BASE, extensions: [{ overlay: { recorded: { 'GET /only/in/the/overlay': { status: 200, headers: { 'content-type': 'application/json' }, body: { ok: true } } }, removed: [key!], resources: { en: { 'thing--thing': [{ type: 'thing--thing', id: 't-1', attributes: {}, relationships: {} }] } }, index: { es: { links: {} } }, access: { en: { 'node--page': { hidden: ['field_code'] } } } } }] })
+    expect(mock.handle('GET', `${BASE}/only/in/the/overlay`).body).toEqual({ ok: true })
+    expect(Object.keys(dump.recorded)).toHaveLength(before)
+    expect((mock.handle('GET', `${BASE}/jsonapi/node/page/p-1`).body as { data: { attributes: object } }).data.attributes).not.toHaveProperty('field_code')
+  })
+})
+

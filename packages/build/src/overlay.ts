@@ -90,9 +90,11 @@ export const writeOverlay = (overlay: Overlay, out: string): void => {
   writeFileSync(join(out, `${overlay.name}.json.gz`), gzipSync(Buffer.from(JSON.stringify(overlay)), { level: 9 }))
 }
 
+/* c8 ignore start */
 if (process.argv[1]?.endsWith('overlay.ts')) {
   const [baseDir, variantDir, name, out] = process.argv.slice(2) as [string, string, string, string]
   const overlay = diffBuilds(baseDir, variantDir, name)
   writeOverlay(overlay, out)
   console.log(`${name}: ${Object.keys(overlay.recorded).length} recordings, ${overlay.removed.length} removed, ${Object.values(overlay.resources).flatMap(Object.keys).length} resource types, ${Object.keys(overlay.index).length} indexes`)
 }
+/* c8 ignore stop */
