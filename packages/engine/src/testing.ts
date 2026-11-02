@@ -71,8 +71,8 @@ export const withDrupal = <Test>(test: Extendable<Test>, preset: string, options
   // eslint-disable-next-line no-empty-pattern
   drupalServer: [async ({}, use: (mock: MockClient) => Promise<void>) => {
     if (process.env.DECOUPLED_DRUPAL_MOCK_URL) {
-      // That server has the extensions it was started with, which may or may not be these.
-      if (options.extensions?.length) console.warn(`withDrupal is using the server at ${process.env.DECOUPLED_DRUPAL_MOCK_URL}, so the extensions passed here are not loaded: start that server with them.`)
+      // That server has the extensions and overlays it was started with, which may or may not be these.
+      if (options.extensions?.length || options.overlays?.length) console.warn(`withDrupal is using the server at ${process.env.DECOUPLED_DRUPAL_MOCK_URL}, so the extensions and overlays passed here are not loaded: start that server with them.`)
       return use(connectMock())
     }
     const mock = await startMock(preset, options)
