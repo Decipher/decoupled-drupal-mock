@@ -136,6 +136,7 @@ export class Identity {
     const scopes = (form.get('scope') || '').split(/\s+/).filter(Boolean)
     for (const scope of scopes) if (!consumer.scopes?.[scope]) return fail(400, 'invalid_scope', 'The requested scope is invalid, unknown, or malformed', `Check the \`${scope}\` scope`)
     const answer = (token: Token) => ({ status: 200, body: { token_type: 'Bearer', expires_in: 300, access_token: token.access, ...(token.refresh ? { refresh_token: token.refresh } : {}) } })
+    // A refresh token or code whose user is gone. What Drupal answers is not recorded: Simple OAuth keeps the tokens.
     const noUser = () => fail(400, 'invalid_grant', 'The provided authorization grant (e.g., authorization code, resource owner credentials) or refresh token is invalid, expired, revoked, does not match the redirection URI used in the authorization request, or was issued to another client.')
     switch (grantType) {
       case 'client_credentials': {
@@ -151,7 +152,8 @@ export class Identity {
         const account = this.identities.accounts.find((candidate) => candidate.name === form.get('username'))
         if (!account || account.password === undefined || account.password !== form.get('password')) return fail(400, 'invalid_grant', 'The user credentials were incorrect.')
         // An account can outlive its user: excluded from the build, or deleted.
-        if (!this.userNamed(account.name)) return noUser()
+        // Simple OAuth finds no user for the credentials, and League answers that as wrong credentials.
+        if (!this.userNamed(account.name)) return fail(400, 'invalid_grant', 'The user credentials were incorrect.')
         return answer(this.issue({ clientId, name: account.name, scopes: scopes.length ? scopes : undefined, refresh: true }))
       }
       case 'refresh_token': {

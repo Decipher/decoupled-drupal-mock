@@ -21,7 +21,8 @@ export const presetDir = (target: string, from = process.cwd()): string => {
       return join(dirname(require.resolve(`${candidate}/package.json`)), 'dump')
     } catch {
       // A package whose exports leave out its package.json is still found where Node looks for it.
-      const found = (require.resolve.paths(candidate) || []).map((path) => join(path, candidate)).find((root) => existsSync(join(root, 'package.json')))
+      // A package with no build in it is not a preset, and is named as one here rather than failing later to read.
+      const found = (require.resolve.paths(candidate) || []).map((path) => join(path, candidate)).find((root) => existsSync(join(root, 'dump', 'manifest.json')))
       if (found) return join(found, 'dump')
     }
   }

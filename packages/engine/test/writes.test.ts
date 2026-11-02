@@ -412,7 +412,7 @@ describe('writes across languages, and accounts without a user', () => {
 
   it('refuses a grant for an account whose user is gone, rather than throwing', async () => {
     const d = createDrupal({ ...dump, resources: { ...dump.resources, en: { ...dump.resources.en, 'user--user': dump.resources.en!['user--user']!.filter((user) => (user.attributes as { name?: string }).name !== 'umami') } } }, { baseUrl: BASE })
-    expect(await token(d, { grant_type: 'password', client_id: 'druxt', client_secret: 's3cret', username: 'umami', password: 'secret' })).toMatchObject({ status: 400, body: { error: 'invalid_grant' } })
+    expect(await token(d, { grant_type: 'password', client_id: 'druxt', client_secret: 's3cret', username: 'umami', password: 'secret' })).toMatchObject({ status: 400, body: { error: 'invalid_grant', error_description: 'The user credentials were incorrect.' } })
   })
 })
 

@@ -86,6 +86,10 @@ describe('what a test runner on an older platform needs', () => {
     const root = mkdtempSync(join(tmpdir(), 'preset-'))
     mkdirSync(join(root, 'node_modules', 'decoupled-drupal-mock-closed'), { recursive: true })
     writeFileSync(join(root, 'node_modules', 'decoupled-drupal-mock-closed', 'package.json'), JSON.stringify({ name: 'decoupled-drupal-mock-closed', exports: { '.': './index.js' } }))
+    // Not a preset until it holds a build.
+    expect(() => presetDir('closed', root)).toThrow('closed is not an installed preset package')
+    mkdirSync(join(root, 'node_modules', 'decoupled-drupal-mock-closed', 'dump'))
+    writeFileSync(join(root, 'node_modules', 'decoupled-drupal-mock-closed', 'dump', 'manifest.json'), '{}')
     expect(presetDir('closed', root)).toBe(join(root, 'node_modules', 'decoupled-drupal-mock-closed', 'dump'))
   })
 
