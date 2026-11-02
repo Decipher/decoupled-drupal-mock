@@ -26,11 +26,11 @@ The pre-commit hook runs these. To run prose lint as well, `yarn lint:prose:inst
 
 ## A change to the engine
 
-Check what a real Drupal answers first. If a recording should cover it, add the request to `presets/umami/oracle.txt` or a script to `presets/umami/writes.json`, and rebuild as `docs/building-a-preset.md` describes.
+Check what a real Drupal answers first. To cover it with a recording, add the request to `presets/umami/oracle.txt` or a script to `presets/umami/writes.json`. Then rebuild, as `docs/building-a-preset.md` describes.
 
-## A change that ships
+## A change a consumer sees
 
-Add a changeset with `yarn changeset`, unless the change does not reach a consumer.
+Add a changeset with `yarn changeset`.
 
 ## Licence
 

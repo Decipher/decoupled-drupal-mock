@@ -6,8 +6,8 @@ Built for [Druxt](https://druxtjs.org), the decoupled Drupal and Nuxt framework,
 
 ## Packages
 
-- `decoupled-drupal-mock`, the engine. `createDrupal(dump, { baseUrl })` serves the index, individual and related resources, and collections with Drupal's filter, sort, page, sparse fieldset and include semantics, under each language prefix. Without an `Authorization` header it serves what a visitor may read, with Drupal's omissions. With one it serves the whole dump. The routes it does not compute, such as Decoupled Router lookups, menus and views, come from the build's recordings.
-- `decoupled-drupal-mock-umami`, the Umami preset: Drupal's demo site in English and Spanish, built from a real Drupal 11 install.
+- `decoupled-drupal-mock`, the engine. `createDrupal(dump, { baseUrl })` serves the index, individual and related resources, and collections with Drupal's filter, sort, page, sparse fieldset and include semantics, under each language prefix. A visitor reads what the dump says a visitor may, with Drupal's omissions, and a signed-in user reads the rest. Decoupled Router lookups, menus and views come from the build's recordings.
+- `decoupled-drupal-mock-umami`, the Umami preset, which is Drupal's demo site in English and Spanish, built from a real Drupal 11 install.
 - `decoupled-drupal-mock-build`, the crawler that builds a preset from a running Drupal.
 
 ## In a test
@@ -30,9 +30,9 @@ npx decoupled-drupal-mock serve decoupled-drupal-mock-umami --port 3005
 
 Jest (including CommonJS on Node 16 in jsdom), Vitest, Playwright and Cypress each have an entry point and a working example, run in CI. See [Test runners](docs/test-runners.md).
 
-## What the preset does not have
+## Modules no preset records
 
-A module of your own has endpoints no preset records. An extension adds them, changes or fails a stock answer, keeps state across requests, and calls your site back on a save:
+A module of your own has endpoints no preset records, and an extension adds them. It can also change or fail a stock answer, and call your site back on a save:
 
 ```js
 export default {
@@ -74,7 +74,7 @@ The public files the content names are in the preset and served from `/sites/def
 
 ## Fidelity
 
-Each preset records an oracle beside its dump: real requests with Drupal's real answers, drawn from what clients ask. The engine's fidelity test answers every one and compares the documents. The Umami preset's 141 entries all match.
+Each preset keeps an oracle beside its dump, which holds real requests with Drupal's real answers, drawn from what clients ask. It covers reads, writes and sign-in. The engine's fidelity tests answer every one and compare the documents. The Umami preset's 151 read entries and 52 write steps all match.
 
 ## Status
 

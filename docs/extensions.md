@@ -1,6 +1,6 @@
 # Extensions
 
-An extension gives the mock what a preset cannot record: a contributed module's endpoints, a draft, a failure. It is a plain object:
+An extension gives the mock what a preset cannot record, such as a contributed module's endpoints or a failure. It is a plain object:
 
 ```js
 export default {
@@ -29,8 +29,8 @@ A function cannot cross into another process. A test there turns on what the fil
 - **`routes`:** new endpoints, by `METHOD /path`. `:name` matches one segment and `ANY` matches every method. A language prefix is matched for you and given as `prefix`.
 - **`answer`:** sees every request. Return what `next()` gives, change it, or replace it.
 - **`fixtures`:** resources by language and type, which read and write like the dump's own. A fixture joins its type's collection, and every listing built from it: a block added to a region is in that region's block list.
-- **`onWrite`:** runs after a successful JSON:API write. `send` calls another service, and its result lands in `sent()`.
-- **`scenarios`:** named `routes`, `answer` and `onWrite`, off until a test turns them on.
+- **`onWrite`:** runs after a successful JSON:API write. `send` calls another service, and `sent()` holds the result.
+- **`scenarios`:** sets of `routes`, `answer` and `onWrite` under a name, off until a test turns them on.
 
 A handler gets `method`, `url`, `path`, `route`, `prefix`, `params`, `query`, `headers`, `body`, `json`, `state` and `drupal`. `state` is a `Map` shared across requests until `reset()`. `drupal.handle(...)` asks the stock site, with the fixtures but past every extension, so a handler can read its own URL without calling itself. An `onWrite` hears of a write the stock site took, under its JSON:API base path; one that throws is recorded on that request in `requests()`, and the write stands.
 
@@ -46,5 +46,5 @@ An extension's answers are written by hand. The mock's fidelity claim covers wha
 
 ## Examples
 
-- [`examples/extensions/next.mjs`](../examples/extensions/next.mjs): the `next` module's draft endpoint, a latest revision, revalidation on a save and Drupal being down. [`examples/nextjs`](../examples/nextjs) runs it.
+- [`examples/extensions/next.mjs`](../examples/extensions/next.mjs) answers the `next` module's draft endpoint and revalidates on a save. [`examples/nextjs`](../examples/nextjs) runs it.
 - [`examples/extensions/node-preview.mjs`](../examples/extensions/node-preview.mjs): JSON:API Node Preview's unsaved node. [`examples/vitest`](../examples/vitest) runs it.

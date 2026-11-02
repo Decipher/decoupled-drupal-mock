@@ -80,7 +80,7 @@ on('after:run', () => mock.close());
 
 A test then calls `cy.task('drupal:reset')` and `cy.task('drupal:token', { name: 'admin' })`.
 
-**A frontend the runner does not start** points at a server on a port you choose, for example from `start-server-and-test`:
+**A frontend the runner does not start** points at a server on a port you choose, which `start-server-and-test` can start:
 
 ```sh
 npx decoupled-drupal-mock serve umami --port 3005 --control
@@ -88,7 +88,7 @@ npx decoupled-drupal-mock serve umami --port 3005 --control
 
 Set `DECOUPLED_DRUPAL_MOCK_URL` to its URL and `connectMock()` or `withDrupal` use it. Run one test worker at a time against a shared server, or their writes meet. `--control` opens `POST /__decoupled-drupal-mock/reset` and `/token`. It lets anyone who reaches the port sign in as anyone, so it is for a test's server only.
 
-## What a client can do
+## Client calls
 
 Every runner's client has the same calls, in-process or over `--control`:
 
@@ -97,7 +97,7 @@ Every runner's client has the same calls, in-process or over `--control`:
 | `reset()`                | Drops writes, tokens, scenarios, the request log, and clock changes |
 | `tokenFor(name, scopes)` | A token for a user of the preset, past the grant                    |
 | `scenario(name)`         | Turns on a scenario an extension names                              |
-| `requests()`             | What the mock was asked, for assertions                             |
+| `requests()`             | The requests the mock answered, for assertions                      |
 | `sent()`                 | What an extension's `onWrite` called                                |
 | `advanceTime(seconds)`   | Moves the clock on, for a token's expiry                            |
 

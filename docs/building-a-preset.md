@@ -4,7 +4,7 @@ The build crawls a running Drupal as an administrator for the dump and as a visi
 
 The engine runs on Node, including under a test runner's jsdom environment. It needs `node:crypto` from its root entry, so it does not run in a browser or a service worker: a browser test reaches it over HTTP.
 
-## What the site needs
+## Modules on the site
 
 Only JSON:API is required. Everything else widens what the build records:
 
@@ -18,12 +18,12 @@ Only JSON:API is required. Everything else widens what the build records:
 
 ## Without `auth`
 
-The build then records what a visitor sees. A type a visitor can read none of is empty in the mock, with no `meta.omitted`, where Drupal lists each omitted resource. The log names each type it leaves out.
+The build then records what a visitor sees. Drupal lists each resource it omits from a type a visitor cannot read. The mock answers that type with an empty list and no `meta.omitted`, and the log names it.
 
 ## Options that get a build through
 
 - **`skipTypes`:** types to leave out, for a type the site lists in its index and cannot answer.
-- **A config type past one page:** Drupal Canvas replaces the config entity query with one that cannot take JSON:API's offset. The build reads such a type by its id instead, when it has read any of it.
+- **A config type past one page:** the query Drupal Canvas puts in core's place cannot take JSON:API's offset. The build reads such a type in order of its id instead, once it has read any of it.
 
 ## Try it on Drupal CMS
 
