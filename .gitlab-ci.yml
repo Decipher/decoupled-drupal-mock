@@ -197,10 +197,23 @@ secret-detection:
     - echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
     - tar -xzf gitleaks.tar.gz gitleaks
     - ./gitleaks detect --source . --no-banner --redact --verbose
-    # gitleaks cannot read inside a gzip, and the recordings are gzipped.
-    - section_start "recordings" "Scanning the recordings"
-    - mkdir -p /tmp/recordings && for file in presets/*/oracle/*.gz presets/*/dump/recorded/*.gz; do [ -f "$file" ] || continue; gunzip -c "$file" > "/tmp/recordings/$(echo "$file" | tr / _).json"; done
-    - ./gitleaks detect --no-git --source /tmp/recordings --no-banner --redact --verbose
+    # gitleaks cannot read inside a gzip, and the dumps, overlays and recordings are gzipped: every one is opened, the
+    # published dump's resources included, as that is where a real account's data would be. gitleaks also skips any
+    # path that names `.gz`, so the extension goes from the unpacked name. A credential planted in a gzip of its own,
+    # unpacked the same way, must be reported, or this scan read nothing.
+    - section_start "recordings" "Scanning the gzipped dumps and recordings"
+    - |
+      unpack() { find "$1" -name '*.gz' | while read -r file; do gunzip -c "$file" > "$2/$(echo "$file" | tr / _ | sed 's/\.gz$//')"; done; }
+      mkdir -p /tmp/recordings && unpack presets /tmp/recordings
+      test "$(ls /tmp/recordings | wc -l)" -eq "$(find presets -name '*.gz' | wc -l)"
+      ./gitleaks detect --no-git --source /tmp/recordings --no-banner --redact --verbose
+      probe="$(mktemp -d)" && mkdir -p "$probe/in/presets" "$probe/out"
+      printf 'a = "%s"\n' "gh""p_8fK2mQ7xR4tV9nB3jH6yW1sZ5cD8gL0aE4uY" | gzip > "$probe/in/presets/canary.json.gz"
+      (cd "$probe/in" && unpack presets "$probe/out")
+      ./gitleaks detect --no-git --source "$probe/out" --no-banner --redact --report-format json --report-path "$probe/report.json" || true
+      found=$(grep -c '"RuleID"' "$probe/report.json" || true)
+      rm -rf "$probe"
+      if [ "$found" != "1" ]; then echo "A credential planted in a gzip was reported $found times: the recordings scan reads nothing."; exit 1; fi
     - section_end "recordings"
     - section_end "gitleaks"
     # A scan that finds nothing looks identical to a scan that cannot find

@@ -33,6 +33,12 @@ const ALLOWED = [
 ]
 
 /** Hosts nobody outside the author's network can resolve. */
+/**
+ * A host with no dot, `https://intranet/`, resolves only inside a LAN. Only in a
+ * `scheme://` URL: `name@npm:1.0.0` in a lock file is a version, not a remote.
+ */
+const NO_DOT = /^(?=.*[a-z])[a-z0-9-]+$/i
+
 const PRIVATE_HOST = [
   /^[a-z0-9-]+(\.[a-z0-9-]+)*\.(local|internal|lan|home|corp|intranet)$/i,
   /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/,
@@ -54,8 +60,9 @@ const PRIVATE_HOST = [
 // [::ffff:10.0.0.8] is a bracketed host that carries an RFC1918 address.
 // An scp-style remote is `user@host:path` for any user. The colon after the
 // host is what tells it from an email address.
+// A dot may be written `\.`, as in a regular expression naming the host.
 const URL_HOST =
-  /(?:[a-z][a-z0-9+.-]*:\/\/(?:[^/@\s]*@)?|(?<![\w.+-])[A-Za-z0-9._-]+@(?=[A-Za-z0-9._-]+:))(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)/g
+  /(?:(?<scheme>[a-z][a-z0-9+.-]*:\/\/)(?:[^/@\s]*@)?|(?<![\w.+-])[A-Za-z0-9._-]+@(?=[A-Za-z0-9._-]+:))(\[[0-9A-Fa-f:.]+\]|(?:[A-Za-z0-9_-]|\\?\.)+)/g
 
 /**
  * The IPv4 address inside an IPv4-mapped IPv6 literal, else the host as given.
@@ -102,15 +109,14 @@ export function findPrivateRefs(text) {
   text.split('\n').forEach((line, index) => {
     for (const match of line.matchAll(URL_HOST)) {
       // A bracketed literal is taken whole: `[fd00::]` ends in its own colons.
+      const named = match[2].replace(/\\\./g, '.')
       const host = mappedToIpv4(
-        match[1].startsWith('[')
-          ? match[1].slice(1, -1)
-          : match[1].replace(/[.:]+$/, '')
+        named.startsWith('[') ? named.slice(1, -1) : named.replace(/[.:]+$/, '')
       )
       if (ALLOWED.some((pattern) => pattern.test(host))) {
         continue
       }
-      if (PRIVATE_HOST.some((pattern) => pattern.test(host))) {
+      if (PRIVATE_HOST.some((pattern) => pattern.test(host)) || (match.groups?.scheme && NO_DOT.test(host))) {
         found.push({ line: index + 1, host })
       }
     }
@@ -141,8 +147,6 @@ export function trackedFiles(root = ROOT) {
 const SELF = [
   'scripts/lint-private-refs.mjs',
   'scripts/lint-private-refs.test.mjs',
-  'test/private-refs.test.js',
-  'test/scripts/private-refs.test.js',
 ]
 
 /**

@@ -395,7 +395,9 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       } finally {
         await clean(created)
       }
-      recorded.push({ ...script, answers })
+      // The session token is the whole of its answer, so no key names it: it is masked by its path. The script's later
+      // steps have read the real one already.
+      recorded.push({ ...script, answers: answers.map((answer, index) => (script.steps[index]?.path === '/session/token' ? { ...answer, body: '<token>' } : answer)) })
       log(`script "${script.name}": ${answers.map((answer) => answer.status).join(' ')}`)
     }
     recordOracle('writes.json.gz', recorded)

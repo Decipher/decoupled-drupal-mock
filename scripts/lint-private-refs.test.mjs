@@ -15,6 +15,16 @@ describe('the private-host check', () => {
     expect(hosts('git@gitlab.local:group/repo.git')).toEqual(['gitlab.local'])
   })
 
+  it('finds a host with no dot in a URL, and reads a dot written for a regular expression', () => {
+    expect(hosts('https://intranet/ and https://drupal/cms')).toEqual(['intranet', 'drupal'])
+    expect(hosts('http://10\\.0\\.0\\.8/')).toEqual(['10.0.0.8'])
+    expect(hosts("exclude = ['^http://127\\.0\\.0\\.1', '^https://www\\.drupal\\.org']")).toEqual([])
+  })
+
+  it('leaves a lock file\'s versions alone, which read like an scp remote', () => {
+    expect(hosts('"@babel/core@npm:7.26.0", decoupled-drupal-mock@npm:^1.0.0')).toEqual([])
+  })
+
   it('leaves an email address, a public host and the local development hosts alone', () => {
     expect(hosts('write to bob@corp.internal, or see https://www.drupal.org/i/1 and http://127.0.0.1:3005')).toEqual([])
   })

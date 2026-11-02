@@ -440,7 +440,7 @@ describe('the script helpers', () => {
 
   it('masks what Drupal generated, and not a title that looks like a uuid', () => {
     const uuid = '9af15b20-9480-459c-bce5-d00b5d41fa32'
-    expect(volatile({ id: uuid, title: uuid, href: `https://x/${uuid}` })).toEqual({ id: '<uuid>', title: uuid, href: 'https://x/<uuid>' })
+    expect(volatile({ id: uuid, title: uuid, href: `https://host.test/${uuid}` })).toEqual({ id: '<uuid>', title: uuid, href: 'https://host.test/<uuid>' })
     expect(volatile({ detail: `The selected entity (${uuid})` })).toEqual({ detail: 'The selected entity (<uuid>)' })
   })
 })
