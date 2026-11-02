@@ -198,13 +198,8 @@ describe('what the anonymous user may reach', () => {
     expect(body.meta?.omitted).toBeDefined()
     expect((await get(drupal, '/jsonapi/node/recipe/r-2')).status).toBe(403)
 
-describe('a sort in another language', () => {
-  it('orders by the default language\'s values, as Drupal does', async () => {
-    const translated = (await import('./dump')).dump.resources.en!['node--recipe']!.map((recipe, index) => ({ ...recipe, attributes: { ...recipe.attributes, title: ['Z', 'Y', 'X'][index] } }))
-    const multilingual = createDrupal({ ...dump, manifest: { ...dump.manifest, languages: { en: 'en', es: 'es' } }, resources: { ...dump.resources, es: { ...dump.resources.en, 'node--recipe': translated } } }, { baseUrl: 'https://drupal.test' })
-    const response = await multilingual.fetch('https://drupal.test/es/jsonapi/node/recipe?sort=title')
-    const titles = ((await response.json()) as { data: Array<{ id: string }> }).data.map((recipe) => recipe.id)
-    expect(titles).toEqual(['r-2', 'r-1', 'r-3'])
+  })
+})
 
 describe('a sort over translations', () => {
   const titles = ['Zebra', 'Yak', 'Aardvark']
