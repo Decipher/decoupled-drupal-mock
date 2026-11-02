@@ -36,6 +36,9 @@ export interface CrawlOptions {
   log?: (line: string) => void
 }
 
+/** What `collect` gives for a type it could read none of, past a page the site cannot serve. No status says that. */
+const UNREADABLE = -1
+
 const PLACEHOLDER = 'https://drupal.invalid'
 
 /** The resource types the crawl leaves out: they hold secrets or vary per install. */
@@ -153,7 +156,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         // past one page is read by id.
         if (page.status >= 500 && !first && !idField) {
           // Nothing readable so far means no id to go on from, and nothing the crawl could have read of the rest.
-          if (!resources.length && /array_slice/.test(JSON.stringify(page.body))) return 403
+          if (!resources.length && /array_slice/.test(JSON.stringify(page.body))) return UNREADABLE
           idField = configId(resources[0])
           if (idField) {
             resources.length = 0
@@ -183,7 +186,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       if (type === 'self' || !link || SKIP.has(type) || options.skipTypes?.includes(type)) continue
       const collected = await collect(link.href, authorized())
       if (typeof collected === 'number') {
-        log(`  ${type}: ${collected}, left out`)
+        log(collected === UNREADABLE ? `  ${type}: nothing readable, and a second page the site cannot serve, left out` : `  ${type}: ${collected}, left out`)
         continue
       }
       const full = options.exclude ? collected.filter((resource) => !options.exclude!(resource)) : collected

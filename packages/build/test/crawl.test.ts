@@ -134,6 +134,18 @@ describe('a site that gets in the way', () => {
     expect((read(out, 'resources/en/view--view.json.gz') as Array<{ id: string }>).map((resource) => resource.id)).toEqual(['u-a', 'u-b', 'u-c'])
   })
 
+  it('says so when it reads none of a type and cannot go past the first page', async () => {
+    const lines: string[] = []
+    const routes = (path: string) => {
+      if (path === '/jsonapi') return { body: { links: { self: { href: 'x' }, 'view--view': { href: 'http://x.test/jsonapi/view/view' } } } }
+      if (path === `/jsonapi/view/view${LIMIT}`) return { body: { data: [], links: { next: { href: 'http://x.test/jsonapi/view/view?page%5Boffset%5D=50&page%5Blimit%5D=50' } } } }
+      if (path.includes('page%5Boffset%5D')) return { status: 500, body: { errors: [{ detail: 'array_slice(): Argument #2 ($offset) must be of type int, string given' }] } }
+      return undefined
+    }
+    await build(routes, { log: (line) => lines.push(line) })
+    expect(lines).toContain('  view--view: nothing readable, and a second page the site cannot serve, left out')
+  })
+
   it('leaves out a type it is told to', async () => {
     const { out } = await build(site({ admin: [], visitor: [] }), { skipTypes: ['user--user'] })
     expect(existsSync(join(out, 'resources/en/user--user.json.gz'))).toBe(false)
