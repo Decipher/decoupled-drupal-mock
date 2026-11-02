@@ -149,7 +149,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         let page = await get(next, headers)
         // A server's failure is tried again; one that stays, or a later page refused, would leave a type half read.
         for (let attempt = 0; attempt < 2 && page.status >= 500; attempt++) page = await get(next, headers)
-        // Drupal 11.4's config entity query cannot take JSON:API's offset, so a config type past one page is read by id.
+        // Drupal Canvas replaces the config entity query with one that cannot take JSON:API's offset, so a config type
+        // past one page is read by id.
         if (page.status >= 500 && !first && !idField) {
           // Nothing readable so far means no id to go on from, and nothing the crawl could have read of the rest.
           if (!resources.length && /array_slice/.test(JSON.stringify(page.body))) return 403
