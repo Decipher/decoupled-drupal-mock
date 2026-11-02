@@ -126,6 +126,39 @@ describe('what a test does to the mock', () => {
     }
   })
 
+  it('hears only of writes the stock site took, under its own base path, and keeps a write whose call-back threw', () => {
+    const body = JSON.stringify({ data: { type: 'node--recipe', id: 'r-1', attributes: { title: 'Changed' } } })
+    const content = { 'content-type': 'application/vnd.api+json' }
+    const onWrite = vi.fn()
+    const own = createMock(dump, { baseUrl: BASE, extensions: [{ onWrite, routes: { 'POST /jsonapi/custom/thing': () => ({ status: 201, body: { data: { type: 'custom', id: 'x' } } }) } }] })
+    expect(own.handle('POST', `${BASE}/jsonapi/custom/thing`, content, '{}').status).toBe(201)
+    expect(onWrite).not.toHaveBeenCalled()
+    const api = createMock(dump, { baseUrl: BASE, basePath: '/api', extensions: [{ onWrite }] })
+    const editor = { ...content, authorization: `Bearer ${api.tokenFor('umami', ['editor']).access}` }
+    expect(api.handle('PATCH', `${BASE}/api/node/recipe/r-1`, editor, body).status).toBe(200)
+    expect(onWrite).toHaveBeenCalledTimes(1)
+    const failing = createMock(dump, { baseUrl: BASE, extensions: [{ name: 'broken', onWrite: () => { throw new Error('no site') } }] })
+    const headers = { ...content, authorization: `Bearer ${failing.tokenFor('umami', ['editor']).access}` }
+    expect(failing.handle('PATCH', `${BASE}/jsonapi/node/recipe/r-1`, headers, body).status).toBe(200)
+    expect(failing.requests().at(-1)?.errors).toEqual(['broken: no site'])
+    const saved = failing.handle('GET', `${BASE}/jsonapi/node/recipe/r-1`, headers).body as { data: { attributes: { title: string } } }
+    expect(saved.data.attributes.title).toBe('Changed')
+  })
+
+  it('gives a handler the stock site, so reading its own URL does not call itself', () => {
+    const route: Extension = { routes: { 'GET /jsonapi/node/page/:id': ({ url, drupal }) => ({ body: { wrapped: drupal.handle('GET', url.href).status } }) } }
+    const answer: Extension = { answer: ({ url, drupal }, next) => (url.searchParams.has('direct') ? drupal.handle('GET', `${url.origin}${url.pathname}`) : next()) }
+    const mock = createMock(dump, { baseUrl: BASE, extensions: [route, answer] })
+    expect(mock.handle('GET', `${BASE}/jsonapi/node/page/p-1`).body).toEqual({ wrapped: 200 })
+    expect(mock.handle('GET', `${BASE}/jsonapi/node/page/p-1?direct=1`).status).toBe(200)
+  })
+
+  it('refuses a clock moved by something that is not a number, and fixtures through use()', () => {
+    const mock = createMock(dump, { baseUrl: BASE })
+    expect(() => mock.advanceTime(Number.NaN)).toThrow('advanceTime takes a number of seconds, not NaN.')
+    expect(() => mock.use({ name: 'late', fixtures: { en: {} } })).toThrow('The extension late has fixtures, which use() cannot add')
+  })
+
   it('takes all of that from another process over the control routes', async () => {
     const mock = createMock(dump, { baseUrl: 'http://127.0.0.1', extensions: [{ scenarios: { down: { answer: () => ({ status: 503, body: 'down' }) } } }] })
     const { url, close } = await listen(mock, 0, '127.0.0.1', { control: true })

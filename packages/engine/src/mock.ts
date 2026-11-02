@@ -14,5 +14,5 @@ import type { Dump } from './types.js'
 export const createMock = (dump: Dump, options: DrupalOptions & { extensions?: Extension[] } = {}): ExtendedDrupal => {
   const { extensions = [], ...rest } = options
   const clock = createClock()
-  return extend(createDrupal(withFixtures(dump, extensions), { ...rest, now: clock.now }), extensions, clock)
+  return extend(createDrupal(withFixtures(dump, extensions), { ...rest, now: clock.now }), extensions, clock, rest.basePath)
 }

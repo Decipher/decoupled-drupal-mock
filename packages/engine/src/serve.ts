@@ -51,9 +51,9 @@ export const publicFile = (dir: string, pathname: string): { path: string, mime:
  */
 /** A test's order to a server: reset, or a token for a user. */
 const control = (drupal: Drupal | ExtendedDrupal, order: string, body: string | undefined): { status: number, text: string } => {
-  const given = JSON.parse(body || '{}') as { name?: string, scopes?: string[], seconds?: number }
   const extended = 'scenario' in drupal ? drupal : undefined
   try {
+    const given = JSON.parse(body || '{}') as { name?: string, scopes?: string[], seconds?: number }
     if (order === 'reset') drupal.reset()
     else if (order === 'token') return { status: 200, text: JSON.stringify(drupal.tokenFor(given.name || '', given.scopes)) }
     else if (extended && order === 'scenario') extended.scenario(given.name || '')

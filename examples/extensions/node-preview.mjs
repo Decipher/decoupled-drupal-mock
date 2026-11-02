@@ -14,10 +14,15 @@ export const nodePreview = (unsaved, included = []) => ({
   name: 'node-preview',
   routes: {
     'GET /jsonapi/node/:bundle/:uuid/preview': ({ params, headers, url, drupal }) => {
-      // The module's access check reads the editor's session. A visitor is refused.
-      if (!headers.cookie && !headers.authorization) return { status: 403, headers: JSONAPI, body: { errors: [{ status: '403', title: 'Forbidden' }] } }
+      // The module's access check reads the editor's session, by token or cookie. A visitor, or a session the site
+      // did not start, is refused.
+      const session = { ...(headers.authorization ? { authorization: headers.authorization } : {}), ...(headers.cookie ? { cookie: headers.cookie } : {}) }
+      if (drupal.handle('GET', `${url.origin}/oauth/userinfo`, session).status !== 200) return { status: 403, headers: JSONAPI, body: { errors: [{ status: '403', title: 'Forbidden' }] } }
       if (!unsaved[params.uuid]) return { status: 404, headers: JSONAPI, body: { errors: [{ status: '404', title: 'Not Found' }] } }
-      const saved = drupal.handle('GET', `${url.origin}/jsonapi/node/${params.bundle}/${params.uuid}`, { authorization: headers.authorization || '' }).body
+      // The saved node, as this editor may read it. A node they cannot read has no preview either.
+      const answer = drupal.handle('GET', `${url.origin}/jsonapi/node/${params.bundle}/${params.uuid}`, session)
+      if (answer.status !== 200) return { status: answer.status, headers: JSONAPI, body: answer.body }
+      const saved = answer.body
       return { headers: JSONAPI, body: { ...saved, data: { ...saved.data, attributes: { ...saved.data.attributes, ...unsaved[params.uuid] } }, ...(url.searchParams.has('include') ? { included } : {}) } }
     },
   },

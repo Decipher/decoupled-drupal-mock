@@ -70,7 +70,11 @@ export const withDrupal = <Test>(test: Extendable<Test>, preset: string, options
   // Playwright reads a fixture's dependencies from this pattern, so it must be written as one even when it is empty.
   // eslint-disable-next-line no-empty-pattern
   drupalServer: [async ({}, use: (mock: MockClient) => Promise<void>) => {
-    if (process.env.DECOUPLED_DRUPAL_MOCK_URL) return use(connectMock())
+    if (process.env.DECOUPLED_DRUPAL_MOCK_URL) {
+      // That server has the extensions it was started with, which may or may not be these.
+      if (options.extensions?.length) console.warn(`withDrupal is using the server at ${process.env.DECOUPLED_DRUPAL_MOCK_URL}, so the extensions passed here are not loaded: start that server with them.`)
+      return use(connectMock())
+    }
     const mock = await startMock(preset, options)
     await use(mock)
     await mock.close()

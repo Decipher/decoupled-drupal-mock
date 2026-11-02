@@ -44,9 +44,15 @@ try {
 const dump = loadDump(dir)
 const extensions: Extension[] = []
 for (const [index, argument] of rest.entries()) {
-  if (argument !== '--extension' || !rest[index + 1]) continue
+  if (argument !== '--extension') continue
+  if (!rest[index + 1] || rest[index + 1]!.startsWith('--')) {
+    console.error('--extension names a file: --extension ./my-extension.mjs')
+    process.exit(1)
+  }
   try {
-    extensions.push((await import(pathToFileURL(resolve(rest[index + 1]!)).href) as { default: Extension }).default)
+    const loaded = (await import(pathToFileURL(resolve(rest[index + 1]!)).href) as { default?: Extension }).default
+    if (!loaded || typeof loaded !== 'object') throw new Error('it has no default export of an extension')
+    extensions.push(loaded)
   } catch (error) {
     console.error(`The extension ${rest[index + 1]} did not load: ${(error as Error).message}`)
     process.exit(1)

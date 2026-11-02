@@ -20,7 +20,7 @@ export interface ExtensionRequest {
   json?: unknown
   /** State the extensions share, dropped on `reset()`. */
   state: Map<string, unknown>
-  /** The mock, for what an extension needs of the rest of the site: `drupal.handle(...)`. */
+  /** The stock site under every extension, fixtures included, for what a handler reads: `drupal.handle(...)`. */
   drupal: Drupal
 }
 
@@ -69,6 +69,8 @@ export interface RecordedRequest {
   headers: Record<string, string>
   body?: string
   status: number
+  /** What an `onWrite` threw, by extension. The write stands: Drupal's answer has gone back already. */
+  errors?: string[]
 }
 
 /** A call `send` made, and how it ended. */
@@ -137,9 +139,11 @@ type Layer = Pick<Extension, 'name' | 'routes' | 'answer' | 'onWrite'>
  * @param drupal - The engine, created over `withFixtures(dump, extensions)`.
  * @param extensions - The extensions.
  * @param clock - The clock the engine was created with, so `advanceTime` reaches its tokens.
+ * @param basePath - The engine's JSON:API base path, whose writes `onWrite` hears of.
  * @returns The extended mock.
  */
-export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: MockClock): ExtendedDrupal => {
+export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: MockClock, basePath = '/jsonapi'): ExtendedDrupal => {
+  const base = basePath.replace(/\/+$/, '') || '/jsonapi'
   const state = new Map<string, unknown>()
   const added: Layer[] = []
   const active: Layer[] = []
@@ -148,8 +152,10 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
   const prefixes = Object.values(drupal.manifest.languages).filter(Boolean)
   const layers = (): Layer[] => [...added, ...active, ...[...extensions].reverse()]
 
-  const notify = (method: string, path: string, answered: Answered): void => {
-    if (!['POST', 'PATCH', 'DELETE'].includes(method) || answered.status >= 300 || !/\/jsonapi\//.test(path)) return
+  // Only a write the site's store took: an extension's own 2xx answer saved nothing.
+  const notify = (method: string, route: string, path: string, answered: Answered): string[] => {
+    const errors: string[] = []
+    if (!['POST', 'PATCH', 'DELETE'].includes(method) || answered.status >= 300 || !route.startsWith(`${base}/`)) return errors
     const send = (url: string, init: RequestInit = {}): void => {
       const entry: SentRequest = { url, method: init.method || 'GET' }
       sent.push(entry)
@@ -161,7 +167,14 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
       fetch(url, init).then((response) => { entry.status = response.status }, (error: Error) => { entry.error = error.message })
     }
     const data = (answered.body as { data?: Resource } | undefined)?.data
-    for (const layer of layers()) layer.onWrite?.({ method, path, ...(data ? { resource: data } : {}), state, send })
+    for (const layer of layers()) {
+      try {
+        layer.onWrite?.({ method, path, ...(data ? { resource: data } : {}), state, send })
+      } catch (error) {
+        errors.push(`${layer.name || 'onWrite'}: ${(error as Error).message}`)
+      }
+    }
+    return errors
   }
 
   const handle: Drupal['handle'] = (method, input, headers = {}, body) => {
@@ -176,7 +189,7 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
     } catch {
       // A body that is not JSON is the handler's to read as text.
     }
-    const request = (params: Record<string, string>): ExtensionRequest => ({ method: upper, url, path, route, ...(prefix ? { prefix } : {}), params, query: Object.fromEntries(url.searchParams), headers, ...(body !== undefined ? { body } : {}), ...(json !== undefined ? { json } : {}), state, drupal: extended })
+    const request = (params: Record<string, string>): ExtensionRequest => ({ method: upper, url, path, route, ...(prefix ? { prefix } : {}), params, query: Object.fromEntries(url.searchParams), headers, ...(body !== undefined ? { body } : {}), ...(json !== undefined ? { json } : {}), state, drupal })
     const routed = (): Answered | undefined => {
       for (const layer of layers()) {
         for (const [pattern, handler] of Object.entries(layer.routes || {})) {
@@ -187,11 +200,17 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
       }
       return undefined
     }
-    const base = (): Answered => routed() ?? drupal.handle(method, input, headers, body)
-    const chain = layers().reduceRight<() => Answered>((next, layer) => (layer.answer ? () => settled(layer.answer!(request({}), next), layer.name || 'answer') : next), base)
+    let fromStore = false
+    const stock = (): Answered => {
+      const own = routed()
+      if (own) return own
+      fromStore = true
+      return drupal.handle(method, input, headers, body)
+    }
+    const chain = layers().reduceRight<() => Answered>((next, layer) => (layer.answer ? () => settled(layer.answer!(request({}), next), layer.name || 'answer') : next), stock)
     const answered = chain()
-    requests.push({ method: upper, path, search: url.search, headers, ...(body !== undefined ? { body } : {}), status: answered.status })
-    notify(upper, path, answered)
+    const errors = fromStore ? notify(upper, route, path, answered) : []
+    requests.push({ method: upper, path, search: url.search, headers, ...(body !== undefined ? { body } : {}), status: answered.status, ...(errors.length ? { errors } : {}) })
     return answered
   }
 
@@ -217,7 +236,11 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
       sent = []
       if (clock) clock.offset = 0
     },
-    use: (extension) => { added.unshift(extension) },
+    use: (extension) => {
+      // The engine indexes its resources once, so a fixture added now would be missed by collections and includes.
+      if (extension.fixtures) throw new Error(`The extension ${extension.name || ''} has fixtures, which use() cannot add: pass it to createMock or startMock instead.`.replace('  ', ' '))
+      added.unshift(extension)
+    },
     scenario: (name) => {
       const found = [...added, ...extensions].map((extension) => (extension as Extension).scenarios?.[name]).find(Boolean)
       if (!found) throw new Error(`No extension names a scenario "${name}".`)
@@ -227,6 +250,7 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
     sent: () => [...sent],
     advanceTime: (seconds) => {
       if (!clock) throw new Error('This mock was created without a clock.')
+      if (!Number.isFinite(seconds)) throw new Error(`advanceTime takes a number of seconds, not ${seconds}.`)
       clock.offset += seconds * 1000
     },
   }

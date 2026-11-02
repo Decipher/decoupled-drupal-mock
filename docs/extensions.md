@@ -32,7 +32,7 @@ A function cannot cross into another process. A test there turns on what the fil
 - **`onWrite`:** runs after a successful JSON:API write. `send` calls another service, and its result lands in `sent()`.
 - **`scenarios`:** named `routes`, `answer` and `onWrite`, off until a test turns them on.
 
-A handler gets `method`, `url`, `path`, `route`, `prefix`, `params`, `query`, `headers`, `body`, `json`, `state` and `drupal`. `state` is a `Map` shared across requests until `reset()`. `drupal.handle(...)` asks the rest of the site.
+A handler gets `method`, `url`, `path`, `route`, `prefix`, `params`, `query`, `headers`, `body`, `json`, `state` and `drupal`. `state` is a `Map` shared across requests until `reset()`. `drupal.handle(...)` asks the stock site, with the fixtures but past every extension, so a handler can read its own URL without calling itself. An `onWrite` hears of a write the stock site took, under its JSON:API base path; one that throws is recorded on that request in `requests()`, and the write stands.
 
 An answer has `status`, `headers` and `body`. A body that is not a string goes as JSON.
 
