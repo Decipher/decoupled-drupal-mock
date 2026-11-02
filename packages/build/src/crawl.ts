@@ -36,13 +36,13 @@ export interface CrawlOptions {
   log?: (line: string) => void
 }
 
+/** What `collect` gives for a type it could read none of, past a page the site cannot serve. No status says that. */
+const UNREADABLE = -1
+
 const PLACEHOLDER = 'https://drupal.invalid'
 
 /** The resource types the crawl leaves out: they hold secrets or vary per install. */
 const SKIP = new Set(['consumer--consumer', 'oauth2_scope--oauth2_scope', 'oauth2_token_type--oauth2_token_type', 'user_role--user_role', 'action--action'])
-
-/** The attribute that holds a config entity's machine name. A content entity's internal id is a number, and it has none. */
-const configId = (resource: Resource | undefined): string | undefined => Object.entries(resource?.attributes || {}).find(([name, value]) => name.startsWith('drupal_internal__') && typeof value === 'string')?.[0]
 
 export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   const base = options.baseUrl.replace(/\/+$/, '')
@@ -65,13 +65,15 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     for (const file of Object.keys((JSON.parse(readFileSync(previous, 'utf8')) as Manifest).files)) rmSync(join(options.out, file), { force: true })
   }
 
-  const write = (file: string, body: unknown): void => {
+  const writeBytes = (file: string, bytes: Buffer): void => {
     const path = join(options.out, file)
     mkdirSync(join(path, '..'), { recursive: true })
-    const text = relink(JSON.stringify(body))
-    const bytes = file.endsWith('.gz') ? gzipSync(Buffer.from(text), { level: 9 }) : Buffer.from(text)
     writeFileSync(path, bytes)
     files[file] = createHash('sha256').update(bytes).digest('hex')
+  }
+  const write = (file: string, body: unknown): void => {
+    const text = relink(JSON.stringify(body))
+    writeBytes(file, file.endsWith('.gz') ? gzipSync(Buffer.from(text), { level: 9 }) : Buffer.from(text))
   }
 
   let token: string | undefined
@@ -144,22 +146,19 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       const resources: Resource[] = []
       let next: string | undefined = `${pathOf(href)}?page%5Blimit%5D=50`
       let first = true
-      let idField: string | undefined
+      let byId = false
       while (next) {
         let page = await get(next, headers)
         // A server's failure is tried again; one that stays, or a later page refused, would leave a type half read.
         for (let attempt = 0; attempt < 2 && page.status >= 500; attempt++) page = await get(next, headers)
-        // Drupal Canvas replaces the config entity query with one that cannot take JSON:API's offset, so a config type
-        // past one page is read by id.
-        if (page.status >= 500 && !first && !idField) {
-          // Nothing readable so far means no id to go on from, and nothing the crawl could have read of the rest.
-          if (!resources.length && /array_slice/.test(JSON.stringify(page.body))) return 403
-          idField = configId(resources[0])
-          if (idField) {
-            resources.length = 0
-            next = `${pathOf(href)}?sort=${idField}&page%5Blimit%5D=50`
-            continue
-          }
+        // Drupal Canvas replaces the config entity query with one that cannot take JSON:API's offset, so a type past one
+        // page is read in order of its id. Nothing readable so far means nothing the crawl could read of the rest.
+        if (page.status >= 500 && !first && !byId && /array_slice/.test(JSON.stringify(page.body))) {
+          if (!resources.length) return UNREADABLE
+          byId = true
+          resources.length = 0
+          next = `${pathOf(href)}?sort=id&page%5Blimit%5D=50`
+          continue
         }
         if (page.status >= 500 || (!first && page.status !== 200)) throw new Error(`GET ${next} answered ${page.status}: the build would hold part of ${href}.`)
         if (page.status !== 200) return page.status
@@ -172,9 +171,9 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         }
         const link = document.links?.next
         next = link ? pathOf(link.href) : undefined
-        if (idField) {
-          const last = (document.data as Resource[]).at(-1)?.attributes?.[idField]
-          next = last === undefined ? undefined : `${pathOf(href)}?sort=${idField}&page%5Blimit%5D=50&filter%5Bafter%5D%5Bcondition%5D%5Bpath%5D=${idField}&filter%5Bafter%5D%5Bcondition%5D%5Boperator%5D=%3E&filter%5Bafter%5D%5Bcondition%5D%5Bvalue%5D=${encodeURIComponent(String(last))}`
+        if (byId) {
+          const last = (document.data as Resource[]).at(-1)?.id
+          next = last === undefined ? undefined : `${pathOf(href)}?sort=id&page%5Blimit%5D=50&filter%5Bafter%5D%5Bcondition%5D%5Bpath%5D=id&filter%5Bafter%5D%5Bcondition%5D%5Boperator%5D=%3E&filter%5Bafter%5D%5Bcondition%5D%5Bvalue%5D=${encodeURIComponent(last)}`
         }
       }
       return resources
@@ -183,7 +182,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       if (type === 'self' || !link || SKIP.has(type) || options.skipTypes?.includes(type)) continue
       const collected = await collect(link.href, authorized())
       if (typeof collected === 'number') {
-        log(`  ${type}: ${collected}, left out`)
+        log(collected === UNREADABLE ? `  ${type}: nothing readable, and a second page the site cannot serve, left out` : `  ${type}: ${collected}, left out`)
         continue
       }
       const full = options.exclude ? collected.filter((resource) => !options.exclude!(resource)) : collected
@@ -276,6 +275,28 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     log(`${entries.length} oracle entries`)
   }
   write('recorded/routes.json.gz', recorded)
+
+  // The public files the content names, so a frontend against the server gets its images. Each is kept under
+  // `files/` at its path below Drupal's public files directory.
+  const publicFiles = new Set<string>()
+  for (const resources of Object.values(all)) {
+    for (const file of resources['file--file'] || []) {
+      const url = (file.attributes as { uri?: { url?: string } } | undefined)?.uri?.url
+      if (url && url.startsWith('/sites/default/files/')) publicFiles.add(url)
+    }
+  }
+  for (const url of publicFiles) {
+    let response: Response
+    try {
+      response = await fetch(`${base}${url}`)
+    } catch (error) {
+      log(`  file ${url}: ${(error as Error).message}, left out`)
+      continue
+    }
+    if (!response.ok) { log(`  file ${url}: ${response.status}, left out`); continue }
+    writeBytes(`files/${url.slice('/sites/default/files/'.length)}`, Buffer.from(await response.arrayBuffer()))
+  }
+  log(`${publicFiles.size} public files kept`)
 
   const manifest: Manifest = {
     preset: options.preset,

@@ -2352,6 +2352,14 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"decoupled-drupal-mock-umami@workspace:presets/umami":
+  version: 0.0.0-use.local
+  resolution: "decoupled-drupal-mock-umami@workspace:presets/umami"
+  peerDependencies:
+    decoupled-drupal-mock: "workspace:^"
+  languageName: unknown
+  linkType: soft
+
 "decoupled-drupal-mock-workspace@workspace:.":
   version: 0.0.0-use.local
   resolution: "decoupled-drupal-mock-workspace@workspace:."

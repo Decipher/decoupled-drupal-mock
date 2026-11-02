@@ -1,4 +1,7 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { connect } from 'node:net'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { http } from 'msw'
 import { setupServer } from 'msw/node'
@@ -19,6 +22,28 @@ const bind = async (host = '127.0.0.1') => {
 }
 
 describe('serving', () => {
+  it('serves the public files from the dump, an image style with the original, and nothing outside', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mock-files-'))
+    mkdirSync(join(dir, 'files', 'a'), { recursive: true })
+    writeFileSync(join(dir, 'files', 'a', 'quiche.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
+    writeFileSync(join(dir, 'secret.txt'), 'not public')
+    const { url, close } = await listen(createDrupal(dump), 0, '127.0.0.1', { files: dir })
+    try {
+      const original = await fetch(`${url}/sites/default/files/a/quiche.jpg`)
+      expect(original.status).toBe(200)
+      expect(original.headers.get('content-type')).toBe('image/jpeg')
+      expect((await original.arrayBuffer()).byteLength).toBe(4)
+      const styled = await fetch(`${url}/sites/default/files/styles/medium/public/a/quiche.jpg`)
+      expect(styled.status).toBe(200)
+      expect((await styled.arrayBuffer()).byteLength).toBe(4)
+      expect((await fetch(`${url}/sites/default/files/a/missing.jpg`)).status).toBe(404)
+      expect((await fetch(`${url}/sites/default/files/../secret.txt`)).status).toBe(404)
+      expect((await fetch(`${url}/sites/default/files/a/quiche.jpg`, { method: 'HEAD' })).status).toBe(200)
+    } finally {
+      await close()
+    }
+  })
+
   it('answers CORS for a browser-side client and a preflight, unless told not to', async () => {
     const { url, close } = await bind()
     try {
