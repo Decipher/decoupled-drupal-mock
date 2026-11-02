@@ -435,7 +435,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     const introspected = (await ask({ query: getIntrospectionQuery() })).answer as { data?: IntrospectionQuery, errors?: unknown }
     if (!introspected.data) throw new Error(`The GraphQL schema at ${endpoint} could not be introspected: ${JSON.stringify(introspected.errors)}`)
     writeText('graphql/schema.graphql', printSchema(buildClientSchema(introspected.data)))
-    write('graphql/compose.json', { endpoint, ...(options.graphql.meta || {}) })
+    // A build without drush has no mapping to write, and the engine still reads `types`.
+    write('graphql/compose.json', { endpoint, types: {}, ...(options.graphql.meta || {}) })
     if (options.graphql.queries?.length) {
       const resourceId = (type: string, index: number) => all[options.defaultLanguage]?.[type]?.[index]?.id
       const recorded = []

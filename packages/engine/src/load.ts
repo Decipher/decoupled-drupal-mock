@@ -42,7 +42,9 @@ export const assemble = (manifest: Manifest, read: <T>(file: string) => T): Dump
     } else if (kind === 'graphql' && rest[0] === 'schema.graphql') {
       dump.graphql = { ...(dump.graphql || { compose: { endpoint: '/graphql', types: {} } }), schema: read<string>(file) }
     } else if (kind === 'graphql' && rest[0] === 'compose.json') {
-      dump.graphql = { ...(dump.graphql || { schema: '' }), compose: read<ComposeMeta>(file) }
+      // A build without drush writes no mapping.
+      const compose = read<Partial<ComposeMeta> & { endpoint: string }>(file)
+      dump.graphql = { ...(dump.graphql || { schema: '' }), compose: { ...compose, types: compose.types || {} } }
     }
   }
   return dump

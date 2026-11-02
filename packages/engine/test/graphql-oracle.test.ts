@@ -1,4 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
@@ -77,6 +79,19 @@ describe.skipIf(!available)('the GraphQL endpoint as a transport', () => {
     expect(ask().status).toBe(503)
     mock.reset()
     expect(ask().status).toBe(200)
+  })
+
+  it('reads a build without drush, whose compose.json has no mapping', () => {
+    const copy = mkdtempSync(join(tmpdir(), 'compose-'))
+    cpSync(dir, copy, { recursive: true })
+    const bare = JSON.stringify({ endpoint: '/graphql' })
+    writeFileSync(join(copy, 'graphql', 'compose.json'), bare)
+    const manifest = JSON.parse(readFileSync(join(copy, 'manifest.json'), 'utf8')) as { files: Record<string, string> }
+    manifest.files['graphql/compose.json'] = createHash('sha256').update(bare).digest('hex')
+    writeFileSync(join(copy, 'manifest.json'), JSON.stringify(manifest))
+    const loaded = loadDump(copy)
+    expect(loaded.graphql!.compose.types).toEqual({})
+    expect(() => createDrupal(loaded, { baseUrl: loaded.manifest.origin })).not.toThrow()
   })
 
   it('refuses a visitor whose role lacks the permission, as Drupal does', () => {
