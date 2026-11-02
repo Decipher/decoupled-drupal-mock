@@ -71,15 +71,15 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   const accessOf = (langcode: string, type: string) => dump.access?.[langcode]?.[type] ?? dump.access?.[dump.manifest.defaultLanguage]?.[type]
   const forbidden = (langcode: string, type: string): boolean => !!accessOf(langcode, type)?.forbidden
   /**
-   * The first field of a filter path the anonymous user may not read, on the collection's type or on a type a
+   * The first field of a filter path this reader may not read, on the collection's type or on a type a
    * relationship in the path reaches, and the path as Drupal names it: `uid.entity:user.mail`.
    */
-  const refusedFilter = (langcode: string, type: string, path: string): { field: string, path: string } | undefined => {
+  const refusedFilter = (langcode: string, type: string, path: string, all: boolean): { field: string, path: string } | undefined => {
     let types = new Set([type])
     const named: string[] = []
     for (const field of path.split('.')) {
       named.push(field)
-      if ([...types].some((current) => accessOf(langcode, current)?.hidden?.includes(field))) return { field, path: named.join('.') }
+      if ([...types].some((current) => hiddenFrom(langcode, { type: current }, all)?.includes(field))) return { field, path: named.join('.') }
       const next = new Set<string>()
       for (const current of types) {
         for (const resource of dump.resources[langcode]?.[current] || []) {
@@ -438,7 +438,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     for (const condition of Object.values(filter.conditions)) {
       const [head] = condition.path.split('.')
       // Drupal names the request in the sorted form here, as it names a collection's self link.
-      const refused = all ? undefined : refusedFilter(langcode, type, condition.path)
+      const refused = refusedFilter(langcode, type, condition.path, all)
       if (refused) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', `The current user is not authorized to filter by the \`${refused.field}\` field, given in the path \`${refused.path}\`.`, self) }
       if (head && fieldNames.size > 2 && !fieldNames.has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, via, { parameter: 'filter' }) }
     }
