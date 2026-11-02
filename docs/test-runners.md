@@ -15,7 +15,7 @@ const drupal = (globalThis.__decoupledDrupalMock ||= loadPreset('umami', { baseU
 module.exports = { baseUrl, drupal, verbs: axiosVerbs(drupal, baseUrl) };
 ```
 
-The reset goes in the file `setupFilesAfterEnv` names, not beside the engine: a module first required inside a test, as a manual mock of axios is after `jest.resetModules()`, cannot add a hook.
+The reset goes in the file `setupFilesAfterEnv` names, not beside the engine. Jest refuses a hook from a module first required inside a test, and a manual mock of axios is one after `jest.resetModules()`.
 
 ```js
 // test/setup.js
