@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -7,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { createDrupal } from '../src'
 import { loadDump } from '../src/load'
 import { comparable } from './comparable'
+import { oracleDir } from './oracle-dir.ts'
 
 /**
  * The fidelity test: the engine against every oracle entry of a preset build, which is a real request with Drupal's
@@ -14,13 +16,13 @@ import { comparable } from './comparable'
  */
 // The Umami preset's build by default, or any build directory.
 const dir = process.env.DECOUPLED_DRUPAL_MOCK_DUMP || fileURLToPath(new URL('../../../presets/umami/dump', import.meta.url))
-const available = !!dir && existsSync(join(dir, 'oracle', 'queries.json.gz'))
+const available = !!dir && existsSync(join(oracleDir(dir), 'reads.json.gz'))
 
 describe.skipIf(!available)('the engine against the oracle', () => {
   // The body runs even when skipped, so nothing is read without a build.
   const dump = available ? loadDump(dir!) : undefined
   const drupal = dump ? createDrupal(dump, { baseUrl: dump.manifest.origin }) : undefined
-  const entries = available ? JSON.parse(gunzipSync(readFileSync(join(dir!, 'oracle', 'queries.json.gz'))).toString('utf8')) as Array<{ request: string, status: number, body: unknown }> : []
+  const entries = available ? JSON.parse(gunzipSync(readFileSync(join(oracleDir(dir!), 'reads.json.gz'))).toString('utf8')) as Array<{ request: string, status: number, body: unknown }> : []
 
   it.each(entries.map((entry) => [entry.request, entry] as const))('%s', (_request, entry) => {
     const answer = drupal!.handle('GET', entry.request)
@@ -36,6 +38,15 @@ describe.skipIf(!available)('the public files of a build', () => {
     const urls = Object.values(dump.resources).flatMap((types) => types['file--file'] || []).map((file) => (file.attributes as { uri?: { url?: string } } | undefined)?.uri?.url).filter((url): url is string => !!url?.startsWith('/sites/default/files/'))
     expect(urls.length).toBeGreaterThan(0)
     expect([...new Set(urls)].filter((url) => !existsSync(join(dir!, 'files', decodeURIComponent(url.slice('/sites/default/files/'.length)))))).toEqual([])
+  })
+})
+
+describe.skipIf(!available)('the recordings of a build', () => {
+  it('are outside the dump, and are the ones its manifest names', () => {
+    const { manifest } = loadDump(dir!)
+    expect(existsSync(join(dir!, 'oracle'))).toBe(false)
+    expect(Object.keys(manifest.oracle || {})).toContain('reads.json.gz')
+    for (const [file, hash] of Object.entries(manifest.oracle || {})) expect(createHash('sha256').update(readFileSync(join(oracleDir(dir!), file))).digest('hex'), file).toBe(hash)
   })
 })
 

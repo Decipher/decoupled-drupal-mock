@@ -2,8 +2,10 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
-import type { Answer, Document, Dump, Manifest, Recorded, RecordedScenario, Resource, Scenario } from 'decoupled-drupal-mock'
-import { KEPT_HEADERS, resolve, sortedSearch } from 'decoupled-drupal-mock'
+import type { Answer, RecordedWrite, WriteScript } from 'decoupled-drupal-mock/recorded-writes'
+import type { Document, Dump, Manifest, Recorded, Resource } from 'decoupled-drupal-mock'
+import { sortedSearch } from 'decoupled-drupal-mock'
+import { KEPT_HEADERS, resolve } from 'decoupled-drupal-mock/recorded-writes'
 
 export interface CrawlOptions {
   /** The Drupal to crawl, such as `http://127.0.0.1:8888`. */
@@ -30,8 +32,10 @@ export interface CrawlOptions {
   exclude?: (resource: Resource) => boolean
   /** The accounts and consumers the mock signs in, written to the dump. The CLI creates them in the Drupal first. */
   identities?: NonNullable<Dump['identities']>
-  /** Write and sign-in scenarios, run against the Drupal as their accounts and recorded for the engine's replay. */
-  scenarios?: Scenario[]
+  /** Write and sign-in scripts, run against the Drupal as their accounts and recorded for the engine's replay. */
+  writes?: WriteScript[]
+  /** Where the oracle's recordings go: the evidence for the engine's tests, which a consumer has no use for. Beside the dump by default, as `<out>.oracle`. */
+  oracleOut?: string
   /**
    * Reads a resource no user may read through JSON:API, such as a block whose visibility denies every request, so
    * the dump can place it in a collection and report it omitted as Drupal does. The CLI reads it through drush.
@@ -95,6 +99,15 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     mkdirSync(join(path, '..'), { recursive: true })
     writeFileSync(path, bytes)
     files[file] = createHash('sha256').update(bytes).digest('hex')
+  }
+  // The recordings live outside the dump: a consumer loads the dump, and only the engine's tests read these.
+  const oracleOut = (options.oracleOut || `${options.out.replace(/\/+$/, '')}.oracle`).replace(/\/+$/, '')
+  const oracleFiles: Record<string, string> = {}
+  const recordOracle = (file: string, body: unknown): void => {
+    const bytes = gzipSync(Buffer.from(relink(JSON.stringify(body))), { level: 9 })
+    mkdirSync(oracleOut, { recursive: true })
+    writeFileSync(join(oracleOut, file), bytes)
+    oracleFiles[file] = createHash('sha256').update(bytes).digest('hex')
   }
   const write = (file: string, body: unknown): void => {
     const text = relink(JSON.stringify(body))
@@ -302,7 +315,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         if (plain.status === 403 || plain.status === 405) recorded[`GET ${pathname}`] = recorded[`GET ${pathname}`] || plain
       }
     }
-    write('oracle/queries.json.gz', entries)
+    recordOracle('reads.json.gz', entries)
     log(`${entries.length} oracle entries`)
   }
   write('recorded/routes.json.gz', recorded)
@@ -329,8 +342,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   }
   log(`${publicFiles.size} public files kept`)
 
-  // The scenarios: each step as its account, every answer recorded, and what they created deleted afterwards.
-  if (options.scenarios?.length) {
+  // The scripts: each step as its account, every answer recorded, and what they created deleted afterwards.
+  if (options.writes?.length) {
     const identities = options.identities
     const tokenFor = async (name: string): Promise<string | undefined> => {
       if (name === 'anonymous') return undefined
@@ -342,23 +355,23 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       if (!granted.access_token) throw new Error(`No token for "${name}".`)
       return granted.access_token
     }
-    const recorded: RecordedScenario[] = []
+    const recorded: RecordedWrite[] = []
     const resourceId = (type: string, index: number) => all[options.defaultLanguage]?.[type]?.[index]?.id
-    /** What a scenario left in the Drupal, deleted before the next one reads it. A refusal stops the build: the site would keep it. */
+    /** What a script left in the Drupal, deleted before the next one reads it. A refusal stops the build: the site would keep it. */
     const clean = async (created: string[]): Promise<void> => {
       for (const path of created) {
         const response = await fetch(`${base}${path}`, { method: 'DELETE', headers: { ...authorized() } })
         log(`  cleaned up ${path}: ${response.status}`)
-        if (response.status !== 204 && response.status !== 404) throw new Error(`DELETE ${path} answered ${response.status}: the scenario's content is still in the Drupal.`)
+        if (response.status !== 204 && response.status !== 404) throw new Error(`DELETE ${path} answered ${response.status}: the script's content is still in the Drupal.`)
       }
     }
-    for (const scenario of options.scenarios) {
+    for (const script of options.writes) {
       const answers: Answer[] = []
       const tokens = new Map<string, string | undefined>()
       const created: string[] = []
       try {
-        for (const step of scenario.steps) {
-          const as = step.as || scenario.as
+        for (const step of script.steps) {
+          const as = step.as || script.as
           if (!tokens.has(as)) tokens.set(as, await tokenFor(as))
           const resolved = resolve(step, answers, resourceId)
           const headers: Record<string, string> = { accept: 'application/vnd.api+json, application/json;q=0.9, */*;q=0.8' }
@@ -378,10 +391,10 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       } finally {
         await clean(created)
       }
-      recorded.push({ ...scenario, answers })
-      log(`scenario "${scenario.name}": ${answers.map((answer) => answer.status).join(' ')}`)
+      recorded.push({ ...script, answers })
+      log(`script "${script.name}": ${answers.map((answer) => answer.status).join(' ')}`)
     }
-    write('oracle/writes.json.gz', recorded)
+    recordOracle('writes.json.gz', recorded)
   }
 
   if (options.identities) {
@@ -405,6 +418,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     languages: options.languages,
     defaultLanguage: options.defaultLanguage,
     files,
+
+    ...(Object.keys(oracleFiles).length ? { oracle: oracleFiles } : {}),
   }
   writeFileSync(join(options.out, 'manifest.json'), JSON.stringify(manifest, null, 2))
   return manifest

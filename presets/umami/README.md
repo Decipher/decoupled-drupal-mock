@@ -10,6 +10,8 @@ const drupal = createDrupal(umami(), { baseUrl: 'https://drupal.test' });
 const index = await drupal.fetch('https://drupal.test/jsonapi');
 ```
 
-`dump/manifest.json` names the Drupal core version the build came from and the hash of every file. `oracle.txt` is the query list the build records with Drupal's answers, which the engine's fidelity test holds it to.
+`dump/` is what the mock loads, and what this package publishes. `dump/manifest.json` names the Drupal core version the build came from and the hash of every file.
+
+The rest is evidence, kept in the repository and not published. `oracle.txt` and `writes.json` are what the build asks a real Drupal, and `oracle/` holds its answers, which the engine's tests are held to.
 
 Built for [Druxt](https://druxtjs.org).

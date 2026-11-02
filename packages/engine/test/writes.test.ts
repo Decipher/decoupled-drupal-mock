@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
-import { createDrupal, resolve, volatile } from '../src'
+import { createDrupal } from '../src'
+import { resolve, volatile } from '../src/recorded-writes'
 import type { Document, Resource } from '../src'
 import { dump } from './dump'
 
@@ -414,7 +415,7 @@ describe('writes across languages, and accounts without a user', () => {
   })
 })
 
-describe('what the review of the scenarios found', () => {
+describe('what the review of the scripts found', () => {
   it('moves every relationship link to the new revision, and keeps a translation\'s prefix in them', async () => {
     const d = drupal()
     const admin = bearer(d.tokenFor('admin').access)
@@ -430,7 +431,7 @@ describe('what the review of the scenarios found', () => {
   })
 })
 
-describe('the scenario helpers', () => {
+describe('the script helpers', () => {
   it('refuses a step that names what an earlier answer did not give, and resolves a machine name with digits', () => {
     expect(() => resolve('/x/{1.data.id}', [{ status: 403, headers: {}, body: {} }], () => undefined)).toThrow(/not in the answer of step 1/)
     expect(resolve('/x/{node--article2:0}', [], () => 'found')).toBe('/x/found')

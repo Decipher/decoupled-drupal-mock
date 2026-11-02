@@ -3,21 +3,23 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
-import { createDrupal, KEPT_HEADERS, resolve, volatile } from '../src'
-import type { Answer, RecordedScenario } from '../src'
+import { createDrupal } from '../src'
+import { KEPT_HEADERS, resolve, volatile } from '../src/recorded-writes'
+import type { Answer, RecordedWrite } from '../src/recorded-writes'
 import { loadDump } from '../src/load'
+import { oracleDir } from './oracle-dir.ts'
 
 const isThemedOrToken = (answer: Answer, path: string): boolean => (typeof answer.body === 'string' && String(answer.headers['content-type']).includes('html')) || path === '/session/token'
 
-/** The write and sign-in scenarios a preset's build recorded, replayed on a fresh instance each. */
+/** The write and sign-in scripts a preset's build recorded, replayed on a fresh instance each. */
 const dir = process.env.DECOUPLED_DRUPAL_MOCK_DUMP || fileURLToPath(new URL('../../../presets/umami/dump', import.meta.url))
-const available = existsSync(join(dir, 'oracle', 'writes.json.gz'))
+const available = existsSync(join(oracleDir(dir), 'writes.json.gz'))
 
-describe.skipIf(!available)('the engine against the recorded scenarios', () => {
+describe.skipIf(!available)('the engine against the recorded scripts', () => {
   const dump = available ? loadDump(dir) : undefined
-  const scenarios = available ? JSON.parse(gunzipSync(readFileSync(join(dir, 'oracle', 'writes.json.gz'))).toString('utf8')) as RecordedScenario[] : []
+  const scripts = available ? JSON.parse(gunzipSync(readFileSync(join(oracleDir(dir), 'writes.json.gz'))).toString('utf8')) as RecordedWrite[] : []
 
-  it.each(scenarios.map((scenario) => [scenario.name, scenario] as const))('%s', async (_name, scenario) => {
+  it.each(scripts.map((script) => [script.name, script] as const))('%s', async (_name, script) => {
     const drupal = createDrupal(dump!, { baseUrl: dump!.manifest.origin })
     const resourceId = (type: string, index: number) => dump!.resources[dump!.manifest.defaultLanguage]?.[type]?.[index]?.id
     const tokens = new Map<string, string | undefined>()
@@ -32,10 +34,10 @@ describe.skipIf(!available)('the engine against the recorded scenarios', () => {
       return tokens.get(name)
     }
     const answers: Answer[] = []
-    scenario.steps.forEach((step, index) => {
+    script.steps.forEach((step, index) => {
       const resolved = resolve(step, answers, resourceId)
       const headers: Record<string, string> = {}
-      const bearer = resolved.bearer ?? tokenFor(resolved.as || scenario.as)
+      const bearer = resolved.bearer ?? tokenFor(resolved.as || script.as)
       if (bearer) headers.authorization = `Bearer ${bearer}`
       let body: string | undefined
       if (resolved.form) { headers['content-type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(resolved.form).toString() }
@@ -45,7 +47,7 @@ describe.skipIf(!available)('the engine against the recorded scenarios', () => {
       const kept = Object.fromEntries(KEPT_HEADERS.map((name) => [name, Object.entries(answer.headers).find(([key]) => key.toLowerCase() === name)?.[1]]).filter(([, value]) => value).map(([name, value]) => [name, name === 'content-type' ? String(value).split(';')[0]!.trim() : String(value)]))
       const got: Answer = { status: answer.status, headers: kept, body: answer.body }
       answers.push(got)
-      const expected = scenario.answers[index]!
+      const expected = script.answers[index]!
       const label = `step ${index + 1}: ${resolved.method} ${resolved.path}`
       expect(got.status, label).toBe(expected.status)
       expect(volatile(got.headers), label).toEqual(volatile(expected.headers))

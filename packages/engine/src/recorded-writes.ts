@@ -1,4 +1,4 @@
-/** A step of a write or sign-in scenario, as the build records it and the engine's test replays it. */
+/** A step of a write or sign-in script, as the build records it and the engine's test replays it. */
 export interface Step {
   method: string
   path: string
@@ -8,18 +8,18 @@ export interface Step {
   form?: Record<string, string>
   /** A JSON body, sent as `application/json`. */
   json?: unknown
-  /** The account this step runs as, over the scenario's; `anonymous` sends no credentials. */
+  /** The account this step runs as, over the script's; `anonymous` sends no credentials. */
   as?: string
   /** A bearer token for this step: a placeholder such as `{1.access_token}`, or a literal. */
   bearer?: string
 }
 
-export interface Scenario { name: string, as: string, steps: Step[] }
+export interface WriteScript { name: string, as: string, steps: Step[] }
 
 /** What a step answered, as the build recorded it. */
 export interface Answer { status: number, headers: Record<string, string>, body: unknown }
 
-export interface RecordedScenario extends Scenario { answers: Answer[] }
+export interface RecordedWrite extends WriteScript { answers: Answer[] }
 
 /** The keys whose whole value Drupal generated. */
 const GENERATED_KEYS = new Set(['id', 'uuid', 'sub'])
