@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { base64url, randomBytes, randomUUID, sha256, toHex } from './bytes.js'
 import type { Dump, Resource } from './types.js'
 
 /** An account the mock signs in: a user of the dump, with the password its build gave it. */
@@ -42,10 +42,8 @@ export interface Token { access: string, refresh?: string, name: string, roles: 
 
 export const ANONYMOUS: Session = { uid: 0, roles: ['anonymous'] }
 
-const base64url = (bytes: Buffer): string => bytes.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-
 /** A token in the shape of Simple OAuth's JWTs: three dot-separated parts, so a client that checks the shape is content. */
-const mint = (): string => `${base64url(Buffer.from(JSON.stringify({ typ: 'JWT', alg: 'RS256' })))}.${base64url(randomBytes(48))}.${base64url(randomBytes(32))}`
+const mint = (): string => `${base64url(JSON.stringify({ typ: 'JWT', alg: 'RS256' }))}.${base64url(randomBytes(48))}.${base64url(randomBytes(32))}`
 
 /**
  * The mock's users, roles, consumers and tokens. Tokens live with the instance: a test signs in, and its tokens go
@@ -170,7 +168,7 @@ export class Identity {
         if (code.redirectUri !== form.get('redirect_uri')) return fail(400, 'invalid_request', 'The request is missing a required parameter, includes an invalid parameter value, includes a parameter more than once, or is otherwise malformed.', 'Check the `redirect_uri` parameter')
         if (code.challenge) {
           const verifier = form.get('code_verifier') || ''
-          const expected = code.method === 'S256' ? base64url(createHash('sha256').update(verifier).digest()) : verifier
+          const expected = code.method === 'S256' ? base64url(sha256(verifier)) : verifier
           if (expected !== code.challenge) return fail(400, 'invalid_grant', 'Authorization code has expired', 'Failed to verify `code_verifier`.')
         }
         if (!this.userNamed(code.name)) return noUser()
@@ -228,7 +226,7 @@ export class Identity {
     const csrf = base64url(randomBytes(32))
     this.cookies.set(id, { name, csrf })
     const attributes = user.attributes as Record<string, unknown>
-    return { status: 200, body: { current_user: { uid: String(attributes.drupal_internal__uid), roles: ['authenticated'], name }, csrf_token: csrf, logout_token: base64url(randomBytes(32)) }, cookie: `SESS${createHash('sha256').update(name).digest('hex').slice(0, 32)}=${id}; path=/; HttpOnly; SameSite=Lax` }
+    return { status: 200, body: { current_user: { uid: String(attributes.drupal_internal__uid), roles: ['authenticated'], name }, csrf_token: csrf, logout_token: base64url(randomBytes(32)) }, cookie: `SESS${toHex(sha256(name)).slice(0, 32)}=${id}; path=/; HttpOnly; SameSite=Lax` }
   }
 
   /** Why a cookie session's write is refused: Drupal asks it for its token. A bearer token and a visitor are not asked. */
