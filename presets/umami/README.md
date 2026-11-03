@@ -18,12 +18,12 @@ The baseline is the site as released modules answer it, and `dump/manifest.json`
 
 The build added these to the site, and the mock signs them in. Each password, and each client's secret, is the same as its name.
 
-| Account  | Role                            |
-| -------- | ------------------------------- |
-| `admin`  | Administrator, from the install |
-| `editor` | Editor                          |
-| `author` | Author                          |
-| `reader` | None beyond authenticated       |
+| Account  | Role                                                                                                                  |
+| -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `admin`  | Administrator, from the install. It has no password here and no OAuth client, so only `tokenFor('admin')` signs it in |
+| `editor` | Editor                                                                                                                |
+| `author` | Author                                                                                                                |
+| `reader` | None beyond authenticated                                                                                             |
 
 | OAuth client                   | Grants                                                                                                       | Acts as               |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------ | --------------------- |
