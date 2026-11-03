@@ -3,6 +3,7 @@ import { connectMock } from './control.js'
 import type { MockClient } from './control.js'
 import type { ExtendedDrupal, Extension } from './extend.js'
 import { createMock } from './mock.js'
+import { graphqlFactory } from './optional.js'
 import { loadDump } from './load.js'
 import { presetDir } from './preset.js'
 import { listen } from './serve.js'
@@ -37,10 +38,12 @@ const freePort = (): Promise<number> => new Promise((resolve, reject) => {
 export const startMock = async (preset: string, options: { extensions?: Extension[] } = {}): Promise<Mock> => {
   const dir = presetDir(preset)
   const dump = loadDump(dir)
+  // With the graphql package installed, the schema's endpoint answers too.
+  const create = await graphqlFactory()
   for (let attempt = 0; ; attempt++) {
     const port = await freePort()
     const url = `http://127.0.0.1:${port}`
-    const drupal = createMock(dump, { baseUrl: url, extensions: options.extensions || [] })
+    const drupal = createMock(dump, { baseUrl: url, extensions: options.extensions || [], ...(create ? { create } : {}) })
     try {
       const { close } = await listen(drupal, port, '127.0.0.1', { files: dir, control: true })
       return { ...connectMock(url), reset: async () => drupal.reset(), tokenFor: async (name, scopes) => drupal.tokenFor(name, scopes), scenario: async (name) => drupal.scenario(name), requests: async () => drupal.requests(), sent: async () => drupal.sent(), advanceTime: async (seconds) => drupal.advanceTime(seconds), drupal, close }

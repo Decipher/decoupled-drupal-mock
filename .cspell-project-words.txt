@@ -96,3 +96,5 @@ ddev
 DDEV
 lndo
 cacheinfo
+Inglés
+Español

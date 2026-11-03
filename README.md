@@ -101,6 +101,25 @@ npx decoupled-drupal-mock serve umami --control --extension ./next.mjs
 
 The engine accepts POST, PATCH and DELETE requests on JSON:API resources and relationships. It answers them with Drupal's own validation, permission and content moderation errors. It also supports Drupal's cookie sign-in, and Simple OAuth's token, userinfo and authorize endpoints. Each `createDrupal()` keeps its own copy of what it writes, so one test's writes never reach another's, and `reset()` restores the preset. In a test, `tokenFor('editor')` returns a token for the `editor` user directly, without the OAuth flow. It takes the Drupal username.
 
+## GraphQL
+
+A preset built from a Drupal with [GraphQL Compose](https://www.drupal.org/project/graphql_compose) carries the schema as Drupal served it and its mapping onto Drupal. With the `graphql` package installed, `decoupled-drupal-mock/graphql` answers the schema's endpoint beside everything else: entity queries from the resources, `route` from the recorded Decoupled Router answers, `menu` from the recorded menu items, connections by Compose's cursor rules, and Compose's errors.
+
+```ts
+import { createDrupal } from 'decoupled-drupal-mock/graphql';
+
+const drupal = createDrupal(umami(), { baseUrl: 'https://drupal.test' });
+await drupal.fetch('https://drupal.test/graphql', {
+  method: 'POST',
+  body: JSON.stringify({
+    query:
+      '{ route(path: "/en/recipes/borscht-with-pork-ribs") { ... on RouteInternal { entity { ... on NodeRecipe { title } } } } }',
+  }),
+});
+```
+
+The CLI, the msw handlers and the server answer it too once `graphql` is installed. The Umami preset records 42 queries with Drupal's answers, and the engine's fidelity test replays them.
+
 ## Running a frontend against the mock
 
 Any frontend that reads Drupal over HTTP can use the mock's server as its Drupal. Start the server, then point the frontend's Drupal URL at it:
@@ -117,7 +136,7 @@ The images and other files the content links to are included in the preset and s
 
 ## Fidelity
 
-Each preset includes an oracle: a list of real client requests, with the answers a real Drupal gave. It covers reads as well as writes and sign-in, errors included. The fidelity tests send each request to the engine and compare its answer with Drupal's. For Drupal's themed HTML pages they compare the status and headers, not the markup. All 151 of the Umami preset's read entries match, of which 10 are 404s and 1 is a 403, and so do all 52 write steps. The oracle covers Umami's request list, not every request a client could make.
+Each preset includes an oracle: a list of real client requests, with the answers a real Drupal gave. It covers reads and writes, and also sign-in and GraphQL, errors included. The fidelity tests send each request to the engine and compare its answer with Drupal's. For Drupal's themed HTML pages they compare the status and headers, not the markup. All 151 of the Umami preset's read entries match, of which 10 are 404s and 1 is a 403, and so do all 52 write steps and all 42 GraphQL queries. The oracle covers Umami's request list, not every request a client could make.
 
 ## Building a preset
 

@@ -219,6 +219,15 @@ describe('a sort over translations', () => {
   })
 })
 
+describe('a base URL and path with trailing slashes', () => {
+  it('reads as one without, at any length', async () => {
+    const trimmed = createDrupal(dump, { baseUrl: `https://drupal.test${'/'.repeat(100000)}`, basePath: '/jsonapi///' })
+    const response = await trimmed.fetch('https://drupal.test/jsonapi/node/page/p-1')
+    expect(response.status).toBe(200)
+    expect(((await response.json()) as { links: { self: { href: string } } }).links.self.href).toBe('https://drupal.test/jsonapi/node/page/p-1')
+  })
+})
+
 describe('what the first review found', () => {
   const hidden = createDrupal({ ...dump, access: { en: { 'node--page': { hidden: ['field_secret'] }, 'file--file': { forbidden: true } } } }, { baseUrl: 'https://drupal.test' })
   const read = async (drupal: ReturnType<typeof createDrupal>, path: string) => { const response = await drupal.fetch(`https://drupal.test${path}`); const text = await response.text(); return { status: response.status, body: text.startsWith('<') ? { meta: { html: text } } : JSON.parse(text) as Document } }

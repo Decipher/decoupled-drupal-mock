@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { UNSAFE_KEYS } from './own.js'
-import type { Document, Dump, Manifest, Recorded, Resource } from './types.js'
+import type { ComposeMeta, Document, Dump, Manifest, Recorded, Resource } from './types.js'
 
 /** Every file under a directory, as paths relative to it. */
 const walk = (dir: string, base = dir): string[] => readdirSync(dir).flatMap((name) => {
@@ -11,8 +11,44 @@ const walk = (dir: string, base = dir): string[] => readdirSync(dir).flatMap((na
   return statSync(path).isDirectory() ? walk(path, base) : [relative(base, path).split('\\').join('/')]
 })
 
-const parseBytes = <T>(file: string, content: Buffer): T => JSON.parse((file.endsWith('.gz') ? gunzipSync(content) : content).toString('utf8')) as T
-const readJson = <T>(path: string): T => parseBytes<T>(path, readFileSync(path))
+/** A file's content: text for `.graphql`, else its JSON, gunzipped when its name ends in `.gz`. */
+export const parseFile = <T>(file: string, bytes: Uint8Array | string): T => {
+  const text = typeof bytes === 'string' ? bytes : (file.endsWith('.gz') ? gunzipSync(bytes) : Buffer.from(bytes)).toString('utf8')
+  return (file.endsWith('.graphql') ? text : JSON.parse(text)) as T
+}
+
+const readJson = <T>(path: string): T => parseFile<T>(path, readFileSync(path))
+
+/** A dump from its manifest and a reader of each file's parsed content, however the files are stored. */
+export const assemble = (manifest: Manifest, read: <T>(file: string) => T): Dump => {
+  // Maps with no prototype, and a file whose path names a prototype key refused, so no dump writes into Object.
+  const dump: Dump = { manifest, index: Object.create(null), resources: Object.create(null), recorded: Object.create(null) }
+  for (const file of Object.keys(manifest.files)) {
+    const [kind, ...rest] = file.split('/')
+    if (rest.some((segment) => UNSAFE_KEYS.has(segment.replace(/\.(json(\.gz)?|graphql)$/, '')))) throw new Error(`${file} names a key no dump may use.`)
+    if (kind === 'index') {
+      dump.index[rest[0]!.replace(/\.json(\.gz)?$/, '')] = read<Document>(file)
+    } else if (kind === 'resources') {
+      const [langcode, name] = rest as [string, string]
+      dump.resources[langcode] = dump.resources[langcode] || Object.create(null)
+      dump.resources[langcode]![name.replace(/\.json(\.gz)?$/, '')] = read<Resource[]>(file)
+    } else if (kind === 'access') {
+      const access: NonNullable<Dump['access']> = dump.access ?? (dump.access = Object.create(null) as NonNullable<Dump['access']>)
+      access[rest[0]!.replace(/\.json(\.gz)?$/, '')] = read<NonNullable<Dump['access']>[string]>(file)
+    } else if (kind === 'identities.json') {
+      dump.identities = read<NonNullable<Dump['identities']>>(file)
+    } else if (kind === 'recorded') {
+      Object.assign(dump.recorded, read<Record<string, Recorded>>(file))
+    } else if (kind === 'graphql' && rest[0] === 'schema.graphql') {
+      dump.graphql = { ...(dump.graphql || { compose: { endpoint: '/graphql', types: {} } }), schema: read<string>(file) }
+    } else if (kind === 'graphql' && rest[0] === 'compose.json') {
+      // A build without drush writes no mapping.
+      const compose = read<Partial<ComposeMeta> & { endpoint: string }>(file)
+      dump.graphql = { ...(dump.graphql || { schema: '' }), compose: { ...compose, types: compose.types || {} } }
+    }
+  }
+  return dump
+}
 
 /**
  * Reads a preset build from its directory and checks every file against the manifest's hashes, so a consumer
@@ -34,33 +70,7 @@ export const loadDump = (dir: string): Dump => {
     bytes.set(file, content)
   }
   for (const file of Object.keys(manifest.files)) {
-    try {
-      statSync(join(dir, file))
-    } catch {
-      throw new Error(`${file} is in the manifest of ${manifest.preset} but missing from ${dir}.`)
-    }
+    if (!bytes.has(file)) throw new Error(`${file} is in the manifest of ${manifest.preset} but missing from ${dir}.`)
   }
-  // Maps with no prototype, and a file whose path names a prototype key refused, so no dump writes into Object.
-  const dump: Dump = { manifest, index: Object.create(null), resources: Object.create(null), recorded: Object.create(null) }
-  const parsed = <T>(file: string): T => parseBytes<T>(file, bytes.get(file)!)
-  for (const file of Object.keys(manifest.files)) {
-    const [kind, ...rest] = file.split('/')
-    if (rest.some((segment) => UNSAFE_KEYS.has(segment.replace(/\.json(\.gz)?$/, '')))) throw new Error(`${file} names a key no dump may use.`)
-    if (kind === 'index') {
-      dump.index[rest[0]!.replace(/\.json(\.gz)?$/, '')] = parsed<Document>(file)
-    } else if (kind === 'resources') {
-      const [langcode, name] = rest as [string, string]
-      dump.resources[langcode] = dump.resources[langcode] || Object.create(null)
-      dump.resources[langcode]![name.replace(/\.json(\.gz)?$/, '')] = parsed<Resource[]>(file)
-    } else if (kind === 'access') {
-      const access: NonNullable<Dump['access']> = dump.access ?? (dump.access = Object.create(null) as NonNullable<Dump['access']>)
-      access[rest[0]!.replace(/\.json(\.gz)?$/, '')] = parsed<NonNullable<Dump['access']>[string]>(file)
-    } else if (kind === 'identities.json') {
-      dump.identities = parsed<NonNullable<Dump['identities']>>(file)
-    } else if (kind === 'recorded') {
-      const entries = parsed<Record<string, Recorded>>(file)
-      Object.assign(dump.recorded, entries)
-    }
-  }
-  return dump
+  return assemble(manifest, (file) => parseFile(file, bytes.get(file)!))
 }

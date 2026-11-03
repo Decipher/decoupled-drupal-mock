@@ -1,0 +1,144 @@
+[
+  {
+    "name": "the schema information",
+    "query": "{ info { description home version languages { id name direction } } }"
+  },
+  {
+    "name": "a recipe by route, with its fields, tags, image, summary and translations",
+    "query": "{ route(path: \"/en/recipes/borscht-with-pork-ribs\") { __typename ... on RouteInternal { url internal breadcrumbs { title url internal } entity { __typename ... on NodeRecipe { id title path status promote sticky created { timestamp timezone offset time } changed { time } langcode { id name direction } cookingTime preparationTime numberOfServings difficulty ingredients tags { __typename ... on TermTag { id name path } } recipeCategory { __typename ... on TermRecipeCategory { id name path } } mediaImage { __typename ... on MediaImage { id name path status mediaImage { url width height alt title size mime } } } summary { value format processed } recipeInstruction { value format processed } translations { title path langcode { id } } } } } } }"
+  },
+  {
+    "name": "a recipe by its Spanish route",
+    "query": "{ route(path: \"/es/recipes/borscht-con-costillas-de-cerdo\") { __typename ... on RouteInternal { url entity { __typename ... on NodeRecipe { title path langcode { id name } tags { ... on TermTag { name path } } translations { title path langcode { id } } } } } } }"
+  },
+  {
+    "name": "a recipe by its path with the language given",
+    "query": "{ route(path: \"/es/recipes/borscht-con-costillas-de-cerdo\", langcode: \"es\") { __typename ... on RouteInternal { url entity { __typename ... on NodeRecipe { title path langcode { id } } } } } }"
+  },
+  {
+    "name": "a view page by route: no entity",
+    "query": "{ route(path: \"/en/recipes\") { __typename ... on RouteInternal { url internal breadcrumbs { title url internal } entity { __typename } } } }"
+  },
+  {
+    "name": "the front page by route",
+    "query": "{ route(path: \"/en\") { __typename ... on RouteInternal { url internal breadcrumbs { title url } entity { __typename } } } }"
+  },
+  { "name": "a path nothing answers", "query": "{ route(path: \"/en/nothing-here\") { __typename } }" },
+  {
+    "name": "an external route",
+    "query": "{ route(path: \"https://druxtjs.org\") { __typename ... on RouteExternal { url internal } } }"
+  },
+  {
+    "name": "an article by route, with its body, image, tags and translations",
+    "query": "{ route(path: \"/en/articles/give-it-a-go-and-grow-your-own-herbs\") { __typename ... on RouteInternal { url breadcrumbs { title url } entity { __typename ... on NodeArticle { id title path body { value format processed } mediaImage { __typename ... on MediaImage { id name path status mediaImage { url width height alt title size mime } } } tags { __typename ... on TermTag { id name path weight } } created { time } changed { time } promote sticky status translations { title path langcode { id } } } } } } }"
+  },
+  {
+    "name": "a term by route",
+    "query": "{ route(path: \"/en/tags/soup\") { __typename ... on RouteInternal { url breadcrumbs { title url } entity { __typename ... on TermTag { id name path weight status description { value format processed } parent { __typename } langcode { id } changed { timestamp } translations { title path langcode { id } } } } } } }"
+  },
+  {
+    "name": "a page by route",
+    "query": "{ route(path: \"/en/about-umami\") { __typename ... on RouteInternal { url breadcrumbs { title url } entity { __typename ... on NodePage { id title path body { value format processed } status translations { title path langcode { id } } } } } } }"
+  },
+  {
+    "name": "a recipe by id",
+    "query": "{ node(id: \"{node--recipe:0}\") { __typename ... on NodeRecipe { id title path langcode { id } cookingTime ingredients } } }"
+  },
+  {
+    "name": "a recipe by id in Spanish",
+    "query": "{ node(id: \"{node--recipe:0}\", langcode: \"es\") { __typename ... on NodeRecipe { id title path langcode { id } recipeCategory { ... on TermRecipeCategory { name } } translations { title path langcode { id } } } } }"
+  },
+  { "name": "a node nothing has", "query": "{ node(id: \"00000000-0000-4000-8000-000000000000\") { __typename } }" },
+  {
+    "name": "a recipe by a variable",
+    "query": "query Recipe($id: ID!) { node(id: $id) { __typename ... on NodeRecipe { title } } }",
+    "variables": { "id": "{node--recipe:1}" }
+  },
+  {
+    "name": "a term by id",
+    "query": "{ term(id: \"{taxonomy_term--tags:0}\") { __typename ... on TermTag { id name path weight } } }"
+  },
+  {
+    "name": "a media item by id",
+    "query": "{ media(id: \"{media--image:0}\") { __typename ... on MediaImage { id name path status mediaImage { url width height alt title size mime } created { timestamp } } } }"
+  },
+  {
+    "name": "the main menu",
+    "query": "{ menu(name: MAIN) { id name items { id title description url internal expanded attributes { class } langcode { id } children { id title url } route { __typename ... on RouteInternal { url entity { __typename } } } } } }"
+  },
+  {
+    "name": "the main menu in Spanish",
+    "query": "{ menu(name: MAIN, langcode: \"es\") { id name items { id title url internal } } }"
+  },
+  { "name": "the footer menu", "query": "{ menu(name: FOOTER) { id name items { id title url internal } } }" },
+  {
+    "name": "the account menu",
+    "query": "{ menu(name: ACCOUNT) { id name items { id title url internal expanded children { id title } } } }"
+  },
+  {
+    "name": "the first two recipes, with their cursors",
+    "query": "{ nodeRecipes(first: 2) { edges { cursor node { id title created { timestamp } } } nodes { title } pageInfo { hasNextPage hasPreviousPage startCursor endCursor } } }"
+  },
+  {
+    "name": "the two recipes after the second",
+    "query": "{ nodeRecipes(first: 2, after: \"eyJiYWNraW5nVHlwZSI6Im5vZGUiLCJiYWNraW5nSWQiOjIsInNvcnRWYWx1ZSI6IjIiLCJmaWx0ZXJzIjp7InB1Ymxpc2hlZCI6bnVsbCwibGFuZ2NvZGUiOm51bGx9fQ==\") { edges { cursor node { title } } pageInfo { hasNextPage hasPreviousPage startCursor endCursor } } }"
+  },
+  {
+    "name": "the last two recipes",
+    "query": "{ nodeRecipes(last: 2) { edges { cursor node { title } } pageInfo { hasNextPage hasPreviousPage startCursor endCursor } } }"
+  },
+  {
+    "name": "the two before the last",
+    "query": "{ nodeRecipes(last: 2, before: \"eyJiYWNraW5nVHlwZSI6Im5vZGUiLCJiYWNraW5nSWQiOjksInNvcnRWYWx1ZSI6IjkiLCJmaWx0ZXJzIjp7InB1Ymxpc2hlZCI6bnVsbCwibGFuZ2NvZGUiOm51bGx9fQ==\") { edges { cursor node { title } } pageInfo { hasNextPage hasPreviousPage startCursor endCursor } } }"
+  },
+  {
+    "name": "recipes by title, reversed, in Spanish",
+    "query": "{ nodeRecipes(first: 3, sortKey: TITLE, reverse: true, langcode: \"es\") { edges { cursor node { title langcode { id } path } } pageInfo { hasNextPage hasPreviousPage startCursor endCursor } } }"
+  },
+  {
+    "name": "recipes by creation, the first five",
+    "query": "{ nodeRecipes(first: 5, sortKey: CREATED_AT) { edges { cursor node { title created { timestamp } } } pageInfo { hasNextPage endCursor } } }"
+  },
+  {
+    "name": "recipes by update, reversed",
+    "query": "{ nodeRecipes(first: 3, sortKey: UPDATED_AT, reverse: true) { edges { cursor node { title changed { timestamp } } } pageInfo { hasNextPage endCursor } } }"
+  },
+  {
+    "name": "every tag by weight",
+    "query": "{ termTags(first: 50, sortKey: WEIGHT) { edges { cursor node { id name weight } } pageInfo { hasNextPage hasPreviousPage endCursor } } }"
+  },
+  {
+    "name": "the first three articles, promoted and sticky",
+    "query": "{ nodeArticles(first: 3, sortKey: PROMOTED) { nodes { title promote sticky } pageInfo { endCursor } } }"
+  },
+  {
+    "name": "the pages",
+    "query": "{ nodePages(first: 5) { nodes { id title path body { format } } pageInfo { hasNextPage } } }"
+  },
+  {
+    "name": "two media images",
+    "query": "{ mediaImages(first: 2) { nodes { id name mediaImage { url width height alt size mime } } pageInfo { hasNextPage endCursor } } }"
+  },
+  {
+    "name": "the recipe categories",
+    "query": "{ termRecipeCategories(first: 10) { nodes { id name path } pageInfo { hasNextPage } } }"
+  },
+  { "name": "first and last together", "query": "{ nodeRecipes(first: 2, last: 2) { nodes { title } } }" },
+  { "name": "neither first nor last", "query": "{ nodeRecipes { nodes { title } } }" },
+  { "name": "more than the limit", "query": "{ nodeRecipes(first: 500) { nodes { title } } }" },
+  {
+    "name": "first with before",
+    "query": "{ nodeRecipes(first: 2, before: \"eyJiYWNraW5nVHlwZSI6Im5vZGUiLCJiYWNraW5nSWQiOjksInNvcnRWYWx1ZSI6IjkiLCJmaWx0ZXJzIjp7InB1Ymxpc2hlZCI6bnVsbCwibGFuZ2NvZGUiOm51bGx9fQ==\") { nodes { title } } }"
+  },
+  { "name": "a cursor nothing made", "query": "{ nodeRecipes(first: 2, after: \"garbage\") { nodes { title } } }" },
+  { "name": "a field nothing has", "query": "{ nope }" },
+  {
+    "name": "a field nothing has, with a suggestion",
+    "query": "{ node(id: \"{node--recipe:0}\") { ... on NodeRecipe { titel } } }"
+  },
+  {
+    "name": "a fragment on a type outside the union",
+    "query": "{ route(path: \"/en\") { ... on NodeRecipe { title } } }"
+  },
+  { "name": "a query nothing can parse", "query": "{ info { version " }
+]

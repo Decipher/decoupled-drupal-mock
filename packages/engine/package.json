@@ -39,6 +39,10 @@
     "./cypress": {
       "types": "./dist/runner.d.ts",
       "default": "./dist/runner.cjs"
+    },
+    "./graphql": {
+      "types": "./dist/graphql.d.ts",
+      "import": "./dist/graphql.js"
     }
   },
   "files": [
@@ -51,7 +55,20 @@
   "license": "GPL-2.0-or-later",
   "devDependencies": {
     "esbuild": "^0.25.0",
+    "graphql": "^17.0.2",
     "typescript": "^5.9.0"
   },
-  "bin": "./dist/cli.js"
+  "bin": "./dist/cli.js",
+  "peerDependencies": {
+    "graphql": "^16.0.0 || ^17.0.0",
+    "msw": "*"
+  },
+  "peerDependenciesMeta": {
+    "graphql": {
+      "optional": true
+    },
+    "msw": {
+      "optional": true
+    }
+  }
 }

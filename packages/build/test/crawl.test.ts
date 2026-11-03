@@ -193,3 +193,10 @@ describe('the password grant probe', () => {
     expect(() => passwordGrantInstalled(500, '<html>')).toThrow('The password grant probe got 500')
   })
 })
+
+describe('a GraphQL build', () => {
+  it('stops before the crawl without the schema\'s mapping', async () => {
+    await expect(crawl({ baseUrl: 'http://127.0.0.1:1', out: 'unused', preset: 'p', languages: { en: 'en' }, defaultLanguage: 'en', drupal: { core: '11', profile: 'p', modules: {} }, graphql: { endpoint: '/graphql' } } as unknown as Parameters<typeof crawl>[0])).rejects.toThrow('needs the schema\'s mapping')
+  })
+})
+

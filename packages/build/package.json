@@ -8,7 +8,8 @@
     "decoupled-drupal-mock-crawl": "./src/cli.ts"
   },
   "dependencies": {
-    "decoupled-drupal-mock": "workspace:^"
+    "decoupled-drupal-mock": "workspace:^",
+    "graphql": "^17.0.2"
   },
   "license": "GPL-2.0-or-later"
 }
