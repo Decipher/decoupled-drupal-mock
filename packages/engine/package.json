@@ -53,5 +53,14 @@
     "esbuild": "^0.25.0",
     "typescript": "^5.9.0"
   },
-  "bin": "./dist/cli.js"
+  "bin": "./dist/cli.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Decipher/decoupled-drupal-mock.git",
+    "directory": "packages/engine"
+  },
+  "homepage": "https://github.com/Decipher/decoupled-drupal-mock#readme",
+  "bugs": {
+    "url": "https://github.com/Decipher/decoupled-drupal-mock/issues"
+  }
 }

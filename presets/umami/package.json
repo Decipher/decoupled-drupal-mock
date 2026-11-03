@@ -18,5 +18,14 @@
   "peerDependencies": {
     "decoupled-drupal-mock": "^1.0.0-alpha.1"
   },
-  "license": "GPL-2.0-or-later"
+  "license": "GPL-2.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Decipher/decoupled-drupal-mock.git",
+    "directory": "presets/umami"
+  },
+  "homepage": "https://github.com/Decipher/decoupled-drupal-mock#readme",
+  "bugs": {
+    "url": "https://github.com/Decipher/decoupled-drupal-mock/issues"
+  }
 }

@@ -6,13 +6,15 @@ This package answers requests to Drupal's decoupled APIs without a running Drupa
 
 It was built for [Druxt](https://druxtjs.org), the decoupled Drupal and Nuxt framework, and works with any client of Drupal's JSON:API.
 
-## Status
+## Install
 
-Not released yet. Once the first release is cut, the packages will install from this repository's releases, and from npm after that:
+The engine and the Umami preset are published to npm as prereleases, under the `alpha` tag:
 
 ```sh
-npm install --save-dev decoupled-drupal-mock decoupled-drupal-mock-umami
+npm install --save-dev decoupled-drupal-mock@alpha decoupled-drupal-mock-umami@alpha
 ```
+
+With Yarn, `yarn add --dev decoupled-drupal-mock@alpha decoupled-drupal-mock-umami@alpha`. Install the two at the same version. The preset needs an engine that reads its dump, and a mismatched engine refuses it with an error that says so. An alpha can change between releases, so pin the version you test against.
 
 ## Terms
 
