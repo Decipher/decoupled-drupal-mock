@@ -1,8 +1,20 @@
-# CodeRabbit reviews when asked, not on every push: the stack is restacked often, and each automatic review would
-# spend the review allowance on the same diff.
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit reviews every pull request when it opens and on each push. It
+# skips a review over 100 changed files, and a rebuilt preset changes more than
+# that. The filters below leave out what the build writes, so a dump rebuild
+# still gets a review of the code and docs beside it.
+language: en-AU
 reviews:
+  path_filters:
+    # The recorded dumps and oracles, written by the build, never by hand.
+    - '!presets/*/dump/**'
+    - '!presets/*/oracle/**'
+    - '!examples/overlays/**/*.json.gz'
+    # Changesets writes these on each release.
+    - '!**/CHANGELOG.md'
+    # Lock files.
+    - '!yarn.lock'
   auto_review:
-    enabled: false
-  review_status: false
-chat:
-  auto_reply: false
+    enabled: true
+    drafts: false
