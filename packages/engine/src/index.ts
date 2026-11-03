@@ -9,6 +9,7 @@ export type { Account, Consumer, Identities, Session, Token } from './identity.j
 export { answerAxios, axiosAdapter, axiosVerbs } from './axios.js'
 export type { AxiosLikeConfig, AxiosLikeResponse } from './axios.js'
 export { createMock } from './mock.js'
+export { useRandomSource } from './bytes.js'
 export type { ExtendedDrupal, Extension, ExtensionAnswer, ExtensionRequest, RecordedRequest, SentRequest, WriteEvent } from './extend.js'
 export type { RecordedOverlay } from './extend.js'
 export { DUMP_FORMAT } from './format.js'

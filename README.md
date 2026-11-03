@@ -29,7 +29,7 @@ With Yarn, `yarn add --dev decoupled-drupal-mock@alpha decoupled-drupal-mock-uma
 - `decoupled-drupal-mock-umami`, the Umami preset. It holds Drupal's demo site in English and Spanish, recorded from a real Drupal 11 install. Its README lists the accounts and OAuth clients it holds.
 - `packages/build`, the crawler that records a preset from a running Drupal. It is part of this repository and is not published.
 
-The engine runs on Node, including under a test runner's jsdom environment. Its root entry uses `node:crypto`, so it does not run in a browser or a service worker. A browser test reaches it over HTTP.
+The engine runs on Node, including under a test runner's jsdom environment, and its root entry also runs in a browser or a service worker. `loadDump` and the server need Node, so read the dump there and pass the object to `createDrupal` in the page.
 
 | Entry point                             | What it holds                                                               |
 | --------------------------------------- | --------------------------------------------------------------------------- |
