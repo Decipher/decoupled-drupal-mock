@@ -18,7 +18,7 @@ export default {
 | Where                   | How                                                                                                                                                                          |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | In the test process     | `createMock(dump, { extensions })` from `decoupled-drupal-mock`, `loadPreset('umami', { extensions })` from `/jest`, or `startMock('umami', { extensions })` from `/testing` |
-| In one test, in process | `mock.drupal.use(extension)`. It cannot add `fixtures`, and `reset()` drops it                                                                                               |
+| In one test, in process | `mock.drupal.use(extension)`. It cannot add `fixtures` or an `overlay`, and `reset()` drops it                                                                               |
 | Playwright              | `withDrupal(test, 'umami', { extensions })` from `/testing`                                                                                                                  |
 | Another process         | `serve umami --control --extension ./file.mjs`, or `spawnMock('umami', { extensions: ['./file.mjs'] })` from `/jest` or `/cypress`, with the file's default export           |
 

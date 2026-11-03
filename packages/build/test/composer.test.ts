@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { composerPatches } from '../src/composer'
+import { composerPatches, drupalModules } from '../src/composer'
 
 const site = (files: Record<string, unknown>): string => {
   const dir = mkdtempSync(join(tmpdir(), 'composer-'))
@@ -25,5 +25,12 @@ describe('the patches a site applies', () => {
 
   it('has none when none are declared', () => {
     expect(composerPatches(site({}), {})).toEqual({})
+  })
+})
+
+describe('the Drupal projects a lock file installs', () => {
+  it('leaves out core\'s own packages and keeps a module whose name starts with core', () => {
+    const packages = ['drupal/core', 'drupal/core-recommended', 'drupal/core-composer-scaffold', 'drupal/core_event_dispatcher', 'drupal/decoupled_router', 'symfony/console'].map((name) => ({ name, version: '1.0.0' }))
+    expect(drupalModules(packages)).toEqual({ core_event_dispatcher: '1.0.0', decoupled_router: '1.0.0' })
   })
 })

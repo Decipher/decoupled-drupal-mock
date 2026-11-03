@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node --experimental-strip-types
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { composerPatches } from './composer.ts'
+import { composerPatches, drupalModules } from './composer.ts'
 import type { ComposerJson } from './composer.ts'
 import { crawl } from './crawl.ts'
 
@@ -87,7 +87,7 @@ const drupal = composer
   ? {
       ...config.drupal,
       core: lockedCore(composer.lock.packages),
-      modules: Object.fromEntries(composer.lock.packages.filter((item) => item.name.startsWith('drupal/') && !item.name.startsWith('drupal/core')).map((item) => [item.name.slice('drupal/'.length), item.version])),
+      modules: drupalModules(composer.lock.packages),
       ...(config.patched ? { patches: composerPatches(config.composerDir!, composer.json) } : {}),
     }
   : config.drupal

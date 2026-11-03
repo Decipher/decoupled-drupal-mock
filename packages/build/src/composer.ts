@@ -26,3 +26,15 @@ export const composerPatches = (dir: string, json: ComposerJson): Record<string,
   }
   return out
 }
+
+/**
+ * The Drupal projects a lock file installs, by name without the `drupal/` vendor. Core's own packages are left out:
+ * `drupal/core` and the `drupal/core-*` ones (`core-recommended`, `core-composer-scaffold` and the like). A module's
+ * name takes underscores, never a hyphen, so `drupal/core_event_dispatcher` is a module and stays.
+ *
+ * @param packages - The lock file's packages.
+ * @returns Each project's version, by name.
+ */
+export const drupalModules = (packages: Array<{ name: string, version: string }>): Record<string, string> => Object.fromEntries(packages
+  .filter((item) => item.name.startsWith('drupal/') && item.name !== 'drupal/core' && !item.name.startsWith('drupal/core-'))
+  .map((item) => [item.name.slice('drupal/'.length), item.version]))

@@ -265,7 +265,9 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
     },
     use: (extension) => {
       // The engine indexes its resources once, so a fixture added now would be missed by collections and includes.
-      if (extension.fixtures) throw new Error(`The extension ${extension.name || ''} has fixtures, which use() cannot add: pass it to createMock or startMock instead.`.replace('  ', ' '))
+      // An overlay is merged into the dump the same way, once, so it is refused for the same reason.
+      const late = extension.fixtures ? 'fixtures' : extension.overlay ? 'an overlay' : undefined
+      if (late) throw new Error(`The extension ${extension.name || ''} has ${late}, which use() cannot add: pass it to createMock or startMock instead.`.replace('  ', ' '))
       added.unshift(extension)
     },
     scenario: (name) => {

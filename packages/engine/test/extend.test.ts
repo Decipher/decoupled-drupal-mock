@@ -157,6 +157,7 @@ describe('what a test does to the mock', () => {
     const mock = createMock(dump, { baseUrl: BASE })
     expect(() => mock.advanceTime(Number.NaN)).toThrow('advanceTime takes a number of seconds, not NaN.')
     expect(() => mock.use({ name: 'late', fixtures: { en: {} } })).toThrow('The extension late has fixtures, which use() cannot add')
+    expect(() => mock.use({ name: 'late', overlay: { recorded: {} } })).toThrow('The extension late has an overlay, which use() cannot add')
   })
 
   it('takes all of that from another process over the control routes', async () => {
