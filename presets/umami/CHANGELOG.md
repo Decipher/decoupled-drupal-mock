@@ -1,5 +1,15 @@
 # decoupled-drupal-mock-umami
 
+## 1.0.0-alpha.2
+
+### Patch Changes
+
+- 5a15f9b: The packages' npm pages link to the repository, and the engine's has a README.
+- Updated dependencies [d0c1845]
+- Updated dependencies [c0d1efe]
+- Updated dependencies [5a15f9b]
+  - decoupled-drupal-mock@1.0.0-alpha.2
+
 ## 1.0.0-alpha.1
 
 ### Minor Changes

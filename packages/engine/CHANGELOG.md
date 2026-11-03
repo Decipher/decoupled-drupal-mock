@@ -1,5 +1,16 @@
 # decoupled-drupal-mock
 
+## 1.0.0-alpha.2
+
+### Minor Changes
+
+- d0c1845: The root entry imports no Node built-in, so `createDrupal` runs in a browser or a service worker over a dump read in Node.
+
+### Patch Changes
+
+- c0d1efe: The engine's build clears `dist` first, so a package built after another branch has no files left over from it.
+- 5a15f9b: The packages' npm pages link to the repository, and the engine's has a README.
+
 ## 1.0.0-alpha.1
 
 ### Minor Changes
