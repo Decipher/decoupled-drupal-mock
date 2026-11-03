@@ -1,6 +1,6 @@
 # Building a preset
 
-The build signs in to a running Drupal as an administrator and records every resource the mock serves. It then reads the site as an anonymous visitor to record what a visitor may see. It also records the router lookups, menus, views and decoupled settings, and the oracle, which is the list of real requests and Drupal's answers to them. Finally it replaces the site's address with a placeholder and writes a manifest with the hash of every file.
+The build signs in to a running Drupal as an administrator and records every resource the mock serves. It then reads the site as an anonymous visitor to record what a visitor may see. It also records the router lookups, menus, views and decoupled settings, and the oracle, which is the list of real requests and Drupal's answers to them. Finally it replaces the site's address with a placeholder and writes a manifest with the hash of every file and the dump's format. An engine refuses a dump in a format it does not read, rather than answering from keys that are not there.
 
 **The build writes to the site it crawls.** With `identities` and `drush` set, it creates accounts, OAuth scopes and consumers, and with `writesFile` it runs the recorded writes. Run it against a throwaway copy of a site, never production.
 

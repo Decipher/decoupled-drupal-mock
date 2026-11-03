@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
@@ -82,6 +83,27 @@ describe.skipIf(!overlays.length).each(overlays)('the %s overlay', (name) => {
     const answer = mock.handle('GET', entry.request)
     expect(answer.status).toBe(entry.status)
     if (typeof entry.body !== 'string') expect(comparable(answer.body)).toEqual(comparable(entry.body))
+  })
+})
+
+describe.skipIf(!available)('the dump\'s format', () => {
+  const withFormat = (format: number | undefined) => {
+    const copy = mkdtempSync(join(tmpdir(), 'format-'))
+    cpSync(dir!, copy, { recursive: true })
+    const manifest = JSON.parse(readFileSync(join(copy, 'manifest.json'), 'utf8')) as Record<string, unknown>
+    if (format === undefined) delete manifest.format
+    else manifest.format = format
+    writeFileSync(join(copy, 'manifest.json'), JSON.stringify(manifest))
+    return copy
+  }
+
+  it('loads format 1, and a manifest from before formats were named', () => {
+    expect(loadDump(withFormat(1)).manifest.preset).toBe('umami')
+    expect(loadDump(withFormat(undefined)).manifest.preset).toBe('umami')
+  })
+
+  it('refuses a format this engine does not read, naming it', () => {
+    expect(() => loadDump(withFormat(2))).toThrow('umami is a dump of format 2, and this engine reads format 1.')
   })
 })
 

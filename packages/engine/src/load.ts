@@ -5,6 +5,7 @@ import { gunzipSync } from 'node:zlib'
 import { UNSAFE_KEYS } from './own.js'
 import type { Document, Dump, Manifest, Recorded, Resource } from './types.js'
 import type { Extension, RecordedOverlay } from './extend.js'
+import { DUMP_FORMAT } from './format.js'
 
 /** Every file under a directory, as paths relative to it. */
 const walk = (dir: string, base = dir): string[] => readdirSync(dir).flatMap((name) => {
@@ -23,6 +24,9 @@ const readJson = <T>(path: string): T => parseBytes<T>(path, readFileSync(path))
  */
 export const loadDump = (dir: string): Dump => {
   const manifest = readJson<Manifest>(join(dir, 'manifest.json'))
+  // A dump in a layout this engine does not know would load, and then answer from keys that are not there.
+  const format = manifest.format ?? 1
+  if (format !== DUMP_FORMAT) throw new Error(`${manifest.preset} is a dump of format ${format}, and this engine reads format ${DUMP_FORMAT}. Install the release of the engine built for it.`)
   // Each file is read once: the bytes that pass the hash check are the bytes parsed.
   const bytes = new Map<string, Buffer>()
   for (const file of walk(dir)) {

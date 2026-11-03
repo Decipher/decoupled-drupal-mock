@@ -27,6 +27,8 @@ export interface Recorded { status: number, headers: Record<string, string>, bod
 /** The manifest of a preset build. */
 export interface Manifest {
   preset: string
+  /** The dump's layout, which an engine checks it can read. A manifest without one is format 1. */
+  format?: number
   /** What the build recorded: Drupal's version, every contributed module's, and any patch that no release of a module holds. */
   drupal: { core: string, profile: string, modules: Record<string, string>, patches?: Record<string, string[]> }
   built: string

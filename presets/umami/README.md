@@ -40,7 +40,7 @@ The preset is the stock site only. A site with a contrib module or a patch the p
 
 ## Published files and evidence
 
-`dump/` is what the mock loads, and what this package publishes. `dump/manifest.json` names the Drupal core version the build came from, the hash of every file, and the hash of every recording the tests replay.
+`dump/` is what the mock loads, and what this package publishes. `dump/manifest.json` names the Drupal core version the build came from, the hash of every file, and the hash of every recording the tests replay. A manifest with no `format` is format 1, which this engine reads.
 
 The rest is evidence, kept in the repository and not published. `oracle.txt` and `writes.json` list the requests the build sends to a real Drupal. `oracle/` stores Drupal's answers, and the engine's tests check against them.
 
