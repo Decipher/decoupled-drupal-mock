@@ -45,6 +45,12 @@ describe.skipIf(!available)('the recordings of a build', () => {
   it('are outside the dump, and are the ones its manifest names', () => {
     const { manifest } = loadDump(dir!)
     expect(existsSync(join(dir!, 'oracle'))).toBe(false)
+    for (const file of Object.keys(manifest.oracle || {})) {
+      const text = gunzipSync(readFileSync(join(oracleDir(dir!), file))).toString('utf8')
+      expect(text, file).not.toMatch(/eyJ[\w-]{10,}\.[\w-]{10,}/)
+      // Whatever shape a token takes, the recorder writes `<token>` in its place.
+      expect(text.match(/"(?:access_token|refresh_token|csrf_token|logout_token)":"(?!<token>")[^"]*"/g), file).toBeNull()
+    }
     expect(Object.keys(manifest.oracle || {})).toContain('reads.json.gz')
     for (const [file, hash] of Object.entries(manifest.oracle || {})) expect(createHash('sha256').update(readFileSync(join(oracleDir(dir!), file))).digest('hex'), file).toBe(hash)
   })

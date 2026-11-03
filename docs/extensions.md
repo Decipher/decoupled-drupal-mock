@@ -1,6 +1,6 @@
 # Extensions
 
-An extension gives the mock what a preset cannot record: a contributed module's endpoints, a draft, a failure. It is a plain object:
+An extension gives the mock what a preset cannot record, such as a contributed module's endpoints or a failure. It is a plain object:
 
 ```js
 export default {
@@ -13,38 +13,38 @@ export default {
 };
 ```
 
-## Handing it to the mock
+## Loading an extension
 
-| Where               | How                                                                                                                                     |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| In the test process | `createMock(dump, { extensions })`, `loadPreset('umami', { extensions })`, `startMock('umami', { extensions })`                         |
-| In one test         | `mock.drupal.use(extension)`, dropped by `reset()`                                                                                      |
-| Playwright          | `withDrupal(test, 'umami', { extensions })`                                                                                             |
-| Another process     | `serve umami --control --extension ./file.mjs`, or `spawnMock('umami', { extensions: ['./file.mjs'] })`, with the file's default export |
+| Where                   | How                                                                                                                                                                          |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| In the test process     | `createMock(dump, { extensions })` from `decoupled-drupal-mock`, `loadPreset('umami', { extensions })` from `/jest`, or `startMock('umami', { extensions })` from `/testing` |
+| In one test, in process | `mock.drupal.use(extension)`. It cannot add `fixtures`, and `reset()` drops it                                                                                               |
+| Playwright              | `withDrupal(test, 'umami', { extensions })` from `/testing`                                                                                                                  |
+| Another process         | `serve umami --control --extension ./file.mjs`, or `spawnMock('umami', { extensions: ['./file.mjs'] })` from `/jest` or `/cypress`, with the file's default export           |
 
-A function cannot cross into another process. A test there turns on what the file names, with `scenario(name)`.
+Functions cannot be passed to a server in another process. Give the server an extension file instead, and turn on its scenarios from the test with `scenario(name)`.
 
-## Its parts
+## Routes, answers, fixtures and call-backs
 
 - **`routes`:** new endpoints, by `METHOD /path`. `:name` matches one segment and `ANY` matches every method. A language prefix is matched for you and given as `prefix`.
 - **`answer`:** sees every request. Return what `next()` gives, change it, or replace it.
-- **`fixtures`:** resources by language and type, which read and write like the dump's own. A fixture joins its type's collection, and every listing built from it: a block added to a region is in that region's block list.
-- **`onWrite`:** runs after a successful JSON:API write. `send` calls another service, and its result lands in `sent()`.
-- **`scenarios`:** named `routes`, `answer` and `onWrite`, off until a test turns them on.
+- **`fixtures`:** resources by language and type, which read and write like the dump's own. A fixture appears in its type's collection and in every list built from that collection. A block added to a region appears in that region's block list.
+- **`onWrite`:** runs after a successful JSON:API write. `send` calls another service, and `sent()` holds the result.
+- **`scenarios`:** sets of `routes`, `answer` and `onWrite` under a name, off until a test turns them on.
 
-A handler gets `method`, `url`, `path`, `route`, `prefix`, `params`, `query`, `headers`, `body`, `json`, `state` and `drupal`. `state` is a `Map` shared across requests until `reset()`. `drupal.handle(...)` asks the stock site, with the fixtures but past every extension, so a handler can read its own URL without calling itself. An `onWrite` hears of a write the stock site took, under its JSON:API base path; one that throws is recorded on that request in `requests()`, and the write stands.
+A handler gets `method`, `url`, `path`, `route`, `prefix`, `params`, `query`, `headers`, `body`, `json`, `state` and `drupal`. `state` is a `Map` shared across requests until `reset()`. `drupal.handle(...)` sends a request to the mock with the fixtures applied and every extension skipped. A handler can use it to read its own URL without calling itself. An `onWrite` handler runs after a JSON:API write that the mock itself carried out succeeds. If the handler throws, the error is recorded on that request in `requests()`, and the write is kept.
 
-An answer has `status`, `headers` and `body`. A body that is not a string goes as JSON.
+An answer has `status`, `headers` and `body`. A body that is not a string is sent as JSON.
 
 ## Answers are synchronous
 
-The engine answers synchronously, so a Jest spy can be answered from it, and an extension does the same. A handler that returns a promise fails with its name. `onWrite`'s `send` is the way out to anything slower.
+The engine answers synchronously, so a Jest spy can return its answers, and an extension's handlers must be synchronous too. If a handler returns a promise, the request fails with an error that names the handler. To reach a slower service, use `send` in `onWrite`. `send` calls the global `fetch`, so where there is none, on Node 16 or in Jest's jsdom environment, it records an error in `sent()` instead of calling the service.
 
-## What it costs
+## Extensions and fidelity
 
 An extension's answers are written by hand. The mock's fidelity claim covers what a build recorded from a real Drupal and nothing an extension answers, so write down where each answer came from, and record it from a real site when you can.
 
 ## Examples
 
-- [`examples/extensions/next.mjs`](../examples/extensions/next.mjs): the `next` module's draft endpoint, a latest revision, revalidation on a save and Drupal being down. [`examples/nextjs`](../examples/nextjs) runs it.
-- [`examples/extensions/node-preview.mjs`](../examples/extensions/node-preview.mjs): JSON:API Node Preview's unsaved node. [`examples/vitest`](../examples/vitest) runs it.
+- [`examples/extensions/next.mjs`](../examples/extensions/next.mjs) answers the `next` module's draft endpoint and revalidates on a save. [`examples/nextjs`](../examples/nextjs) runs it.
+- [`examples/extensions/node-preview.mjs`](../examples/extensions/node-preview.mjs) answers JSON:API Node Preview's request for an unsaved node. [`examples/vitest`](../examples/vitest) runs it.

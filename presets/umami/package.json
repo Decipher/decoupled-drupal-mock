@@ -16,7 +16,7 @@
     "dump"
   ],
   "peerDependencies": {
-    "decoupled-drupal-mock": "workspace:^"
+    "decoupled-drupal-mock": "^1.0.0-alpha.0"
   },
   "license": "GPL-2.0-or-later"
 }

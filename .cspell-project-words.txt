@@ -84,3 +84,15 @@ esbenp
 jsdom
 nextjs
 drupalcms
+actionlint
+codeql
+gitleaks
+knip
+lychee
+noreply
+yamllint
+Ksection
+ddev
+DDEV
+lndo
+cacheinfo

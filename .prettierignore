@@ -3,3 +3,6 @@ node_modules
 dist
 presets/*/dump
 yarn.lock
+presets/*/oracle
+.vale
+coverage

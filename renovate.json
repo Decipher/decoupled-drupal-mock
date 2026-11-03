@@ -1,0 +1,26 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "baseBranches": ["1.0.x"],
+  "automerge": false,
+  "rangeStrategy": "bump",
+  "dependencyDashboard": true,
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Group the routine updates, so a week of them is one review.",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "minor and patch"
+    },
+    {
+      "description": "Majors need a human, as a breaking change on a branch nobody chose helps no one.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Jest stays where druxt.js's 0.x branch is, because that is what its example proves.",
+      "matchPackageNames": ["jest", "jest-environment-jsdom", "jest-mock-axios"],
+      "enabled": false
+    }
+  ]
+}

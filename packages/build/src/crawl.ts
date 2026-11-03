@@ -106,7 +106,9 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   // A recording this build does not make would be replayed against a dump it was not made with.
   for (const file of ['reads.json.gz', 'writes.json.gz', 'graphql.json.gz']) rmSync(join(oracleOut, file), { force: true })
   const recordOracle = (file: string, body: unknown): void => {
-    const bytes = gzipSync(Buffer.from(relink(JSON.stringify(body))), { level: 9 })
+    // A token is good for minutes, and the tests never read one: this keeps them out of a public repository anyway.
+    const text = JSON.stringify(body, (key: string, value: unknown) => (typeof value === 'string' && /^(access_token|refresh_token|csrf_token|logout_token)$/.test(key) ? '<token>' : value))
+    const bytes = gzipSync(Buffer.from(relink(text)), { level: 9 })
     mkdirSync(oracleOut, { recursive: true })
     writeFileSync(join(oracleOut, file), bytes)
     oracleFiles[file] = createHash('sha256').update(bytes).digest('hex')
@@ -300,6 +302,10 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
 
     await record(`${lang}/jsonapi/decoupled/settings`)
   }
+  // The session token is the whole of its answer, so no key names it for the recordings' replacer: it is masked by its
+  // path, in the reads and in the writes alike.
+  const isSessionToken = (request: string): boolean => request.split('?')[0] === '/session/token'
+
   // The oracle: real queries with Drupal's real answers, for the engine's tests.
   if (options.oracle?.length) {
     const entries: Array<{ request: string, status: number, headers: Record<string, string>, body: unknown }> = []
@@ -308,7 +314,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     for (const request of options.oracle) {
       const resolved = resolve(request)
       const entry = await get(resolved)
-      entries.push({ request: resolved, ...entry })
+      entries.push({ request: resolved, ...entry, ...(isSessionToken(resolved) ? { body: '<token>' } : {}) })
       // A type that refuses reads is recorded by its path, so the engine refuses it as Drupal does. A query refused
       // for what it asks, such as a filter on a field, says nothing of the plain path, so that is asked too.
       if (entry.status === 403 || entry.status === 405) {
@@ -393,7 +399,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       } finally {
         await clean(created)
       }
-      recorded.push({ ...script, answers })
+      // The script's later steps have read the real token already.
+      recorded.push({ ...script, answers: answers.map((answer, index) => (isSessionToken(script.steps[index]?.path || '') ? { ...answer, body: '<token>' } : answer)) })
       log(`script "${script.name}": ${answers.map((answer) => answer.status).join(' ')}`)
     }
     recordOracle('writes.json.gz', recorded)

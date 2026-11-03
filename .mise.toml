@@ -1,0 +1,10 @@
+# The toolchain the pipeline uses, so "works on my machine" names a version anyone can reproduce.
+[tools]
+node = "24"
+
+[tasks.install]
+run = "corepack enable && yarn install --immutable"
+
+[tasks.check]
+description = "What the pre-commit hook runs"
+run = "yarn workspace decoupled-drupal-mock build && yarn lint && yarn typecheck && yarn test"

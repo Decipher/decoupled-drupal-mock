@@ -78,6 +78,22 @@ describe('the crawl', () => {
     expect(relationships.tags!.data).toEqual([])
   })
 
+  it('records a session token as <token>, though its answer is the bare token', async () => {
+    const oracleOut = mkdtempSync(join(tmpdir(), 'oracle-'))
+    await build(site({ admin: [], visitor: [] }, (path) => (path === '/session/token' ? { body: 'a-real-csrf-token' } : undefined)), { oracleOut, writes: [{ name: 'csrf', as: 'anonymous', steps: [{ method: 'GET', path: '/session/token' }] }] })
+    const recorded = read(oracleOut, 'writes.json.gz') as Array<{ answers: Array<{ body: unknown }> }>
+    expect(recorded[0]!.answers[0]!.body).toBe('<token>')
+    expect(JSON.stringify(recorded)).not.toContain('a-real-csrf-token')
+  })
+
+  it('records a session token as <token> among the reads too', async () => {
+    const oracleOut = mkdtempSync(join(tmpdir(), 'oracle-'))
+    await build(site({ admin: [], visitor: [] }, (path) => (path === '/session/token' ? { body: 'a-real-csrf-token' } : undefined)), { oracleOut, oracle: ['/session/token'] })
+    const entries = read(oracleOut, 'reads.json.gz') as Array<{ request: string, body: unknown }>
+    expect(entries.find((entry) => entry.request === '/session/token')!.body).toBe('<token>')
+    expect(JSON.stringify(entries)).not.toContain('a-real-csrf-token')
+  })
+
   it('keeps a boundary on the origin in what it writes', async () => {
     const out = mkdtempSync(join(tmpdir(), 'crawl-'))
     let own = ''

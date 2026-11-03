@@ -1,23 +1,310 @@
-# Build the engine, lint, typecheck, test, and the engine against the Umami preset's oracle.
-image: node:24
+# Lint, test and the checks that a consumer's install works. This is the full gate. GitHub Actions runs the lint, type
+# checks, tests and examples, as the repository is public there. Nothing on the GitHub side lints that workflow, so
+# lint:yaml here does.
+#
+# Secret scanning is gitleaks, not GitLab's Security/Secret-Detection template, which produces no job on a
+# non-Ultimate instance and so reads as coverage while scanning nothing.
 
-stages: [check]
+stages:
+  - lint
+  - test
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
 
 default:
+  timeout: 15m
   before_script:
+    - 'section_start() { local n="$1" t="${2:-$1}"; printf "\e[0Ksection_start:%s:%s\r\e[0K%s\n" "$(date +%s)" "$n" "$t"; }'
+    - 'section_end() { printf "\e[0Ksection_end:%s:%s\r\e[0K\n" "$(date +%s)" "$1"; }'
+
+.node:
+  image: node:24
+  interruptible: true
+  cache:
+    key:
+      files:
+        - yarn.lock
+    paths:
+      - .yarn/cache/
+  before_script:
+    - !reference [default, before_script]
     - corepack enable
     - yarn install --immutable
-  cache:
-    key: yarn
-    paths: [.yarn/cache]
+    - yarn workspace decoupled-drupal-mock build
 
-check:
-  stage: check
+lint:js:
+  extends: .node
+  stage: lint
   script:
-    # The build package and the report import the engine's built output. A branch with no packages yet passes.
-    - '[ -d packages/engine ] && yarn workspace decoupled-drupal-mock build || echo "no engine to build"'
-    - yarn lint
-    # Every commit of the merge request's range, not the last alone.
-    - 'if [ -n "$CI_MERGE_REQUEST_DIFF_BASE_SHA" ]; then yarn commitlint --from "$CI_MERGE_REQUEST_DIFF_BASE_SHA" --to HEAD; fi'
-    - '[ -d packages ] && yarn typecheck || echo "nothing to typecheck"'
-    - '[ -d packages ] && yarn test || echo "nothing to test"'
+    - section_start "eslint" "Linting sources and tests"
+    - yarn lint:js
+    - section_end "eslint"
+
+lint:md:
+  extends: .node
+  stage: lint
+  script:
+    - section_start "markdownlint" "Linting Markdown"
+    - yarn lint:md
+    - section_end "markdownlint"
+
+lint:cspell:
+  extends: .node
+  stage: lint
+  script:
+    - section_start "cspell" "Spell checking"
+    - yarn lint:cspell
+    - section_end "cspell"
+
+lint:format:
+  extends: .node
+  stage: lint
+  script:
+    - section_start "prettier" "Checking formatting"
+    - yarn lint:format
+    - section_end "prettier"
+
+# This repository is public. A host only the author can reach must never reach a tracked file.
+lint:private:
+  extends: .node
+  stage: lint
+  script:
+    - section_start "private-refs" "Checking for private host references"
+    - yarn lint:private
+    - section_end "private-refs"
+
+lint:knip:
+  extends: .node
+  stage: lint
+  script:
+    - section_start "knip" "Checking for unused and undeclared dependencies"
+    - yarn lint:knip
+    - section_end "knip"
+
+# Production only: a shipped dependency is what reaches a consumer.
+lint:audit:
+  extends: .node
+  stage: lint
+  script:
+    - section_start "audit" "Auditing shipped dependencies"
+    - yarn lint:audit
+    - section_end "audit"
+
+lint:size:
+  extends: .node
+  stage: lint
+  script:
+    - section_start "size" "Checking the published size"
+    - yarn size
+    - section_end "size"
+
+lint:yaml:
+  stage: lint
+  image: python:3.12-slim
+  interruptible: true
+  variables:
+    ACTIONLINT_VERSION: '1.7.12'
+    ACTIONLINT_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
+  script:
+    - section_start "yamllint" "Linting YAML"
+    - pip install --quiet yamllint
+    - yamllint .gitlab-ci.yml .github/workflows/
+    - section_end "yamllint"
+    - section_start "actionlint" "Linting GitHub workflows"
+    - apt-get update -qq && apt-get install -y -qq curl > /dev/null
+    - curl -sSLo actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+    - echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
+    - tar -xzf actionlint.tar.gz actionlint
+    - ./actionlint -color
+    - section_end "actionlint"
+
+lint:commit:
+  extends: .node
+  stage: lint
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+  # The whole history, and the merge base GitLab names: a fork's `origin` may not have the target branch.
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - section_start "commitlint" "Validating commit messages"
+    - yarn commitlint --from "$CI_MERGE_REQUEST_DIFF_BASE_SHA" --to HEAD --verbose
+    - section_end "commitlint"
+
+lint:prose:
+  extends: .node
+  stage: lint
+  variables:
+    GIT_DEPTH: 0
+  cache:
+    key: vale-3.17.1
+    paths:
+      - .vale/
+  script:
+    - section_start "prose" "Linting prose with Vale"
+    - yarn lint:prose:install
+    - yarn lint:prose
+    - section_end "prose"
+
+# Two runs of one binary: links between the repository's own files must hold, and fail the pipeline; links to other
+# sites are allowed to fail, as a site being down for an hour is not this change's fault.
+.lychee:
+  stage: lint
+  image: alpine:3.21
+  interruptible: true
+  variables:
+    LYCHEE_VERSION: '0.18.1'
+    LYCHEE_SHA256: '2f70dcdee64ac19d17b9c501492202305b04ab24606737a5e3ce6c7294c1f8d6'
+
+.lychee-install: &lychee-install
+  - apk add --no-cache curl tar > /dev/null
+  - curl -sSLo lychee.tar.gz "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-musl.tar.gz"
+  - echo "${LYCHEE_SHA256}  lychee.tar.gz" | sha256sum -c -
+  - tar -xzf lychee.tar.gz lychee
+
+lint:links:local:
+  extends: .lychee
+  script:
+    - section_start "lychee" "Checking links between the repository's files"
+    - *lychee-install
+    - ./lychee --config .lychee.toml --offline './*.md' 'docs/*.md' 'presets/*/README.md' 'examples/*.md'
+    - section_end "lychee"
+
+lint:links:
+  extends: .lychee
+  allow_failure: true
+  script:
+    - section_start "lychee" "Checking links to other sites"
+    - *lychee-install
+    - ./lychee --config .lychee.toml './*.md' 'docs/*.md' 'presets/*/README.md' 'examples/*.md'
+    - section_end "lychee"
+
+secret-detection:
+  stage: lint
+  image: alpine:3.21
+  interruptible: true
+  variables:
+    # The whole history: a secret committed and later removed is still published.
+    GIT_DEPTH: 0
+    GITLEAKS_VERSION: '8.30.1'
+    GITLEAKS_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
+  script:
+    - section_start "gitleaks" "Scanning for committed secrets"
+    - apk add --no-cache curl tar git > /dev/null
+    - curl -sSLo gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+    - echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+    - tar -xzf gitleaks.tar.gz gitleaks
+    - ./gitleaks detect --source . --no-banner --redact --verbose
+    # gitleaks cannot read inside a gzip, and the dumps, overlays and recordings, under presets/ and examples/, are
+    # gzipped: every one is opened, the
+    # published dump's resources included, as that is where a real account's data would be. gitleaks also skips any
+    # path that names `.gz`, so the extension goes from the unpacked name. A credential planted in a gzip of its own,
+    # unpacked the same way, must be reported, or this scan read nothing.
+    - section_start "recordings" "Scanning the gzipped dumps and recordings"
+    - |
+      unpack() { find "$1" -name '*.gz' | while read -r file; do gunzip -c "$file" > "$2/$(echo "$file" | tr / _ | sed 's/\.gz$//')"; done; }
+      mkdir -p /tmp/recordings && unpack presets /tmp/recordings && unpack examples /tmp/recordings
+      test "$(ls /tmp/recordings | wc -l)" -eq "$(find presets examples -name '*.gz' | wc -l)"
+      ./gitleaks detect --no-git --source /tmp/recordings --no-banner --redact --verbose
+      probe="$(mktemp -d)" && mkdir -p "$probe/in/presets" "$probe/out"
+      printf 'a = "%s"\n' "gh""p_8fK2mQ7xR4tV9nB3jH6yW1sZ5cD8gL0aE4uY" | gzip > "$probe/in/presets/canary.json.gz"
+      (cd "$probe/in" && unpack presets "$probe/out")
+      ./gitleaks detect --no-git --source "$probe/out" --no-banner --redact --report-format json --report-path "$probe/report.json" || true
+      found=$(grep -c '"RuleID"' "$probe/report.json" || true)
+      rm -rf "$probe"
+      if [ "$found" != "1" ]; then echo "A credential planted in a gzip was reported $found times: the recordings scan reads nothing."; exit 1; fi
+    - section_end "recordings"
+    - section_end "gitleaks"
+    # A scan that finds nothing looks identical to a scan that cannot find
+    # anything. Plant three credentials outside the repository and assert all
+    # three are reported, so a bad download, a config change or a widened
+    # allowlist fails the job instead of passing it quietly.
+    #
+    # Each value is split across its own prefix so no fragment in this file
+    # triggers the rule it is meant to exercise: the repository scan above runs
+    # over this file too, and a canary that flags itself would need an ignore
+    # entry, which is the thing being guarded against.
+    #
+    # Fixed values, not generated ones. Detection is keyword-driven rather than
+    # entropy-driven, so a generated credential fires only sometimes and
+    # presents as flake. A value verified once keeps firing.
+    #
+    # Invented, not copied from any vendor's documentation: gitleaks allowlists
+    # documentation keys, and a canary built from one is inert in exactly the
+    # way this check exists to catch.
+    - section_start "canary" "Checking that the scanner still detects"
+    - |
+      canary="$(mktemp -d)"
+      pat="gh""p_8fK2mQ7xR4tV9nB3jH6yW1sZ5cD8gL0aE4uY"
+      stripe="sk""_live_51aBcD2eFgH3iJkL4mNoP5qR6sTuV7wXyZ8a"
+      slack="xo""xb-263594753641-2529420432-J1n4h6a9pQrStUvWxYz1AbCd"
+      printf 'a = "%s"\nb = "%s"\nc = "%s"\n' "$pat" "$stripe" "$slack" > "$canary/canary.txt"
+      ./gitleaks detect --no-git --source "$canary" --no-banner --redact \
+        --report-format json --report-path "$canary/report.json" || true
+      found=$(grep -c '"RuleID"' "$canary/report.json" || true)
+      rm -rf "$canary"
+      if [ "$found" != "3" ]; then
+        echo "The canary planted 3 credentials and gitleaks reported $found."
+        echo "The scan above proves nothing while this is true."
+        exit 1
+      fi
+      echo "Canary detected 3 of 3 planted credentials."
+    - section_end "canary"
+
+test:unit:
+  extends: .node
+  stage: test
+  needs: []
+  script:
+    - section_start "vitest" "Running the tests"
+    - yarn typecheck
+    - yarn test:coverage --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml
+    - section_end "vitest"
+  artifacts:
+    when: always
+    reports:
+      junit: reports/junit.xml
+    expire_in: 1 week
+  coverage: '/All files\s*\|\s*([\d.]+)/'
+
+# A published install reads each package's files list and rewrites its workspace ranges. Nothing else proves those.
+test:pack:
+  extends: .node
+  stage: test
+  needs: []
+  script:
+    - section_start "pack" "Packing and installing the packages"
+    - mkdir -p /tmp/pack /tmp/consumer
+    # npm pack, as the strictest packer: it rewrites no `workspace:` range, so one left in a manifest shows here.
+    - (cd packages/engine && npm pack --pack-destination /tmp/pack)
+    - (cd presets/umami && npm pack --pack-destination /tmp/pack)
+    - for tarball in /tmp/pack/*.tgz; do if tar -xOzf "$tarball" package/package.json | grep -q '"workspace:'; then echo "$tarball has a workspace range"; exit 1; fi; done
+    - cd /tmp/consumer && npm init -y > /dev/null
+    - npm install /tmp/pack/*.tgz --no-audit --no-fund
+    - (npx decoupled-drupal-mock serve umami --port 3005 &)
+    # Up to 30 seconds: the preset loads before the port opens.
+    - 'node -e "const until = Date.now() + 30000; const probe = () => fetch(\"http://127.0.0.1:3005/jsonapi\").then((response) => process.exit(response.ok ? 0 : 1), () => (Date.now() < until ? setTimeout(probe, 500) : process.exit(1))); probe()"'
+    - section_end "pack"
+
+test:e2e:
+  extends: .node
+  image: mcr.microsoft.com/playwright:v1.64.1-noble
+  stage: test
+  needs: []
+  before_script:
+    - !reference [default, before_script]
+    # This image ships Node without corepack.
+    - npm install --global --force corepack
+    - corepack enable
+    - yarn install --immutable
+    - yarn workspace decoupled-drupal-mock build
+  script:
+    - section_start "e2e" "Running the examples in a browser"
+    - yarn workspace example-playwright test
+    - yarn workspace example-nextjs test
+    - section_end "e2e"
