@@ -2,6 +2,8 @@
 
 Every runner gets the same engine. Reset it between tests, because a write stays until then. Each section has a working copy under [`examples/`](../examples), which CI runs.
 
+The engine finds a preset by its name when a test runs, so nothing in your code imports `decoupled-drupal-mock-umami`. A dead-code checker such as knip then reports it as an unused dependency. Add it to the checker's ignored dependencies, as `ignoreDependencies` in knip's config.
+
 The engine answers as the stock site does. A site with contrib modules or patches records them as an overlay of its own and passes its path: `loadPreset('umami', { overlays: ['./overlays/language-routing-patches.json.gz'] })`, and the same option on `startMock`, `spawnMock`, `globalSetup` and `withDrupal`. [Overlays](overlays.md) covers making one, with Druxt's as the example: stock Decoupled Router cannot resolve many translated paths, so a multilingual client needs its patches.
 
 **Jest**, on CommonJS and Node 16 or later, in jsdom or node. Answer axios spies from the engine, so the assertions on their calls keep working. The engine goes in a module of its own, which the tests and any manual mock of axios require:
