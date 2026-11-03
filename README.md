@@ -59,6 +59,8 @@ import { setupServer } from 'msw/node';
 import { handlers } from 'decoupled-drupal-mock/msw';
 
 const server = setupServer(...handlers(drupal, http, 'https://drupal.test'));
+beforeAll(() => server.listen());
+afterAll(() => server.close());
 ```
 
 End-to-end suites and browsers need a server:

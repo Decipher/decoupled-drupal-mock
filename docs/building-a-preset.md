@@ -6,7 +6,11 @@ The build signs in to a running Drupal as an administrator and records every res
 
 ## Running it
 
+From the repository root, install and build the engine first, then run the build:
+
 ```sh
+yarn install
+yarn workspace decoupled-drupal-mock build
 node --experimental-strip-types packages/build/src/cli.ts build.json
 ```
 

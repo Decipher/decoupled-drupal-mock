@@ -302,6 +302,10 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
 
     await record(`${lang}/jsonapi/decoupled/settings`)
   }
+  // The session token is the whole of its answer, so no key names it for the recordings' replacer: it is masked by its
+  // path, in the reads and in the writes alike.
+  const isSessionToken = (request: string): boolean => request.split('?')[0] === '/session/token'
+
   // The oracle: real queries with Drupal's real answers, for the engine's tests.
   if (options.oracle?.length) {
     const entries: Array<{ request: string, status: number, headers: Record<string, string>, body: unknown }> = []
@@ -310,7 +314,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     for (const request of options.oracle) {
       const resolved = resolve(request)
       const entry = await get(resolved)
-      entries.push({ request: resolved, ...entry })
+      entries.push({ request: resolved, ...entry, ...(isSessionToken(resolved) ? { body: '<token>' } : {}) })
       // A type that refuses reads is recorded by its path, so the engine refuses it as Drupal does. A query refused
       // for what it asks, such as a filter on a field, says nothing of the plain path, so that is asked too.
       if (entry.status === 403 || entry.status === 405) {
@@ -395,9 +399,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       } finally {
         await clean(created)
       }
-      // The session token is the whole of its answer, so no key names it: it is masked by its path. The script's later
-      // steps have read the real one already.
-      recorded.push({ ...script, answers: answers.map((answer, index) => (script.steps[index]?.path === '/session/token' ? { ...answer, body: '<token>' } : answer)) })
+      // The script's later steps have read the real token already.
+      recorded.push({ ...script, answers: answers.map((answer, index) => (isSessionToken(script.steps[index]?.path || '') ? { ...answer, body: '<token>' } : answer)) })
       log(`script "${script.name}": ${answers.map((answer) => answer.status).join(' ')}`)
     }
     recordOracle('writes.json.gz', recorded)

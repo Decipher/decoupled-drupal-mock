@@ -38,7 +38,7 @@ An answer has `status`, `headers` and `body`. A body that is not a string is sen
 
 ## Answers are synchronous
 
-The engine answers synchronously, so a Jest spy can return its answers, and an extension's handlers must be synchronous too. If a handler returns a promise, the request fails with an error that names the handler. To reach a slower service, use `send` in `onWrite`.
+The engine answers synchronously, so a Jest spy can return its answers, and an extension's handlers must be synchronous too. If a handler returns a promise, the request fails with an error that names the handler. To reach a slower service, use `send` in `onWrite`. `send` calls the global `fetch`, so where there is none, on Node 16 or in Jest's jsdom environment, it records an error in `sent()` instead of calling the service.
 
 ## Extensions and fidelity
 

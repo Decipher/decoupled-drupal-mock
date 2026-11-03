@@ -14,7 +14,7 @@
 #   AI_TELLS_VERSION   pinned below. Same rule: override both or neither.
 #   AI_TELLS_SHA256    expected checksum of the style package archive.
 #
-# Exit codes: 0 installed or already present, 1 checksum mismatch, 2 cannot run.
+# Exit codes: 0 installed, 1 checksum mismatch, 2 cannot run.
 
 set -euo pipefail
 
@@ -82,17 +82,18 @@ fetch() {
 
 # --- Vale --------------------------------------------------------------------
 
-if [ -x "$bin_dir/vale" ] && "$bin_dir/vale" --version 2>/dev/null | grep -qFw "$vale_version"; then
-  echo "vale ${vale_version} already installed in ${bin_dir}"
-else
-  archive="$work/vale.tar.gz"
+# A cached binary is never trusted, or even run: any pipeline that can write the
+# cache could leave something else there. The verified archive is what is kept,
+# checked again on every run, and the binary is unpacked from it each time.
+archive="$bin_dir/vale_${vale_version}_${asset}.tar.gz"
+mkdir -p "$bin_dir"
+if [ ! -f "$archive" ] || ! verify "$archive" "$vale_sha256" 2>/dev/null; then
   fetch "https://github.com/errata-ai/vale/releases/download/v${vale_version}/vale_${vale_version}_${asset}.tar.gz" "$archive"
   verify "$archive" "$vale_sha256" || exit 1
-  tar -xzf "$archive" -C "$work" vale
-  mkdir -p "$bin_dir"
-  install -m 0755 "$work/vale" "$bin_dir/vale"
-  echo "vale ${vale_version} installed in ${bin_dir}"
 fi
+tar -xzf "$archive" -C "$work" vale
+install -m 0755 "$work/vale" "$bin_dir/vale"
+echo "vale ${vale_version} installed in ${bin_dir} from its verified archive"
 
 # --- ai-tells ----------------------------------------------------------------
 
@@ -100,15 +101,14 @@ if [ -z "$styles_dir" ]; then
   exit 0
 fi
 
-marker="$styles_dir/ai-tells/.installed-version"
-if [ -f "$marker" ] && [ "$(cat "$marker")" = "$ai_tells_version" ]; then
-  echo "ai-tells ${ai_tells_version} already installed in ${styles_dir}"
-  exit 0
+# The same for the styles, which can hold script rules Vale runs: the verified
+# package is kept and checked on every run, and the styles unpacked from it.
+zip="$styles_dir/ai-tells-${ai_tells_version}.zip"
+mkdir -p "$styles_dir"
+if [ ! -f "$zip" ] || ! verify "$zip" "$ai_tells_sha256" 2>/dev/null; then
+  fetch "https://github.com/tbhb/vale-ai-tells/releases/download/v${ai_tells_version}/ai-tells.zip" "$zip"
+  verify "$zip" "$ai_tells_sha256" || exit 1
 fi
-
-zip="$work/ai-tells.zip"
-fetch "https://github.com/tbhb/vale-ai-tells/releases/download/v${ai_tells_version}/ai-tells.zip" "$zip"
-verify "$zip" "$ai_tells_sha256" || exit 1
 
 # The package is a zip. Not every image has unzip, and every image that runs
 # this has one of the others.
@@ -127,8 +127,6 @@ if [ ! -d "$work/unpacked/ai-tells/styles/ai-tells" ]; then
   echo "The style package did not contain styles/ai-tells; its layout has changed." >&2
   exit 2
 fi
-mkdir -p "$styles_dir"
 rm -rf "$styles_dir/ai-tells"
 cp -R "$work/unpacked/ai-tells/styles/ai-tells" "$styles_dir/ai-tells"
-printf '%s\n' "$ai_tells_version" > "$marker"
-echo "ai-tells ${ai_tells_version} installed in ${styles_dir}"
+echo "ai-tells ${ai_tells_version} installed in ${styles_dir} from its verified package"
