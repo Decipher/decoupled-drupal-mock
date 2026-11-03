@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import type { Answer, RecordedWrite, WriteScript } from 'decoupled-drupal-mock/recorded-writes'
 import type { Document, Dump, Manifest, Recorded, Resource } from 'decoupled-drupal-mock'
-import { sortedSearch } from 'decoupled-drupal-mock'
+import { DUMP_FORMAT, sortedSearch } from 'decoupled-drupal-mock'
 import { KEPT_HEADERS, resolve } from 'decoupled-drupal-mock/recorded-writes'
 
 export interface CrawlOptions {
@@ -421,6 +421,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
 
   const manifest: Manifest = {
     preset: options.preset,
+    format: DUMP_FORMAT,
     drupal: options.drupal,
     built: new Date().toISOString(),
     origin,

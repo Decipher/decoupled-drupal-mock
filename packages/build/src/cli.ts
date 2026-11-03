@@ -1,13 +1,15 @@
 #!/usr/bin/env -S node --experimental-strip-types
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { composerPatches, drupalModules } from './composer.ts'
+import type { ComposerJson } from './composer.ts'
 import { crawl } from './crawl.ts'
 
 /**
  * `node --experimental-strip-types cli.ts <config.json>`: the crawl options as JSON, with `oracleFile` a path of one
  * request per line, and `drush` as `{ bin, cwd }` to read what JSON:API refuses every user.
  */
-const config = JSON.parse(readFileSync(process.argv[2]!, 'utf8')) as Parameters<typeof crawl>[0] & { oracleFile?: string, writesFile?: string, drush?: { bin: string, cwd: string }, excludeUsers?: string[] }
+const config = JSON.parse(readFileSync(process.argv[2]!, 'utf8')) as Parameters<typeof crawl>[0] & { oracleFile?: string, writesFile?: string, composerDir?: string, patched?: boolean, drush?: { bin: string, cwd: string }, excludeUsers?: string[] }
 const scripts = config.writesFile ? JSON.parse(readFileSync(config.writesFile, 'utf8')) as Parameters<typeof crawl>[0]['writes'] : undefined
 
 const drush = (script: string): string => {
@@ -61,5 +63,33 @@ const exclude = excludeUsers.size
   ? (resource: Parameters<NonNullable<Parameters<typeof crawl>[0]['exclude']>>[0]): boolean => resource.type === 'user--user' && excludeUsers.has(String((resource.attributes as { name?: string } | undefined)?.name))
   : undefined
 
-const manifest = await crawl({ ...config, ...(oracle ? { oracle } : {}), ...(scripts ? { writes: scripts } : {}), ...(phantomData ? { phantomData } : {}), ...(exclude ? { exclude } : {}) })
+// What the site really runs, from its own lock file, so a preset cannot misstate it. Patches are applied by composer.
+if (config.patched && !config.composerDir) {
+  console.error('`patched` reads the patches from composer: set `composerDir` too.')
+  process.exit(1)
+}
+const composer = config.composerDir
+  ? {
+      lock: JSON.parse(readFileSync(`${config.composerDir}/composer.lock`, 'utf8')) as { packages: Array<{ name: string, version: string }> },
+      json: JSON.parse(readFileSync(`${config.composerDir}/composer.json`, 'utf8')) as ComposerJson,
+    }
+  : undefined
+// The point of reading the lock is that the version is not stated by hand, so a lock without core stops the build.
+const lockedCore = (packages: Array<{ name: string, version: string }>): string => {
+  const core = packages.find((item) => item.name === 'drupal/core' || item.name === 'drupal/core-recommended')?.version
+  if (!core) {
+    console.error(`${config.composerDir}/composer.lock names no drupal/core: the build will not state the core version by hand.`)
+    process.exit(1)
+  }
+  return core
+}
+const drupal = composer
+  ? {
+      ...config.drupal,
+      core: lockedCore(composer.lock.packages),
+      modules: drupalModules(composer.lock.packages),
+      ...(config.patched ? { patches: composerPatches(config.composerDir!, composer.json) } : {}),
+    }
+  : config.drupal
+const manifest = await crawl({ ...config, drupal, ...(oracle ? { oracle } : {}), ...(scripts ? { writes: scripts } : {}), ...(phantomData ? { phantomData } : {}), ...(exclude ? { exclude } : {}) })
 console.log(`built ${manifest.preset} from Drupal ${manifest.drupal.core}: ${Object.keys(manifest.files).length} files`)

@@ -3,17 +3,18 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import type { Extension } from './extend.js'
 import { createMock } from './mock.js'
-import { loadDump } from './load.js'
+import { loadDump, loadOverlay } from './load.js'
 import { presetDir } from './preset.js'
 import { listen } from './serve.js'
 
 /**
- * `decoupled-drupal-mock serve <preset> [--port 3005] [--host 127.0.0.1] [--base-url <url>] [--no-cors] [--control] [--extension <file>]`: an HTTP server over a preset,
+ * `decoupled-drupal-mock serve <preset> [--port 3005] [--host 127.0.0.1] [--base-url <url>] [--no-cors] [--control] [--extension <file>] [--overlay <file>]`: an HTTP server over a preset,
  * named in short (`umami`), by its package (`decoupled-drupal-mock-umami`) or by its build directory, as the backend
  * for any frontend pointed at its URL. `--host 0.0.0.0` reaches it from outside a container.
  * `--base-url` is the address the answers' links name, for a server reached through another one, such as a forwarded
  * port. `--control` opens the routes a test uses to reset the writes and to sign in, for a test's server only.
  * `--extension` loads a module whose default export is an extension, and can be given more than once.
+ * `--overlay` adds a recorded overlay, such as your site's patch or module, by its file, and can too.
  */
 const [command, target, ...rest] = process.argv.slice(2)
 const option = (name: string, fallback: string): string => {
@@ -21,7 +22,7 @@ const option = (name: string, fallback: string): string => {
   return index >= 0 && rest[index + 1] ? rest[index + 1]! : fallback
 }
 if (command !== 'serve' || !target) {
-  console.error('Usage: decoupled-drupal-mock serve <preset> [--port 3005] [--host 127.0.0.1] [--base-url <url>] [--no-cors] [--control] [--extension <file>]')
+  console.error('Usage: decoupled-drupal-mock serve <preset> [--port 3005] [--host 127.0.0.1] [--base-url <url>] [--no-cors] [--control] [--extension <file>] [--overlay <file>]')
   process.exit(1)
 }
 const port = Number(option('port', '3005'))
@@ -43,6 +44,20 @@ try {
 }
 const dump = loadDump(dir)
 const extensions: Extension[] = []
+// Overlays first, as loadPreset and startMock take them: an extension's own answers win.
+for (const [index, argument] of rest.entries()) {
+  if (argument !== '--overlay') continue
+  if (!rest[index + 1] || rest[index + 1]!.startsWith('--')) {
+    console.error('--overlay names an overlay file: --overlay ./overlays/my-patch.json.gz')
+    process.exit(1)
+  }
+  try {
+    extensions.push(loadOverlay(dir, rest[index + 1]!))
+  } catch (error) {
+    console.error((error as Error).message)
+    process.exit(1)
+  }
+}
 for (const [index, argument] of rest.entries()) {
   if (argument !== '--extension') continue
   if (!rest[index + 1] || rest[index + 1]!.startsWith('--')) {

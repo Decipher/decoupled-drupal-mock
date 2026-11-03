@@ -219,6 +219,15 @@ describe('a sort over translations', () => {
   })
 })
 
+describe('a base URL and path with trailing slashes', () => {
+  it('reads as one without, at any length', async () => {
+    const trimmed = createDrupal(dump, { baseUrl: `https://drupal.test${'/'.repeat(100000)}`, basePath: '/jsonapi///' })
+    const response = await trimmed.fetch('https://drupal.test/jsonapi/node/page/p-1')
+    expect(response.status).toBe(200)
+    expect(((await response.json()) as { links: { self: { href: string } } }).links.self.href).toBe('https://drupal.test/jsonapi/node/page/p-1')
+  })
+})
+
 describe('what the first review found', () => {
   const hidden = createDrupal({ ...dump, access: { en: { 'node--page': { hidden: ['field_secret'] }, 'file--file': { forbidden: true } } } }, { baseUrl: 'https://drupal.test' })
   const read = async (drupal: ReturnType<typeof createDrupal>, path: string) => { const response = await drupal.fetch(`https://drupal.test${path}`); const text = await response.text(); return { status: response.status, body: text.startsWith('<') ? { meta: { html: text } } : JSON.parse(text) as Document } }
@@ -269,6 +278,10 @@ describe('what the first review found', () => {
     const unknown = await get('/jsonapi/node/page?filter[nope]=1')
     expect(unknown.status).toBe(400)
     expect(unknown.body.errors![0]!.detail).toBe('Invalid nested filtering. The field `nope`, given in the path `nope`, does not exist.')
+    // As Drupal answers it, recorded in the contact-storage overlay: the sorted query as `via`, and no `source`.
+    const sorted = await get('/jsonapi/node/page?filter[nope]=1&fields[node--page]=title')
+    expect(sorted.body.errors![0]!.links!.via!.href).toBe('https://drupal.test/jsonapi/node/page?fields%5Bnode--page%5D=title&filter%5Bnope%5D=1')
+    expect(sorted.body.errors![0]).not.toHaveProperty('source')
     expect((await get('/jsonapi/node/page?filter[@root][group][conjunction]=OR')).status).toBe(400)
   })
 

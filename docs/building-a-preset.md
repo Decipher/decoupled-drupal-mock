@@ -1,6 +1,6 @@
 # Building a preset
 
-The build signs in to a running Drupal as an administrator and records every resource the mock serves. It then reads the site as an anonymous visitor to record what a visitor may see. It also records the router lookups, menus, views and decoupled settings, and the oracle, which is the list of real requests and Drupal's answers to them. Finally it replaces the site's address with a placeholder and writes a manifest with the hash of every file.
+The build signs in to a running Drupal as an administrator and records every resource the mock serves. It then reads the site as an anonymous visitor to record what a visitor may see. It also records the router lookups, menus, views and decoupled settings, and the oracle, which is the list of real requests and Drupal's answers to them. Finally it replaces the site's address with a placeholder and writes a manifest with the hash of every file and the dump's format. An engine refuses a dump in a format it does not read, rather than answering from keys that are not there.
 
 **The build writes to the site it crawls.** With `identities` and `drush` set, it creates accounts, OAuth scopes and consumers, and with `writesFile` it runs the recorded writes. Run it against a throwaway copy of a site, never production.
 
@@ -37,6 +37,7 @@ The build writes the dump to `out`, and its recordings beside it in `<out>.oracl
 | `identities`                | The accounts and OAuth consumers the mock signs in. The build creates them on the site first, through drush                                                           |
 | `drush`                     | `{ bin, cwd }`. Reads, through `drush php-eval`, the configuration entities JSON:API leaves out for every user, such as a block whose visibility denies every request |
 | `excludeUsers`, `skipTypes` | Users to leave out of the dump, such as the build's own account. Types that the site lists in its index but answers with an error                                     |
+| `composerDir`, `patched`    | The site's Composer directory, so the manifest names what the site really runs from its lock file. With `patched`, its patches too                                    |
 
 ## Modules and settings on the site
 
@@ -52,6 +53,10 @@ Only JSON:API is required. Everything else widens what the build records:
 | The Simple OAuth Password Grant module                                 | The password grant, for an identity with a password                                               |
 
 To read as an administrator, `auth` needs a Simple OAuth 6 consumer with the client credentials grant and a secret, whose user has the administrator role. Its scope must grant the administrator role by role, as a token holds only the roles that the user and the scope both give. The site also needs an OAuth keypair in `simple_oauth.settings`.
+
+## Recording a module or a patch
+
+A build of a site with a change the preset lacks becomes an overlay of that preset: see [Overlays](overlays.md).
 
 ## Building without administrator access
 

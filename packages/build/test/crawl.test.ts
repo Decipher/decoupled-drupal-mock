@@ -94,6 +94,11 @@ describe('the crawl', () => {
     expect(JSON.stringify(entries)).not.toContain('a-real-csrf-token')
   })
 
+  it('names the dump\'s format in its manifest', async () => {
+    const { manifest } = await build(site({ admin: [], visitor: [] }))
+    expect(manifest.format).toBe(1)
+  })
+
   it('keeps a boundary on the origin in what it writes', async () => {
     const out = mkdtempSync(join(tmpdir(), 'crawl-'))
     let own = ''

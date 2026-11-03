@@ -12,12 +12,7 @@ const drupal = createDrupal(umami(), { baseUrl: 'https://drupal.test' });
 const index = await drupal.fetch('https://drupal.test/jsonapi');
 ```
 
-The site was recorded with two patches that no released version of either module includes yet, so its router answers are those of a patched site:
-
-- [Decoupled Router #3111456](https://www.drupal.org/i/3111456), which resolves the language from the requested path. Without it, Spanish lookups change and many answer 404, and an English lookup has no `entity.langcode`.
-- [Druxt #3273228](https://www.drupal.org/i/3273228), which adds the langcode to the Views router integration.
-
-A recording of the site with and without them differs only in the router's answers and in the details of error pages. JSON:API, the index, access and menus are the same.
+The baseline is the site as released modules answer it, and `dump/manifest.json` names each module's version.
 
 ## Accounts and OAuth clients
 
@@ -39,9 +34,13 @@ The build added these to the site, and the mock signs them in. Each password, an
 
 The password grant is installed too. In a test, `tokenFor('editor')` returns a token for an account directly, without going through a grant.
 
+## A site with more
+
+The preset is the stock site only. A site with a contrib module or a patch the preset lacks records the difference as an overlay of its own, from a build of that site: see [Overlays](../../docs/overlays.md). [`examples/overlays/`](../../examples/overlays) holds three made that way, Druxt's language routing patches among them, which the engine's tests replay. None is published with the preset.
+
 ## Published files and evidence
 
-`dump/` is what the mock loads, and what this package publishes. `dump/manifest.json` names the Drupal core version the build came from and the hash of every file.
+`dump/` is what the mock loads, and what this package publishes. `dump/manifest.json` names the Drupal core version the build came from, the hash of every file, and the hash of every recording the tests replay. A manifest with no `format` is format 1, which this engine reads.
 
 The rest is evidence, kept in the repository and not published. `oracle.txt` and `writes.json` list the requests the build sends to a real Drupal. `oracle/` stores Drupal's answers, and the engine's tests check against them.
 

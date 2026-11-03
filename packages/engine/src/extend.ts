@@ -57,9 +57,22 @@ export interface Extension {
   answer?: (request: ExtensionRequest, next: () => Answered) => ExtensionAnswer
   /** Resources the preset's dump does not hold, by language and type. They read and write like the dump's own. */
   fixtures?: Record<string, Record<string, Resource[]>>
+  /** What a recording of the site with a module or a patch answers differently: replaces what the preset recorded. See `docs/overlays.md`. */
+  overlay?: RecordedOverlay
   onWrite?: (event: WriteEvent) => void
   /** Named sets of behaviour a test turns on with `scenario(name)`, from any process. `reset()` turns them off. */
   scenarios?: Record<string, Pick<Extension, 'routes' | 'answer' | 'onWrite'>>
+}
+
+/** What a build recorded differently from the preset it overlays. */
+export interface RecordedOverlay {
+  recorded?: Dump['recorded']
+  removed?: string[]
+  resources?: Dump['resources']
+  /** Types the recording does not have, by language. */
+  removedTypes?: Record<string, string[]>
+  index?: Dump['index']
+  access?: NonNullable<Dump['access']>
 }
 
 /** A request as the mock answered it, for a test's assertions. */
@@ -105,13 +118,26 @@ export interface ExtendedDrupal extends Drupal {
  */
 export const withFixtures = (dump: Dump, extensions: Extension[] = []): Dump => {
   const resources = { ...dump.resources }
+  let { recorded, index, access } = dump
+  for (const { overlay } of extensions) {
+    if (!overlay) continue
+    recorded = { ...recorded, ...overlay.recorded }
+    for (const key of overlay.removed || []) delete recorded[key]
+    index = { ...index, ...overlay.index }
+    access = { ...access, ...overlay.access }
+    for (const [langcode, types] of Object.entries(overlay.resources || {})) resources[langcode] = { ...resources[langcode], ...types }
+    for (const [langcode, types] of Object.entries(overlay.removedTypes || {})) {
+      resources[langcode] = { ...resources[langcode] }
+      for (const type of types) delete resources[langcode]![type]
+    }
+  }
   for (const extension of extensions) {
     for (const [langcode, types] of Object.entries(extension.fixtures || {})) {
       resources[langcode] = { ...resources[langcode] }
       for (const [type, list] of Object.entries(types)) resources[langcode]![type] = [...(resources[langcode]![type] || []), ...clone(list)]
     }
   }
-  return { ...dump, resources }
+  return { ...dump, resources, recorded, index, ...(access ? { access } : {}) }
 }
 
 const compile = (pattern: string): { method: string, match: RegExp, names: string[] } => {
@@ -239,7 +265,9 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
     },
     use: (extension) => {
       // The engine indexes its resources once, so a fixture added now would be missed by collections and includes.
-      if (extension.fixtures) throw new Error(`The extension ${extension.name || ''} has fixtures, which use() cannot add: pass it to createMock or startMock instead.`.replace('  ', ' '))
+      // An overlay is merged into the dump the same way, once, so it is refused for the same reason.
+      const late = extension.fixtures ? 'fixtures' : extension.overlay ? 'an overlay' : undefined
+      if (late) throw new Error(`The extension ${extension.name || ''} has ${late}, which use() cannot add: pass it to createMock or startMock instead.`.replace('  ', ' '))
       added.unshift(extension)
     },
     scenario: (name) => {
