@@ -2,7 +2,7 @@ import { createHash, randomBytes as nodeRandomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { base64url, randomBytes, randomUUID, sha256, toBase64, toHex, utf8 } from '../src/bytes'
+import { base64url, randomBytes, randomUUID, sha256, toBase64, toHex, useRandomSource, utf8 } from '../src/bytes'
 import { keyOf } from '../src/hash'
 
 const nodeSha = (input: string | Uint8Array): string => createHash('sha256').update(input).digest('hex')
@@ -38,7 +38,7 @@ describe('utf8', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it('encodes as Buffer does, astral characters included', () => {
-    for (const text of ['', 'abc', 'é', '€', 'Crème au café', '日本語', '🥘🇪🇸', '\u{10FFFF}']) {
+    for (const text of ['', 'abc', 'é', '€', 'Crème au café', '日本語', '🥘🇪🇸', '\u{10FFFF}', '\uD800', '\uDC00', 'a\uD800b', '\uDC00\uD800']) {
       expect(Array.from(utf8(text))).toEqual(Array.from(Buffer.from(text, 'utf8')))
     }
   })
@@ -72,13 +72,36 @@ describe('random values', () => {
     for (const id of ids) expect(id).toMatch(UUID)
   })
 
-  it('still answers on a runtime without Web Crypto, as Node 16 is', () => {
+  it('refuses without Web Crypto or a source, rather than guess', () => {
     vi.stubGlobal('crypto', undefined)
-    expect((globalThis as { crypto?: unknown }).crypto).toBeUndefined()
-    expect(randomBytes(24)).toHaveLength(24)
-    const ids = new Set(Array.from({ length: 100 }, randomUUID))
-    expect(ids.size).toBe(100)
-    for (const id of ids) expect(id).toMatch(UUID)
+    useRandomSource(undefined)
+    expect(() => randomBytes(24)).toThrow(/No secure random source/)
+    expect(() => randomUUID()).toThrow(/No secure random source/)
+  })
+
+  it('takes its values from the source set without Web Crypto', () => {
+    vi.stubGlobal('crypto', undefined)
+    const fill = vi.fn((bytes: Uint8Array) => {
+      bytes.set(nodeRandomBytes(bytes.length))
+    })
+    useRandomSource(fill)
+    try {
+      expect(randomBytes(24)).toHaveLength(24)
+      const ids = new Set(Array.from({ length: 100 }, randomUUID))
+      expect(ids.size).toBe(100)
+      for (const id of ids) expect(id).toMatch(UUID)
+      expect(fill).toHaveBeenCalled()
+    } finally {
+      useRandomSource(undefined)
+    }
+  })
+
+  it('takes node:crypto once the Node loader is loaded, as on Node 16 and 18', async () => {
+    useRandomSource(undefined)
+    await import('../src/load')
+    vi.stubGlobal('crypto', undefined)
+    expect(randomBytes(32)).toHaveLength(32)
+    expect(toHex(randomBytes(16))).not.toBe(toHex(randomBytes(16)))
   })
 })
 
@@ -92,7 +115,13 @@ describe('the root entry', () => {
       if (seen.has(file)) return
       seen.add(file)
       const code = readFileSync(file, 'utf8')
-      for (const [, specifier = ''] of code.matchAll(/(?:^|\n)\s*(?:import|export)\b[^'"]*?from\s+['"]([^'"]+)['"]/g)) {
+      // Static imports and re-exports, side-effect imports, and dynamic import() and require() calls.
+      const specifiers = [
+        ...code.matchAll(/(?:^|\n)\s*(?:import|export)\b[^'"]*?from\s+['"]([^'"]+)['"]/g),
+        ...code.matchAll(/(?:^|\n)\s*import\s+['"]([^'"]+)['"]/g),
+        ...code.matchAll(/\b(?:import|require)\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
+      ].map((match) => match[1] ?? '')
+      for (const specifier of specifiers) {
         if (/^\.\.?\//.test(specifier)) walk(join(dirname(file), specifier.replace(/\.js$/, '.ts')))
         else if (/^node:|^(fs|path|crypto|http|https|net|zlib|os|url|child_process|module|stream)$/.test(specifier)) builtins.push(`${file.slice(src.length + 1)}: ${specifier}`)
       }

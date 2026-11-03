@@ -1,11 +1,17 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomFillSync } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { basename, join, relative, resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
+import { useRandomSource } from './bytes.js'
 import { UNSAFE_KEYS } from './own.js'
 import type { Document, Dump, Manifest, Recorded, Resource } from './types.js'
 import type { Extension, RecordedOverlay } from './extend.js'
 import { DUMP_FORMAT } from './format.js'
+
+// Node 16 and 18 have no Web Crypto global, so a dump read in Node takes its random values from node:crypto.
+useRandomSource((bytes) => {
+  randomFillSync(bytes)
+})
 
 /** Every file under a directory, as paths relative to it. */
 const walk = (dir: string, base = dir): string[] => readdirSync(dir).flatMap((name) => {

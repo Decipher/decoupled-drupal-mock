@@ -1,6 +1,6 @@
 // Hashing and random values on the globals a browser has, so the root entry imports no Node built-in and runs in a
-// page, a service worker or Node alike. The mock's tokens, codes and session ids only need to differ from each other,
-// not to be secret, so a runtime without Web Crypto (Node 16) falls back to Math.random.
+// page, a service worker or Node alike. Random values come from Web Crypto. Node 16 and 18 have none as a global, so
+// the Node-only loader registers node:crypto as the source, and a runtime with neither refuses rather than guess.
 
 const K = new Uint32Array([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01,
@@ -18,7 +18,9 @@ const rotateRight = (x: number, n: number): number => (x >>> n) | (x << (32 - n)
 export const utf8 = (text: string): Uint8Array => {
   const bytes: number[] = []
   for (const char of text) {
-    const code = char.codePointAt(0)!
+    // A lone surrogate becomes U+FFFD, as Buffer and TextEncoder encode it, so hashes match node:crypto's.
+    const point = char.codePointAt(0)!
+    const code = point >= 0xd800 && point <= 0xdfff ? 0xfffd : point
     if (code < 0x80) bytes.push(code)
     else if (code < 0x800) bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f))
     else if (code < 0x10000) bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f))
@@ -75,12 +77,20 @@ export const sha256 = (input: string | Uint8Array): Uint8Array => {
 
 const webCrypto = (): Crypto | undefined => (globalThis as { crypto?: Crypto }).crypto
 
-/** `length` random bytes, from Web Crypto where the runtime has it. */
+let fallback: ((bytes: Uint8Array) => void) | undefined
+
+/** Sets the secure random source for a runtime without Web Crypto. `decoupled-drupal-mock/node` sets node:crypto. */
+export const useRandomSource = (fill: ((bytes: Uint8Array) => void) | undefined): void => {
+  fallback = fill
+}
+
+/** `length` random bytes, from Web Crypto, or from the source `useRandomSource` set. */
 export const randomBytes = (length: number): Uint8Array => {
   const bytes = new Uint8Array(length)
   const crypto = webCrypto()
   if (crypto?.getRandomValues) return crypto.getRandomValues(bytes)
-  for (let i = 0; i < length; i++) bytes[i] = Math.floor(Math.random() * 256)
+  if (!fallback) throw new Error('No secure random source: this runtime has no Web Crypto. Load the dump through decoupled-drupal-mock/node, or call useRandomSource().')
+  fallback(bytes)
   return bytes
 }
 
