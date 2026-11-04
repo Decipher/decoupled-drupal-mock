@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node --experimental-strip-types
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { alignTo, diffBuilds, publishOverlayRecording, realignOverlay, writeOverlay } from './overlay.ts'
+import { alignTo, diffBuilds, dropOverlayWrites, publishOverlayRecording, realignOverlay, writeOverlay } from './overlay.ts'
 
 const USAGE = `Usage:
   decoupled-drupal-mock-overlay <baseline> <variant build> <name> <overlays directory>
@@ -31,6 +31,7 @@ if (args[0] === 'realign') {
   const align = alignTo(base!, variant!)
   publishOverlayRecording(join(recordings, 'reads.json.gz'), out, name!, align)
   if (existsSync(join(recordings, 'writes.json.gz'))) publishOverlayRecording(join(recordings, 'writes.json.gz'), out, name!, align, 'writes')
+  else dropOverlayWrites(out, name!)
   console.log(`${name}: ${Object.keys(overlay.recorded).length} recordings, ${overlay.removed.length} removed, ${Object.values(overlay.resources).flatMap(Object.keys).length} resource types, ${Object.keys(overlay.index).length} indexes`)
 }
 /* c8 ignore stop */

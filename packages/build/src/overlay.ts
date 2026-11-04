@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import type { Document, Recorded, Resource } from 'decoupled-drupal-mock'
@@ -249,10 +249,28 @@ export const realignOverlay = (from: string, to: string, name: string, out: stri
   const align = alignTo(to, from)
   const files = [`${name}.json.gz`, `oracle/${name}.json.gz`, `oracle/${name}.writes.json.gz`].filter((file) => existsSync(join(out, file)))
   if (!files.includes(`${name}.json.gz`)) throw new Error(`No overlay named ${name} in ${out}.`)
-  for (const file of files) {
-    const bytes = gzipSync(Buffer.from(JSON.stringify(align(read<unknown>(out, file)))), { level: 9 })
+  // Every file is read and aligned before any is written: one that cannot be read leaves the overlay as it was, not
+  // half on each baseline.
+  const written = files.map((file) => [file, gzipSync(Buffer.from(JSON.stringify(align(read<unknown>(out, file)))), { level: 9 })] as const)
+  for (const [file, bytes] of written) {
     writeFileSync(join(out, file), bytes)
     hashInto(out, file, bytes)
   }
   return files
+}
+
+/**
+ * Takes away an overlay's write recordings and their hash, for a variant built again without write scripts: scripts
+ * left from an earlier build would be replayed against an overlay they were not recorded with.
+ *
+ * @param out - The directory of overlays.
+ * @param name - The overlay's name.
+ */
+export const dropOverlayWrites = (out: string, name: string): void => {
+  const file = `oracle/${name}.writes.json.gz`
+  rmSync(join(out, file), { force: true })
+  const manifestFile = join(out, 'manifest.json')
+  if (!existsSync(manifestFile)) return
+  const { [file]: _dropped, ...manifest } = JSON.parse(readFileSync(manifestFile, 'utf8')) as Record<string, string>
+  writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`)
 }
