@@ -5,7 +5,8 @@ import type { Mock } from 'decoupled-drupal-mock/testing'
 import { nodePreview } from '../../extensions/node-preview.mjs'
 
 describe('a module the preset does not have: JSON:API Node Preview', () => {
-  const uuid = '9af15b20-9480-459c-bce5-d00b5d41fa32'
+  // The preset's recipe with node id 10. A rebuild of the preset gives it another UUID.
+  const uuid = '396eb124-72bd-4f84-bc0f-d016159d378e'
   const paragraph = { type: 'paragraph--text', id: '11111111-1111-4111-8111-111111111111', attributes: { field_text: 'Unsaved' } }
   let mock: Mock
   const preview = (id: string, headers: Record<string, string> = {}) => fetch(`${mock.url}/jsonapi/node/recipe/${id}/preview?include=field_content`, { headers })

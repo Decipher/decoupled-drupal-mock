@@ -40,7 +40,7 @@ export class Writes {
 
   /** The base fields a bundle requires, as Drupal's entity types define them. */
   private requiredBase(entityType: string): string[] {
-    return ({ node: ['title'], taxonomy_term: ['name'], block_content: ['info'], menu_link_content: ['title', 'link'], user: ['name'], media: [], contact_message: ['name', 'mail', 'subject', 'message'], path_alias: ['path', 'alias'] } as Record<string, string[]>)[entityType] || []
+    return ({ node: ['title'], taxonomy_term: ['name'], block_content: ['info'], menu_link_content: ['title', 'link'], user: ['name'], media: [], contact_message: ['subject', 'message'], path_alias: ['path', 'alias'] } as Record<string, string[]>)[entityType] || []
   }
 
   /** The workflow moderating a bundle, if one does. */
@@ -216,7 +216,7 @@ export class Writes {
 
   /** The bundle's config entity, such as `node_type--node_type` for a node. */
   private bundleEntity(entityType: string, bundle: string): Resource | undefined {
-    const typeOf: Record<string, string> = { node: 'node_type--node_type', taxonomy_term: 'taxonomy_vocabulary--taxonomy_vocabulary', media: 'media_type--media_type', block_content: 'block_content_type--block_content_type', comment: 'comment_type--comment_type' }
+    const typeOf: Record<string, string> = { node: 'node_type--node_type', taxonomy_term: 'taxonomy_vocabulary--taxonomy_vocabulary', media: 'media_type--media_type', block_content: 'block_content_type--block_content_type', comment: 'comment_type--comment_type', contact_message: 'contact_form--contact_form' }
     const type = typeOf[entityType]
     // A node type's machine name is `drupal_internal__type` and a vocabulary's `drupal_internal__vid`; the others keep `drupal_internal__id`.
     const key = entityType === 'node' ? 'drupal_internal__type' : entityType === 'taxonomy_term' ? 'drupal_internal__vid' : 'drupal_internal__id'
@@ -264,8 +264,13 @@ export class Writes {
         break
       }
       case 'contact_message': {
-        Object.assign(base, { langcode: this.langcode, name: attributes.name, mail: attributes.mail, subject: attributes.subject, message: attributes.message, copy: attributes.copy ?? false })
+        // As Contact Storage answers a visitor's message: stored with an id and the sender's address, and no copy asked for.
+        const id = this.store.nextId(this.langcode, 'contact_message', 'drupal_internal__id')
+        Object.assign(base, { drupal_internal__id: id, langcode: this.langcode, name: attributes.name ?? null, mail: attributes.mail ?? null, subject: attributes.subject, message: attributes.message, copy: attributes.copy ?? null, created: stamp, ip_address: '127.0.0.1' })
         bundleRelationship('contact_form')
+        rels.recipient = { data: null }
+        // Drupal names the anonymous sender as a missing target, typed as the form the message was sent with.
+        rels.uid = { data: session.user ? user : { type: 'contact_form--contact_form', id: 'missing', meta: { links: { help: { href: 'https://www.drupal.org/docs/8/modules/json-api/core-concepts#missing', meta: { about: "Usage and meaning of the 'missing' resource identifier." } } } } } }
         break
       }
       case 'menu_link_content': {

@@ -570,9 +570,10 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const own = `${baseUrl}${prefix || defaultPrefix}${basePath}/${typePath(type)}/${created.id}`
       const moderated = 'moderation_state' in (created.attributes || {})
       created.links = { self: { href: revision !== undefined ? `${own}?resourceVersion=id%3A${revision}` : own }, ...(moderated ? { 'working-copy': { href: `${own}?resourceVersion=rel%3Aworking-copy` } } : {}) }
-      // Every relationship carries its related and self links, as a stored resource does.
+      // Every relationship carries its related and self links, as a stored resource does. Contact Storage's answer to a
+      // message carries none, as its recording shows.
       const version = revision !== undefined ? `?resourceVersion=id%3A${revision}` : ''
-      for (const [name, relationship] of Object.entries(created.relationships || {})) relationship.links = { related: { href: `${own}/${name}${version}` }, self: { href: `${own}/relationships/${name}${version}` } }
+      if (entityType !== 'contact_message') for (const [name, relationship] of Object.entries(created.relationships || {})) relationship.links = { related: { href: `${own}/${name}${version}` }, self: { href: `${own}/relationships/${name}${version}` } }
       if (entityType !== 'contact_message') store.add(dump.manifest.defaultLanguage, type, created)
       return { status: 201, headers: { ...headers, location: created.links.self!.href }, body: relink({ jsonapi: JSONAPI, data: created, links: { self: { href: `${baseUrl}${prefix}${rest}` } } }) }
     }
