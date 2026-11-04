@@ -136,6 +136,19 @@ lint:commit:
     - yarn commitlint --from "$CI_MERGE_REQUEST_DIFF_BASE_SHA" --to HEAD --verbose
     - section_end "commitlint"
 
+# A rebuild's recordings are gzipped, so the page beside them says what changed, and this checks the page is true.
+lint:rebuild:
+  extends: .node
+  stage: lint
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - section_start "rebuild" "Checking each preset's rebuild page"
+    - yarn rebuild:summary "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+    - section_end "rebuild"
+
 lint:prose:
   extends: .node
   stage: lint

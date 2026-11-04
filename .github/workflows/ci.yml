@@ -23,6 +23,9 @@ jobs:
       - run: yarn lint
       - if: github.event_name == 'pull_request'
         run: yarn commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}
+      # The gzipped recordings merge only beside a page that says what changed, which the job summary shows too.
+      - if: github.event_name == 'pull_request'
+        run: yarn rebuild:summary ${{ github.event.pull_request.base.sha }}
       - run: '[ -d packages ] && yarn typecheck || echo "nothing to typecheck"'
       - run: '[ -d packages ] && yarn test || echo "nothing to test"'
 

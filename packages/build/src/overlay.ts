@@ -22,7 +22,7 @@ export interface Overlay {
 
 // A file that is not there is undefined. One that is there and cannot be read stops the diff: an overlay written from
 // half a build would misstate the variant.
-const read = <T>(dir: string, file: string): T | undefined => {
+export const read = <T>(dir: string, file: string): T | undefined => {
   let bytes: Buffer
   try {
     bytes = readFileSync(join(dir, file))
@@ -41,11 +41,11 @@ const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.str
 
 // What names an entity across installs of the same site: its internal id, or its machine name for configuration.
 // UUIDs are made fresh by each install, so a site built twice has the same content under other UUIDs.
-const STABLE_KEYS = ['drupal_internal__nid', 'drupal_internal__tid', 'drupal_internal__mid', 'drupal_internal__uid', 'drupal_internal__fid', 'drupal_internal__id', 'drupal_internal__name', 'drupal_internal__type', 'drupal_internal__vid', 'drupal_internal__format']
+export const STABLE_KEYS = ['drupal_internal__nid', 'drupal_internal__tid', 'drupal_internal__mid', 'drupal_internal__uid', 'drupal_internal__fid', 'drupal_internal__id', 'drupal_internal__name', 'drupal_internal__type', 'drupal_internal__vid', 'drupal_internal__format']
 // When an install made or last touched an entity: another install's are its own, and say nothing about the change.
-const INSTALL_TIMES = ['created', 'changed', 'revision_created', 'revision_timestamp', 'content_translation_created', 'content_translation_changed', 'access', 'login']
+export const INSTALL_TIMES = ['created', 'changed', 'revision_created', 'revision_timestamp', 'content_translation_created', 'content_translation_changed', 'access', 'login']
 
-const resourcesOf = (dir: string): Array<[string, Resource]> => {
+export const resourcesOf = (dir: string): Array<[string, Resource]> => {
   const out: Array<[string, Resource]> = []
   let langcodes: string[] = []
   try {

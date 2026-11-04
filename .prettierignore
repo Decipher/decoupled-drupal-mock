@@ -4,5 +4,6 @@ dist
 presets/*/dump
 yarn.lock
 presets/*/oracle
+presets/*/REBUILD.md
 .vale
 coverage

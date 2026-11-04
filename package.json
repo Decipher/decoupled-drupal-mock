@@ -13,6 +13,8 @@
     "build": "yarn workspaces foreach -A -pt run build",
     "crawl": "node --experimental-strip-types packages/build/src/cli.ts",
     "overlay": "node --experimental-strip-types packages/build/src/overlay-cli.ts",
+    "dump:diff": "node --experimental-strip-types packages/build/src/dump-diff-cli.ts",
+    "rebuild:summary": "node --experimental-strip-types packages/build/src/rebuild-summary.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "yarn lint:js && yarn lint:cspell && yarn lint:md && yarn lint:format && yarn lint:private && yarn lint:knip",
@@ -28,7 +30,7 @@
     "lint:knip": "knip --include dependencies,unlisted --no-config-hints",
     "lint:audit": "yarn workspace decoupled-drupal-mock npm audit --environment production --recursive --severity high && yarn workspace decoupled-drupal-mock-umami npm audit --environment production --recursive --severity high",
     "lint:prose:install": "bash .gitlab/scripts/install-vale.sh .vale/bin .vale/styles",
-    "lint:prose": "PROSE_LINT_GLOB='!{.changeset/**,presets/*/dump/**,examples/*/node_modules/**,node_modules/**,.yarn/**,packages/*/CHANGELOG.md,presets/*/CHANGELOG.md}' VALE_BIN=\"$PWD/.vale/bin/vale\" bash .gitlab/scripts/lint-prose.sh",
+    "lint:prose": "PROSE_LINT_GLOB='!{.changeset/**,presets/*/dump/**,examples/*/node_modules/**,node_modules/**,.yarn/**,packages/*/CHANGELOG.md,presets/*/CHANGELOG.md,presets/*/REBUILD.md}' VALE_BIN=\"$PWD/.vale/bin/vale\" bash .gitlab/scripts/lint-prose.sh",
     "changeset": "changeset",
     "size": "size-limit",
     "test:coverage": "vitest run --coverage"

@@ -1,0 +1,94 @@
+{
+  "site": {
+    "druxtjs": "dee56788a6cbb5787d2969fa01832b8147d9b965",
+    "core": "11.4.11"
+  },
+  "baseUrl": "${DECOUPLED_DRUPAL_MOCK_BASE_URL}",
+  "out": "presets/umami/dump",
+  "oracleOut": "presets/umami/oracle",
+  "preset": "umami",
+  "languages": {
+    "en": "en",
+    "es": "es"
+  },
+  "defaultLanguage": "en",
+  "drupal": {
+    "profile": "demo_umami"
+  },
+  "composerDir": "${DECOUPLED_DRUPAL_MOCK_SITE}",
+  "drush": {
+    "bin": "${DECOUPLED_DRUPAL_MOCK_SITE}/vendor/bin/drush",
+    "cwd": "${DECOUPLED_DRUPAL_MOCK_SITE}"
+  },
+  "auth": {
+    "tokenUrl": "${DECOUPLED_DRUPAL_MOCK_BASE_URL}/oauth/token",
+    "clientId": "build",
+    "clientSecret": "${DECOUPLED_DRUPAL_MOCK_CLIENT_SECRET}",
+    "scope": "build"
+  },
+  "oracleFile": "presets/umami/oracle.txt",
+  "writesFile": "presets/umami/writes.json",
+  "identities": {
+    "accounts": [
+      {
+        "name": "editor",
+        "password": "editor",
+        "roles": ["editor"]
+      },
+      {
+        "name": "author",
+        "password": "author",
+        "roles": ["author"]
+      },
+      {
+        "name": "reader",
+        "password": "reader",
+        "roles": []
+      }
+    ],
+    "consumers": [
+      {
+        "clientId": "decoupled-drupal-mock",
+        "secret": "decoupled-drupal-mock",
+        "confidential": true,
+        "grants": ["client_credentials", "refresh_token"],
+        "scopes": {
+          "editor": "editor",
+          "author": "author"
+        },
+        "user": "editor"
+      },
+      {
+        "clientId": "decoupled-drupal-mock-public",
+        "confidential": false,
+        "pkce": true,
+        "grants": ["authorization_code", "refresh_token"],
+        "scopes": {
+          "editor": "editor",
+          "author": "author"
+        },
+        "redirectUris": ["http://127.0.0.1:3000/callback"]
+      },
+      {
+        "clientId": "decoupled-drupal-mock-author",
+        "secret": "decoupled-drupal-mock-author",
+        "confidential": true,
+        "grants": ["client_credentials"],
+        "scopes": {
+          "author": "author"
+        },
+        "user": "author"
+      },
+      {
+        "clientId": "decoupled-drupal-mock-reader",
+        "secret": "decoupled-drupal-mock-reader",
+        "confidential": true,
+        "grants": ["client_credentials"],
+        "scopes": {
+          "reader": "authenticated"
+        },
+        "user": "reader"
+      }
+    ]
+  }
+}
