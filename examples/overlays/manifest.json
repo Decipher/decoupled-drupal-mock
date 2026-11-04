@@ -1,9 +1,9 @@
 {
-  "contact-storage.json.gz": "28fcb65353c2bdb7c548f1d72fbb969e15cb24eb9e027464a65f130934aa3f9a",
-  "jsonapi-extras.json.gz": "34ecd88c25fa8cd0b9e3e4319460f1d1899a869980abc989effc46a01127e7ef",
-  "language-routing-patches.json.gz": "23d542d830b1fe4c39e0af2381bb2c8fc0b32047be807cb7e1027f8f7c5053dd",
-  "oracle/contact-storage.json.gz": "537658361fb9523533e329e163da64ebba85ac7bf1f40e549160bf6fc3cbe815",
-  "oracle/contact-storage.writes.json.gz": "96739109bce3b6ba6d5d25fb0512eb6992d52f99aa3afa7072530127eff56fd2",
-  "oracle/jsonapi-extras.json.gz": "030bde6cde08d0e0892d8cbd9a5338994bd57f16f64efca798c39c82d8adbc17",
-  "oracle/language-routing-patches.json.gz": "b66b9e1c09042f48514cf48c72be930c9382c665cb0211275db04ce3cd766b0a"
+  "contact-storage.json.gz": "56a173dd0fb6f781b63e3077b3ef26fb4f373caad39a75984479d4e4d14e2954",
+  "jsonapi-extras.json.gz": "d0088da963329bba8ea38dae481c30c0947e6801c42092b70263ecb5c7d6e272",
+  "language-routing-patches.json.gz": "c0cf8e2d2323a981ea53bf6703672f3fac6be678f9ff823457ee15d00c72089f",
+  "oracle/contact-storage.json.gz": "d09efd500b890e6ec79b8831568ead8b5d651c705cbc06bffae5a7d2a5f0efca",
+  "oracle/contact-storage.writes.json.gz": "4bf3e7f9399c729ebbd10825b5d392ea9aa20b894202412dd52d7c73ce897a75",
+  "oracle/jsonapi-extras.json.gz": "53ab8d69be6e363c00893e297d6def0acd7bf5ac3aa47431a0db9b4e3a29b30f",
+  "oracle/language-routing-patches.json.gz": "e00d1e1de741b8f01ba76f88a6749a743c408b7e61c2b728e852cbf9e987f420"
 }

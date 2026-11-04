@@ -6,7 +6,7 @@ import { nodePreview } from '../../extensions/node-preview.mjs'
 
 describe('a module the preset does not have: JSON:API Node Preview', () => {
   // The preset's recipe with node id 10. A rebuild of the preset gives it another UUID.
-  const uuid = '396eb124-72bd-4f84-bc0f-d016159d378e'
+  const uuid = '791b424f-1d55-4275-bea2-cd888e51a1ac'
   const paragraph = { type: 'paragraph--text', id: '11111111-1111-4111-8111-111111111111', attributes: { field_text: 'Unsaved' } }
   let mock: Mock
   const preview = (id: string, headers: Record<string, string> = {}) => fetch(`${mock.url}/jsonapi/node/recipe/${id}/preview?include=field_content`, { headers })

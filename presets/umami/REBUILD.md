@@ -7,7 +7,7 @@ writes it again and fails when the two differ, so a change to the recordings mer
 
 - Core 11.4.6 to 11.4.11
 - Removed graphql, graphql_compose, typed_data
-- Updated simple_oauth 6.1.1 to 6.1.3
+- Updated simple_oauth 6.1.1 to 6.1.4
 
 ## Index
 
