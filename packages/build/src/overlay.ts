@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import type { Document, Recorded, Resource } from 'decoupled-drupal-mock'
@@ -219,30 +219,58 @@ export const writeOverlay = (overlay: Overlay, out: string): void => {
  * replays them against the baseline plus the overlay. Named with its hash in the directory's manifest, so the bytes
  * replayed are the bytes recorded.
  *
- * @param recording - The variant build's `reads.json.gz`.
- * @param out - The directory of overlays: the recording is `oracle/<name>.json.gz`.
+ * @param recording - The variant build's `reads.json.gz` or `writes.json.gz`.
+ * @param out - The directory of overlays: the reads are `oracle/<name>.json.gz`, and the writes `oracle/<name>.writes.json.gz`.
  * @param name - The overlay's name.
  * @param align - What the overlay was read through, from `alignTo`.
+ * @param kind - Whether the recording holds the reads or the write scripts.
  */
-export const publishOverlayRecording = (recording: string, out: string, name: string, align: (value: unknown) => unknown = (value) => value): void => {
+export const publishOverlayRecording = (recording: string, out: string, name: string, align: (value: unknown) => unknown = (value) => value, kind: 'reads' | 'writes' = 'reads'): void => {
   const entries = align(JSON.parse(gunzipSync(readFileSync(recording)).toString('utf8')))
   const bytes = gzipSync(Buffer.from(JSON.stringify(entries)), { level: 9 })
+  const file = `oracle/${name}${kind === 'writes' ? '.writes' : ''}.json.gz`
   mkdirSync(join(out, 'oracle'), { recursive: true })
-  writeFileSync(join(out, 'oracle', `${name}.json.gz`), bytes)
-  hashInto(out, `oracle/${name}.json.gz`, bytes)
+  writeFileSync(join(out, file), bytes)
+  hashInto(out, file, bytes)
 }
 
-/* c8 ignore start */
-if (process.argv[1]?.endsWith('overlay.ts')) {
-  const [baseDir, variantDir, name, out] = process.argv.slice(2) as [string, string, string, string]
-  if (!out) {
-    console.error('Usage: overlay.ts <baseline build or preset dump> <variant build> <name> <overlays directory>')
-    process.exit(1)
+/**
+ * Moves an overlay and its recordings onto a rebuilt baseline. A rebuild makes every UUID and install time afresh, so
+ * an overlay aligned to the old build names entities the new one does not have. Each is matched as `alignTo` matches
+ * them, by internal id or machine name.
+ *
+ * @param from - The baseline the overlay was made against, such as the preset's dump before the rebuild.
+ * @param to - The rebuilt baseline.
+ * @param name - The overlay's name.
+ * @param out - The directory of overlays that holds it.
+ * @returns The files rewritten, relative to `out`.
+ */
+export const realignOverlay = (from: string, to: string, name: string, out: string): string[] => {
+  const align = alignTo(to, from)
+  const files = [`${name}.json.gz`, `oracle/${name}.json.gz`, `oracle/${name}.writes.json.gz`].filter((file) => existsSync(join(out, file)))
+  if (!files.includes(`${name}.json.gz`)) throw new Error(`No overlay named ${name} in ${out}.`)
+  // Every file is read and aligned before any is written: one that cannot be read leaves the overlay as it was, not
+  // half on each baseline.
+  const written = files.map((file) => [file, gzipSync(Buffer.from(JSON.stringify(align(read<unknown>(out, file)))), { level: 9 })] as const)
+  for (const [file, bytes] of written) {
+    writeFileSync(join(out, file), bytes)
+    hashInto(out, file, bytes)
   }
-  const overlay = diffBuilds(baseDir, variantDir, name)
-  writeOverlay(overlay, out)
-  // The variant's recordings, beside its build as the crawl writes them.
-  publishOverlayRecording(join(`${variantDir.replace(/\/+$/, '')}.oracle`, 'reads.json.gz'), out, name, alignTo(baseDir, variantDir))
-  console.log(`${name}: ${Object.keys(overlay.recorded).length} recordings, ${overlay.removed.length} removed, ${Object.values(overlay.resources).flatMap(Object.keys).length} resource types, ${Object.keys(overlay.index).length} indexes`)
+  return files
 }
-/* c8 ignore stop */
+
+/**
+ * Takes away an overlay's write recordings and their hash, for a variant built again without write scripts: scripts
+ * left from an earlier build would be replayed against an overlay they were not recorded with.
+ *
+ * @param out - The directory of overlays.
+ * @param name - The overlay's name.
+ */
+export const dropOverlayWrites = (out: string, name: string): void => {
+  const file = `oracle/${name}.writes.json.gz`
+  rmSync(join(out, file), { force: true })
+  const manifestFile = join(out, 'manifest.json')
+  if (!existsSync(manifestFile)) return
+  const { [file]: _dropped, ...manifest } = JSON.parse(readFileSync(manifestFile, 'utf8')) as Record<string, string>
+  writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`)
+}

@@ -31,6 +31,10 @@ describe('the private-host check', () => {
 
   it('reads what is staged, not what is in the worktree', () => {
     const root = mkdtempSync(join(tmpdir(), 'private-refs-'))
+    // A hook runs this with GIT_DIR and GIT_INDEX_FILE set, and git would take them for the repository being committed
+    // to: `git init` would make it bare.
+    const hook = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.startsWith('GIT_')))
+    for (const name of Object.keys(hook)) delete process.env[name]
     try {
       const git = (...args) => execFileSync('git', ['-C', root, ...args], { stdio: 'pipe' })
       git('init', '-q')
@@ -42,6 +46,7 @@ describe('the private-host check', () => {
       git('update-index', '--add', '--cacheinfo', '160000,1111111111111111111111111111111111111111,vendored')
       expect(lintPrivateRefs(root)).toEqual(['README.md:1: 10.0.0.8'])
     } finally {
+      Object.assign(process.env, hook)
       rmSync(root, { recursive: true, force: true })
     }
   })

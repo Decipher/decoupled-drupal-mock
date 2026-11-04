@@ -69,7 +69,9 @@ const overlayFile = (name: string) => join(overlaysDir, `${name}.json.gz`)
 describe.skipIf(!!process.env.DECOUPLED_DRUPAL_MOCK_DUMP)('the example overlays', () => {
   it('each have the real answers they are replayed against, and the hashes their manifest names', () => {
     expect(overlays.length).toBeGreaterThan(0)
-    expect(Object.keys(overlayManifest).sort()).toEqual(overlays.flatMap((name) => [`${name}.json.gz`, `oracle/${name}.json.gz`]).sort())
+    // The write scripts are there only for a site that was given some.
+    const writes = overlays.map((name) => `oracle/${name}.writes.json.gz`).filter((file) => existsSync(join(overlaysDir, file)))
+    expect(Object.keys(overlayManifest).sort()).toEqual([...overlays.flatMap((name) => [`${name}.json.gz`, `oracle/${name}.json.gz`]), ...writes].sort())
     for (const [file, hash] of Object.entries(overlayManifest)) expect(createHash('sha256').update(readFileSync(join(overlaysDir, file))).digest('hex'), file).toBe(hash)
   })
 })

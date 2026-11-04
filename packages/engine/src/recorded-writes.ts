@@ -8,13 +8,16 @@ export interface Step {
   form?: Record<string, string>
   /** A JSON body, sent as `application/json`. */
   json?: unknown
-  /** The account this step runs as, over the script's; `anonymous` sends no credentials. */
-  as?: string
+  /** The account this step runs as, over the script's. */
+  as?: Runner
   /** A bearer token for this step: a placeholder such as `{1.access_token}`, or a literal. */
   bearer?: string
 }
 
-export interface WriteScript { name: string, as: string, steps: Step[] }
+/** Who runs a script or a step: an account's name, or `anonymous` for a visitor, who sends no credentials. */
+export type Runner = 'anonymous' | (string & Record<never, never>)
+
+export interface WriteScript { name: string, as: Runner, steps: Step[] }
 
 /** What a step answered, as the build recorded it. */
 export interface Answer { status: number, headers: Record<string, string>, body: unknown }
