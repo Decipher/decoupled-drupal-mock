@@ -6,8 +6,8 @@
   "description": "Builds a preset dump by crawling a Drupal site's JSON:API.",
   "bin": {
     "decoupled-drupal-mock-crawl": "./src/cli.ts",
-    "decoupled-drupal-mock-overlay": "./src/overlay-cli.ts",
-    "decoupled-drupal-mock-dump-diff": "./src/dump-diff-cli.ts"
+    "decoupled-drupal-mock-dump-diff": "./src/dump-diff-cli.ts",
+    "decoupled-drupal-mock-overlay": "./src/overlay-cli.ts"
   },
   "dependencies": {
     "decoupled-drupal-mock": "workspace:^"

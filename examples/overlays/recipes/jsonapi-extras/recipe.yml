@@ -1,0 +1,5 @@
+name: JSON:API Extras, over the Umami preset
+description: 'JSON:API Extras in its default configuration, applied over the Umami preset recipe.'
+type: Site
+install:
+  - jsonapi_extras

@@ -1,0 +1,19 @@
+name: Contact Storage, over the Umami preset
+description: 'The contrib Contact and Contact Storage modules, with the site-wide feedback form a visitor may write to and one message already stored, applied over the Umami preset recipe.'
+type: Site
+install:
+  - contact
+  - contact_storage
+config:
+  actions:
+    # Contrib Contact makes only the personal form. This is the site-wide one, as core's Contact made it.
+    contact.form.feedback:
+      createIfNotExists:
+        label: 'Website feedback'
+        recipients:
+          - admin@example.com
+        reply: ''
+        weight: 0
+    user.role.anonymous:
+      grantPermissions:
+        - 'access site-wide contact form'

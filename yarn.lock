@@ -5961,6 +5961,7 @@ __metadata:
     decoupled-drupal-mock: "workspace:^"
   bin:
     decoupled-drupal-mock-crawl: ./src/cli.ts
+    decoupled-drupal-mock-dump-diff: ./src/dump-diff-cli.ts
     decoupled-drupal-mock-overlay: ./src/overlay-cli.ts
   languageName: unknown
   linkType: soft

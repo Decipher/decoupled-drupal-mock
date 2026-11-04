@@ -1,6 +1,5 @@
 {
   "site": {
-    "druxtjs": "dee56788a6cbb5787d2969fa01832b8147d9b965",
     "core": "11.4.11"
   },
   "baseUrl": "${DECOUPLED_DRUPAL_MOCK_BASE_URL}",
