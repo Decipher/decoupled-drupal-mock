@@ -38,7 +38,7 @@ The same option works on `startMock`, `spawnMock`, `globalSetup` and `withDrupal
    });
    ```
 
-An overlay can only hold what your change makes the site answer differently. It can't add what the preset's own site lacks, such as a module that a different core installs with the same profile: build on the core and profile the preset's manifest names, or the difference is your install, not your change. A module the preset's core leaves out, such as Contact on Drupal 11.4, goes in as your change.
+An overlay can only hold what your change makes the site answer differently. It can't add what the preset's own site lacks, such as a module that a different core installs with the same profile. Build on the core and profile the preset's manifest names, so the difference is your change alone. A module the preset's core leaves out, such as Contact on Drupal 11.4, goes in as your change.
 
 Your install is not the preset's, so its UUIDs and install times are its own. The overlay tool aligns them before taking the difference. It matches each entity to the preset's by its internal id (`drupal_internal__nid` and its kin) or its machine name, and gives it the preset's UUID and install times (`created`, `changed` and the sign-in times). Anything else your site does differently is part of the overlay, so keep the site as the preset's apart from your change. Signing in as the preset's accounts changes what Views such as Who's new list.
 
