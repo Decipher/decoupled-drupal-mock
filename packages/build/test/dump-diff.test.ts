@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -173,6 +173,18 @@ describe('the pages beside the presets', () => {
     expect(withoutGit(() => rebuildSummaries({ base, write: false, root, error: (line) => errors.push(line) }))).toBe(false)
     expect(errors[0]).toContain(`Run \`yarn rebuild:summary ${base} --write\``)
     expect(errors[0]).toContain('- Core 11.4.10 to 11.4.11')
+  })
+
+  it('refuses a base that is not a commit, so git never reads it as an option', async () => {
+    const { rebuildSummaries } = await import('../src/rebuild-summary')
+    const { root, git } = repository()
+    preset(root, '11.4.11')
+    git('add', '.')
+    git('commit', '--quiet', '-m', 'preset')
+    const written = join(root, 'written')
+    expect(() => withoutGit(() => rebuildSummaries({ base: `--output=${written}`, write: false, root, log: () => {} })))
+      .toThrow(`--output=${written} is not a commit in this repository.`)
+    expect(existsSync(written)).toBe(false)
   })
 })
 

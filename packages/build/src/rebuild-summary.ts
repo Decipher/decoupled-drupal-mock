@@ -32,6 +32,13 @@ ${summary}`
  */
 export const rebuildSummaries = ({ base, write, root, log = console.log, error = console.error }: { base: string, write: boolean, root: string, log?: (line: string) => void, error?: (line: string) => void }): boolean => {
   const git = (...args: string[]): string => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+  // The base comes from the command line or the pipeline. Git reads its commit id, never the name, so a name cannot pass as an option.
+  let commit: string
+  try {
+    commit = git('rev-parse', '--verify', '--quiet', '--end-of-options', `${base}^{commit}`).trim()
+  } catch {
+    throw new Error(`${base} is not a commit in this repository.`)
+  }
   let ok = true
   for (const preset of readdirSync(join(root, 'presets')).sort()) {
     const dir = join('presets', preset)
@@ -39,7 +46,7 @@ export const rebuildSummaries = ({ base, write, root, log = console.log, error =
     const file = join(dir, 'REBUILD.md')
     // A pull request that leaves the recordings alone has nothing to describe, and the page stays as the last rebuild left it.
     try {
-      git('diff', '--quiet', base, '--', join(dir, 'dump'), join(dir, 'oracle'))
+      git('diff', '--quiet', commit, '--', join(dir, 'dump'), join(dir, 'oracle'))
       log(`${preset}: the recordings are as ${base} has them`)
       continue
     } catch {
@@ -51,11 +58,16 @@ export const rebuildSummaries = ({ base, write, root, log = console.log, error =
       // A preset the base does not have yet is summarised against no build at all.
       let atBase = true
       try {
-        git('cat-file', '-e', `${base}:${dir}`)
+        git('cat-file', '-e', `${commit}:${dir}`)
       } catch {
         atBase = false
       }
-      if (atBase) execFileSync('sh', ['-c', 'git archive "$1" "$2" | tar -x -C "$3"', 'sh', base, dir, before], { cwd: root })
+      // Two commands and a file between them, rather than a shell pipe.
+      if (atBase) {
+        const archive = join(before, 'base.tar')
+        git('archive', `--output=${archive}`, commit, '--', dir)
+        execFileSync('tar', ['-x', '-f', archive, '-C', before])
+      }
       page = rebuildPage(preset, summarise(join(before, dir, 'dump'), join(root, dir, 'dump'), { from: join(before, dir, 'oracle'), to: join(root, dir, 'oracle') }))
     } finally {
       rmSync(before, { recursive: true, force: true })
