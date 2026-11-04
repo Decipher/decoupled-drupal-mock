@@ -4,8 +4,9 @@
 # Usage: presets/umami/site.sh <site directory> <port>
 #
 # A stock drupal/recommended-project at the core release build.json names, installed with the demo_umami profile, and
-# then the recipe beside this script. It serves on 127.0.0.1 at the port given, from a SQLite database inside the site
-# directory. The client the build reads with acts as the admin account, and its secret is
+# then the recipe beside this script. demo_umami adds Spanish itself, with /en and /es path prefixes. The site serves
+# on 127.0.0.1 at the port given, from a SQLite database inside the site directory, and writes the server's process id
+# to server.pid there. The client the build reads with acts as the admin account, and its secret is
 # DECOUPLED_DRUPAL_MOCK_CLIENT_SECRET.
 set -euo pipefail
 
@@ -13,8 +14,18 @@ site=${1:?site directory}
 port=${2:?port}
 : "${DECOUPLED_DRUPAL_MOCK_CLIENT_SECRET:?set it to the secret the build reads with}"
 here=$(cd "$(dirname "$0")" && pwd)
-core=$(node -p "require('$here/build.json').site.core")
+core=$(BUILD_JSON="$here/build.json" node -p 'require(process.env.BUILD_JSON).site.core')
 
+# A server already on the port would answer the crawl in this site's place.
+if (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then
+  echo "Something already listens on 127.0.0.1:$port. Stop it, or pick another port." >&2
+  exit 1
+fi
+# Only a directory this script built before is removed, so a mistyped path deletes nothing else.
+if [ -e "$site" ] && [ -n "$(ls -A "$site")" ] && [ ! -f "$site/web/core/lib/Drupal.php" ]; then
+  echo "$site holds something other than a site this script built. Name an empty or new directory." >&2
+  exit 1
+fi
 rm -rf "$site"
 composer create-project --no-interaction --no-progress --quiet "drupal/recommended-project:$core" "$site"
 site=$(cd "$site" && pwd)
@@ -69,4 +80,5 @@ drush cache:rebuild
 
 # From the docroot: the namespaces plugin discovery reads are relative to it.
 (cd web && exec php -S "127.0.0.1:$port" -t . .ht.router.php) > "$site/server.log" 2>&1 &
+echo $! > "$site/server.pid"
 echo "serving $site on http://127.0.0.1:$port, process $!"

@@ -5,14 +5,19 @@
  * @param value - The configuration, as parsed from JSON.
  * @param env - The environment to read.
  * @returns The configuration with every reference replaced.
- * @throws {Error} When a reference names a variable the environment does not set.
+ * @throws {Error} When a reference is not `${NAME}`, or names a variable the environment does not set.
  */
 export const fromEnvironment = <T>(value: T, env: Record<string, string | undefined> = process.env): T => {
   const missing = new Set<string>()
+  const malformed = new Set<string>()
   const expand = (item: unknown): unknown => {
     if (typeof item === 'string') {
-      return item.replace(/\$\{([A-Z0-9_]+)\}/g, (_whole, name: string) => {
-        const set = env[name]
+      return item.replace(/\$\{([^}]*)\}?/g, (whole, name: string) => {
+        if (!whole.endsWith('}') || !/^[A-Z][A-Z0-9_]*$/.test(name)) {
+          malformed.add(whole)
+          return whole
+        }
+        const set = Object.hasOwn(env, name) ? env[name] : undefined
         if (set === undefined || set === '') missing.add(name)
         return set || ''
       })
@@ -22,6 +27,7 @@ export const fromEnvironment = <T>(value: T, env: Record<string, string | undefi
     return item
   }
   const expanded = expand(value) as T
+  if (malformed.size) throw new Error(`The build configuration has ${[...malformed].sort().join(', ')}: a reference is \${NAME}, in capitals, digits and underscores.`)
   if (missing.size) throw new Error(`The build configuration reads ${[...missing].sort().join(', ')} from the environment: set ${missing.size === 1 ? 'it' : 'them'}.`)
   return expanded
 }

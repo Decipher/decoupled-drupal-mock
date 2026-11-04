@@ -45,7 +45,7 @@ export const STABLE_KEYS = ['drupal_internal__nid', 'drupal_internal__tid', 'dru
 // When an install made or last touched an entity: another install's are its own, and say nothing about the change.
 export const INSTALL_TIMES = ['created', 'changed', 'revision_created', 'revision_timestamp', 'content_translation_created', 'content_translation_changed', 'access', 'login']
 
-export const resourcesOf = (dir: string): Array<[string, Resource]> => {
+const resourcesOf = (dir: string): Array<[string, Resource]> => {
   const out: Array<[string, Resource]> = []
   let langcodes: string[] = []
   try {
@@ -272,5 +272,5 @@ export const dropOverlayWrites = (out: string, name: string): void => {
   const manifestFile = join(out, 'manifest.json')
   if (!existsSync(manifestFile)) return
   const { [file]: _dropped, ...manifest } = JSON.parse(readFileSync(manifestFile, 'utf8')) as Record<string, string>
-  writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`)
+  writeFileSync(manifestFile, `${JSON.stringify(Object.fromEntries(Object.entries(manifest).sort()), null, 2)}\n`)
 }

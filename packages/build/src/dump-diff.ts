@@ -57,7 +57,7 @@ const languagesOf = (dir: string): string[] => {
 
 const typesOf = (dir: string, langcode: string): string[] => {
   try {
-    return readdirSync(join(dir, 'resources', langcode)).map((file) => file.replace(/\.json\.gz$/, ''))
+    return readdirSync(join(dir, 'resources', langcode)).filter((file) => file.endsWith('.json.gz')).map((file) => file.slice(0, -'.json.gz'.length))
   } catch {
     return []
   }
@@ -67,12 +67,13 @@ const typesOf = (dir: string, langcode: string): string[] => {
  * What a rebuild changed, as a page a reviewer reads in a minute. The old build is read in the new one's terms first,
  * so the UUIDs and install times every build makes afresh are not changes.
  *
- * @param from - The dump before.
+ * @param from - The dump before, which need not exist: a preset's first build has none.
  * @param to - The dump after.
  * @param oracles - The recordings beside each dump, when there are some.
  * @param oracles.from - The old dump's recordings.
  * @param oracles.to - The new dump's recordings.
  * @returns The summary, as Markdown.
+ * @throws {Error} When the dump after is not a finished build.
  */
 export const summarise = (from: string, to: string, oracles: { from?: string | undefined, to?: string | undefined } = {}): string => {
   const align = alignTo(to, from)
@@ -87,9 +88,14 @@ export const summarise = (from: string, to: string, oracles: { from?: string | u
 
   const before = read<Manifest>(from, 'manifest.json')
   const after = read<Manifest>(to, 'manifest.json')
+  if (!after) throw new Error(`${to} has no manifest.json: it is not a finished build.`)
   const drupal: string[] = []
-  if (before?.drupal.core !== after?.drupal.core) drupal.push(`- Core ${before?.drupal.core} to ${after?.drupal.core}`)
-  if (before?.drupal.profile !== after?.drupal.profile) drupal.push(`- Profile ${before?.drupal.profile} to ${after?.drupal.profile}`)
+  if (!before) drupal.push(`- No build before this one. Core ${after.drupal.core}, profile ${after.drupal.profile}`)
+  else {
+    if (before.drupal.core !== after.drupal.core) drupal.push(`- Core ${before.drupal.core} to ${after.drupal.core}`)
+    if (before.drupal.profile !== after.drupal.profile) drupal.push(`- Profile ${before.drupal.profile} to ${after.drupal.profile}`)
+    if (before.defaultLanguage !== after.defaultLanguage) drupal.push(`- Default language ${before.defaultLanguage} to ${after.defaultLanguage}`)
+  }
   const modulesBefore = before?.drupal.modules || {}
   const modulesAfter = after?.drupal.modules || {}
   const added = Object.keys(modulesAfter).filter((name) => !(name in modulesBefore)).sort()
@@ -104,12 +110,15 @@ export const summarise = (from: string, to: string, oracles: { from?: string | u
   const languages = [...new Set([...Object.keys(before?.languages || {}), ...Object.keys(after?.languages || {}), ...languagesOf(from), ...languagesOf(to)])].sort()
   const index: string[] = []
   for (const langcode of languages) {
-    const a = Object.keys(read<Document>(from, `index/${langcode}.json`)?.links || {})
-    const b = Object.keys(read<Document>(to, `index/${langcode}.json`)?.links || {})
-    const gained = b.filter((type) => !a.includes(type)).sort()
-    const lost = a.filter((type) => !b.includes(type)).sort()
+    const hrefs = (document: Document | undefined): Record<string, unknown> => Object.fromEntries(Object.entries(document?.links || {}).map(([type, link]) => [type, (link as { href?: unknown } | undefined)?.href]))
+    const a = hrefs(old<Document>(from, `index/${langcode}.json`))
+    const b = hrefs(read<Document>(to, `index/${langcode}.json`))
+    const gained = Object.keys(b).filter((type) => !(type in a)).sort()
+    const lost = Object.keys(a).filter((type) => !(type in b)).sort()
+    const moved = Object.keys(b).filter((type) => type in a && a[type] !== b[type]).sort()
     if (gained.length) index.push(`- ${langcode}: added ${some(code(gained))}`)
     if (lost.length) index.push(`- ${langcode}: removed ${some(code(lost))}`)
+    if (moved.length) index.push(`- ${langcode}: links somewhere else for ${some(code(moved))}`)
   }
   section('Index', index)
 
@@ -174,11 +183,12 @@ export const summarise = (from: string, to: string, oracles: { from?: string | u
   }
   section('Visitor access', access)
 
-  if (oracles.from && oracles.to) {
-    const reads = (dir: string, aligned: boolean): Array<[string, Recorded]> => ((aligned ? old : read)<Array<{ request: string, status: number, body: unknown }>>(dir, 'reads.json.gz') || []).map((entry) => [`GET ${entry.request}`, { status: entry.status, headers: {}, body: entry.body }])
+  // Recordings on one side only are read against none on the other, so a new or dropped oracle still shows.
+  if (oracles.from || oracles.to) {
+    const reads = (dir: string | undefined, aligned: boolean): Array<[string, Recorded]> => (dir === undefined ? [] : (aligned ? old : read)<Array<{ request: string, status: number, body: unknown }>>(dir, 'reads.json.gz') || []).map((entry) => [`GET ${entry.request}`, { status: entry.status, headers: {}, body: entry.body }])
     section('Oracle reads', answers(reads(oracles.from, true), reads(oracles.to, false)))
-    const writesBefore = old<RecordedWrite[]>(oracles.from, 'writes.json.gz') || []
-    const writesAfter = read<RecordedWrite[]>(oracles.to, 'writes.json.gz') || []
+    const writesBefore = (oracles.from && old<RecordedWrite[]>(oracles.from, 'writes.json.gz')) || []
+    const writesAfter = (oracles.to && read<RecordedWrite[]>(oracles.to, 'writes.json.gz')) || []
     const scripts: string[] = []
     for (const script of writesAfter) {
       const was = writesBefore.find((candidate) => candidate.name === script.name)

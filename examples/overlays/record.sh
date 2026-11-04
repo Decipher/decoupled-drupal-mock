@@ -16,6 +16,8 @@ recipe="$root/examples/overlays/recipes/$name"
 
 "$root/presets/umami/site.sh" "$site" "$port"
 site=$(cd "$site" && pwd)
+# The site is only needed for this recording: stop its server however the script ends.
+trap 'kill "$(cat "$site/server.pid")" 2> /dev/null || true' EXIT
 (
   cd "$site"
   composer config "repositories.$name" '{"type": "path", "url": "'"$recipe"'", "options": {"symlink": false}}'

@@ -167,6 +167,15 @@ describe('a site that gets in the way', () => {
     expect(lines).toContain('  view--view: nothing readable, and a second page the site cannot serve, left out')
   })
 
+  it('stops when the site refuses the build\'s token, rather than leave out every type read after it', async () => {
+    const routes = (path: string) => {
+      if (path === '/jsonapi') return { body: { links: { self: { href: 'x' }, 'node--page': { href: 'http://x.test/jsonapi/node/page' } } } }
+      if (path === `/jsonapi/node/page${LIMIT}`) return { status: 401, body: { errors: [{ status: '401' }] } }
+      return undefined
+    }
+    await expect(build(routes)).rejects.toThrow('answered 401 with the build\'s token: the build would leave node--page out.')
+  })
+
   it('leaves no recording of an earlier build behind', async () => {
     const out = mkdtempSync(join(tmpdir(), 'crawl-'))
     const oracleOut = `${out}.oracle`

@@ -11,4 +11,9 @@ describe('a build configuration read from the environment', () => {
     expect(() => fromEnvironment({ a: '${ONE}', b: ['${TWO}'], c: '${ONE}' }, { TWO: '' })).toThrow('reads ONE, TWO from the environment: set them.')
     expect(() => fromEnvironment({ secret: '${SECRET}' }, {})).toThrow('reads SECRET from the environment: set it.')
   })
+
+  it('refuses a reference that is not a variable name in capitals, rather than keep it as text', () => {
+    expect(() => fromEnvironment({ a: '${SITE-URL}', b: '${site_url}', c: '${OPEN' }, { SITE: 'x' })).toThrow('has ${OPEN, ${SITE-URL}, ${site_url}: a reference is ${NAME}')
+    expect(() => fromEnvironment({ a: '${TOSTRING}' }, Object.create({ TOSTRING: 'inherited' }) as Record<string, string>)).toThrow('reads TOSTRING from the environment')
+  })
 })

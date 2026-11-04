@@ -32,7 +32,7 @@ The build added these to the site, and the mock signs them in. Each password, an
 | `decoupled-drupal-mock-reader` | Client credentials                                                                                           | `reader`              |
 | `decoupled-drupal-mock-public` | Authorization code with PKCE, refresh token. No secret, and it redirects to `http://127.0.0.1:3000/callback` | The user who signs in |
 
-The password grant is installed too. In a test, `tokenFor('editor')` returns a token for an account directly, without going through a grant.
+The password grant is not installed. Simple OAuth 6 provides it as a separate module, and the site refuses it. In a test, `tokenFor('editor')` returns a token for an account directly, without going through a grant.
 
 ## A site with more
 

@@ -223,6 +223,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     for (const [type, link] of Object.entries(links)) {
       if (type === 'self' || !link || SKIP.has(type) || options.skipTypes?.includes(type)) continue
       const collected = await collect(link.href, authorized())
+      // A token Drupal refuses, most often one that expired mid-crawl, would leave out every type read after it.
+      if (collected === 401 && token) throw new Error(`GET ${link.href} answered 401 with the build's token: the build would leave ${type} out.`)
       if (typeof collected === 'number') {
         log(collected === UNREADABLE ? `  ${type}: nothing readable, and a second page the site cannot serve, left out` : `  ${type}: ${collected}, left out`)
         continue

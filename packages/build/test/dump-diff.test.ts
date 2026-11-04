@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -84,6 +85,94 @@ describe('the summary of a rebuild', () => {
     expect(summary).toContain('- "a visitor writes": 422 200 to 422 201')
     expect(summary).toContain('- New script "new": 200')
     expect(summary).toContain('- Script "gone" is gone')
+  })
+
+  it('reads recordings on one side only against none on the other', () => {
+    const dump = build({ 'manifest.json': manifest('11', {}) })
+    const to = build({ 'reads.json.gz': [{ request: '/x', status: 200, body: {} }], 'writes.json.gz': [{ name: 'first', as: 'anonymous', steps: [], answers: [{ status: 201, headers: {}, body: {} }] }] })
+    const summary = summarise(dump, dump, { to })
+    expect(summary).toContain('## Oracle reads\n\n- 1 added: `GET /x`')
+    expect(summary).toContain('- New script "first": 201')
+  })
+
+  it('names a change of default language, and an index link that moved', () => {
+    const from = build({ 'manifest.json': manifest('11', {}), 'index/en.json': { links: { 'node--page': { href: 'https://drupal.invalid/jsonapi/node/page' } } } })
+    const to = build({ 'manifest.json': { ...manifest('11', {}), defaultLanguage: 'es' }, 'index/en.json': { links: { 'node--page': { href: 'https://drupal.invalid/jsonapi/pages' } } } })
+    const summary = summarise(from, to)
+    expect(summary).toContain('- Default language en to es')
+    expect(summary).toContain('- en: links somewhere else for `node--page`')
+  })
+
+  it('reads only the recordings in a resources directory', () => {
+    const files = { 'manifest.json': manifest('11', {}), 'resources/en/node--page.json.gz': [page('a', 1, 'About', 'x')], 'resources/en/.DS_Store': '' }
+    expect(summarise(build(files), build(files))).toContain('## Resources\n\nNo change.')
+  })
+
+  it('refuses a dump after that is not a build, and summarises one with no build before it', () => {
+    const to = build({ 'manifest.json': manifest('11.4.11', {}), 'resources/en/node--page.json.gz': [page('a', 1, 'About', 'x')] })
+    expect(() => summarise(to, build({}))).toThrow('has no manifest.json: it is not a finished build.')
+    const summary = summarise(join(to, 'missing'), to)
+    expect(summary).toContain('- No build before this one. Core 11.4.11, profile demo_umami')
+    expect(summary).toContain('| `node--page` | new, 1 |')
+  })
+})
+
+describe('the pages beside the presets', () => {
+  // A hook runs the tests with GIT_DIR set, and git would take it for the repository each test makes.
+  const repository = (): { root: string, git: (...args: string[]) => string } => {
+    const root = mkdtempSync(join(tmpdir(), 'rebuild-summary-'))
+    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')))
+    const git = (...args: string[]): string => execFileSync('git', args, { cwd: root, env, encoding: 'utf8' })
+    git('init', '--quiet', '--initial-branch=main')
+    git('config', 'user.email', 'test@example.com')
+    git('config', 'user.name', 'Test')
+    writeFileSync(join(root, 'README.md'), '')
+    git('add', '.')
+    git('commit', '--quiet', '-m', 'first')
+    return { root, git }
+  }
+  const preset = (root: string, core: string): void => {
+    mkdirSync(join(root, 'presets', 'p', 'dump'), { recursive: true })
+    writeFileSync(join(root, 'presets', 'p', 'dump', 'manifest.json'), JSON.stringify(manifest(core, {})))
+  }
+  const withoutGit = <T>(run: () => T): T => {
+    const saved = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.startsWith('GIT_')))
+    for (const name of Object.keys(saved)) delete process.env[name]
+    try {
+      return run()
+    } finally {
+      Object.assign(process.env, saved)
+    }
+  }
+
+  it('writes the page for a preset the base does not have yet, and then holds the recordings to it', async () => {
+    const { rebuildSummaries } = await import('../src/rebuild-summary')
+    const { root, git } = repository()
+    const base = git('rev-parse', 'HEAD').trim()
+    preset(root, '11.4.11')
+    git('add', '.')
+    git('commit', '--quiet', '-m', 'preset')
+    const log: string[] = []
+    expect(withoutGit(() => rebuildSummaries({ base, write: true, root, log: (line) => log.push(line) }))).toBe(true)
+    expect(log).toEqual(['p: wrote presets/p/REBUILD.md'])
+    expect(readFileSync(join(root, 'presets', 'p', 'REBUILD.md'), 'utf8')).toContain('- No build before this one. Core 11.4.11, profile demo_umami')
+    expect(withoutGit(() => rebuildSummaries({ base, write: false, root, log: () => {} }))).toBe(true)
+  })
+
+  it('fails when the committed page does not say what changed, and names the base to write it from', async () => {
+    const { rebuildSummaries } = await import('../src/rebuild-summary')
+    const { root, git } = repository()
+    preset(root, '11.4.10')
+    git('add', '.')
+    git('commit', '--quiet', '-m', 'preset')
+    const base = git('rev-parse', 'HEAD').trim()
+    expect(withoutGit(() => rebuildSummaries({ base, write: false, root, log: () => {} }))).toBe(true)
+    preset(root, '11.4.11')
+    writeFileSync(join(root, 'presets', 'p', 'REBUILD.md'), 'stale\n')
+    const errors: string[] = []
+    expect(withoutGit(() => rebuildSummaries({ base, write: false, root, error: (line) => errors.push(line) }))).toBe(false)
+    expect(errors[0]).toContain(`Run \`yarn rebuild:summary ${base} --write\``)
+    expect(errors[0]).toContain('- Core 11.4.10 to 11.4.11')
   })
 })
 
