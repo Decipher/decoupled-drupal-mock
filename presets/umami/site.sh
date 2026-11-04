@@ -21,13 +21,15 @@ if (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then
   echo "Something already listens on 127.0.0.1:$port. Stop it, or pick another port." >&2
   exit 1
 fi
-# Only a directory this script built before is removed, so a mistyped path deletes nothing else.
-if [ -e "$site" ] && [ -n "$(ls -A "$site")" ] && [ ! -f "$site/web/core/lib/Drupal.php" ]; then
+# Only a directory this script built before is removed, by the marker it leaves, so a mistyped path deletes nothing else.
+marker=.decoupled-drupal-mock-site
+if [ -e "$site" ] && [ -n "$(ls -A "$site")" ] && [ ! -f "$site/$marker" ]; then
   echo "$site holds something other than a site this script built. Name an empty or new directory." >&2
   exit 1
 fi
 rm -rf "$site"
 composer create-project --no-interaction --no-progress --quiet "drupal/recommended-project:$core" "$site"
+touch "$site/$marker"
 site=$(cd "$site" && pwd)
 cd "$site"
 # A copy, not a link, so the site holds the recipe it was built with.
@@ -80,5 +82,16 @@ drush cache:rebuild
 
 # From the docroot: the namespaces plugin discovery reads are relative to it.
 (cd web && exec php -S "127.0.0.1:$port" -t . .ht.router.php) > "$site/server.log" 2>&1 &
-echo $! > "$site/server.pid"
-echo "serving $site on http://127.0.0.1:$port, process $!"
+server=$!
+# The install takes minutes, and something else may have taken the port meanwhile. The server must be up and answering.
+for _ in $(seq 50); do
+  kill -0 "$server" 2> /dev/null || break
+  if (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then break; fi
+  sleep 0.2
+done
+if ! kill -0 "$server" 2> /dev/null || ! (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then
+  echo "The server did not start on 127.0.0.1:$port. $site/server.log says why." >&2
+  exit 1
+fi
+echo "$server" > "$site/server.pid"
+echo "serving $site on http://127.0.0.1:$port, process $server"
