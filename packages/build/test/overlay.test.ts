@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
-import { alignTo, diffBuilds, publishOverlayRecording, writeOverlay } from '../src/overlay'
+import { alignTo, diffBuilds, publishOverlayRecording, realignOverlay, writeOverlay } from '../src/overlay'
 
 /** A build directory from a map of its files. */
 const build = (files: Record<string, unknown>): string => {
@@ -118,5 +118,39 @@ describe('the difference between two builds', () => {
     const overlay = diffBuilds(build({ 'manifest.json': manifest }), build({ 'manifest.json': manifest, 'recorded/routes.json.gz': { added: route({}) } }), 'written')
     writeOverlay(overlay, out)
     expect(JSON.parse(gunzipSync(readFileSync(join(out, 'written.json.gz'))).toString('utf8')).recorded).toHaveProperty('added')
+  })
+  it('puts the variant\'s write scripts beside its reads, under their own name', () => {
+    const out = mkdtempSync(join(tmpdir(), 'overlays-'))
+    const recording = join(build({ 'writes.json.gz': [{ name: 'a visitor writes', as: 'anonymous', steps: [], answers: [] }] }), 'writes.json.gz')
+    publishOverlayRecording(recording, out, 'a-module', undefined, 'writes')
+    expect(read(out, 'oracle/a-module.writes.json.gz')).toEqual([{ name: 'a visitor writes', as: 'anonymous', steps: [], answers: [] }])
+    expect(Object.keys(JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8')) as Record<string, string>)).toEqual(['oracle/a-module.writes.json.gz'])
+  })
+})
+
+describe('an overlay moved onto a rebuilt baseline', () => {
+  const page = (id: string, nid: number, created: string) => ({ type: 'node--page', id, attributes: { drupal_internal__nid: nid, langcode: 'en', title: 'About', created, changed: created } })
+  const before = build({ 'manifest.json': manifest, 'resources/en/node--page.json.gz': [page('p-old', 1, '2026-01-01T00:00:00+00:00')] })
+  const after = build({ 'manifest.json': manifest, 'resources/en/node--page.json.gz': [page('p-new', 1, '2026-11-04T00:00:00+00:00')] })
+  const overlays = () => {
+    const out = mkdtempSync(join(tmpdir(), 'overlays-'))
+    const changed = { ...page('p-old', 1, '2026-01-01T00:00:00+00:00'), attributes: { ...page('p-old', 1, '2026-01-01T00:00:00+00:00').attributes, title: 'About us' } }
+    writeOverlay({ name: 'a-module', drupal: manifest.drupal, recorded: {}, removed: [], resources: { en: { 'node--page': [changed] } }, removedTypes: {}, index: {}, access: {} }, out)
+    publishOverlayRecording(join(build({ 'reads.json.gz': [{ request: '/jsonapi/node/page/p-old', status: 200, body: { data: changed } }] }), 'reads.json.gz'), out, 'a-module')
+    return out
+  }
+
+  it('names each entity by the rebuild\'s UUID and install times, and keeps what the overlay changed', () => {
+    const out = overlays()
+    expect(realignOverlay(before, after, 'a-module', out)).toEqual(['a-module.json.gz', 'oracle/a-module.json.gz'])
+    const overlay = read(out, 'a-module.json.gz') as { resources: { en: Record<string, Array<{ id: string, attributes: { title: string, created: string } }>> } }
+    expect(overlay.resources.en['node--page']![0]).toMatchObject({ id: 'p-new', attributes: { title: 'About us', created: '2026-11-04T00:00:00+00:00' } })
+    expect(read(out, 'oracle/a-module.json.gz')).toEqual([expect.objectContaining({ request: '/jsonapi/node/page/p-new' })])
+    const written = JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8')) as Record<string, string>
+    for (const file of ['a-module.json.gz', 'oracle/a-module.json.gz']) expect(written[file]).toBe(createHash('sha256').update(readFileSync(join(out, file))).digest('hex'))
+  })
+
+  it('refuses an overlay that is not there', () => {
+    expect(() => realignOverlay(before, after, 'none', overlays())).toThrow('No overlay named none in')
   })
 })

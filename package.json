@@ -11,6 +11,8 @@
   ],
   "scripts": {
     "build": "yarn workspaces foreach -A -pt run build",
+    "crawl": "node --experimental-strip-types packages/build/src/cli.ts",
+    "overlay": "node --experimental-strip-types packages/build/src/overlay-cli.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "yarn lint:js && yarn lint:cspell && yarn lint:md && yarn lint:format && yarn lint:private && yarn lint:knip",
