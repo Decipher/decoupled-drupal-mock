@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -167,6 +167,21 @@ describe('the pages beside the presets', () => {
     const log: string[] = []
     expect(withoutGit(() => rebuildSummaries({ base, write: true, root, log: (line) => log.push(line) }))).toBe(true)
     expect(log).toEqual(['p: wrote presets/p/REBUILD.md'])
+  })
+
+  it('fails when a rebuild leaves recordings with no manifest, rather than skipping the preset', async () => {
+    const { rebuildSummaries } = await import('../src/rebuild-summary')
+    const { root, git } = repository()
+    preset(root, '11.4.11')
+    git('add', '.')
+    git('commit', '--quiet', '-m', 'preset')
+    const base = git('rev-parse', 'HEAD').trim()
+    rmSync(join(root, 'presets', 'p', 'dump', 'manifest.json'))
+    writeFileSync(join(root, 'presets', 'p', 'dump', 'index.json'), '{}')
+    const errors: string[] = []
+    expect(withoutGit(() => rebuildSummaries({ base, write: true, root, error: (line) => errors.push(line) }))).toBe(false)
+    expect(errors).toEqual(['p: the recordings changed, but presets/p/dump/manifest.json is missing, so they are not a build. Rebuild the preset.'])
+    expect(existsSync(join(root, 'presets', 'p', 'REBUILD.md'))).toBe(false)
   })
 
   it('fails when the committed page does not say what changed, and names the base to write it from', async () => {

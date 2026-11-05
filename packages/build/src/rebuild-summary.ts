@@ -40,9 +40,9 @@ export const rebuildSummaries = ({ base, write, root, log = console.log, error =
     throw new Error(`${base} is not a commit in this repository.`)
   }
   let ok = true
-  for (const preset of readdirSync(join(root, 'presets')).sort()) {
+  const presets = readdirSync(join(root, 'presets'), { withFileTypes: true }).filter((entry) => entry.isDirectory())
+  for (const preset of presets.map((entry) => entry.name).sort()) {
     const dir = join('presets', preset)
-    if (!existsSync(join(root, dir, 'dump', 'manifest.json'))) continue
     const file = join(dir, 'REBUILD.md')
     // A pull request that leaves the recordings alone has nothing to describe, and the page stays as the last rebuild left it.
     const recordings = [join(dir, 'dump'), join(dir, 'oracle')]
@@ -55,6 +55,13 @@ export const rebuildSummaries = ({ base, write, root, log = console.log, error =
     }
     if (!differs) {
       log(`${preset}: the recordings are as ${base} has them`)
+      continue
+    }
+    // Recordings that changed must still be a build, or there is nothing to summarise and the page goes unchecked.
+    const manifest = join(dir, 'dump', 'manifest.json')
+    if (!existsSync(join(root, manifest))) {
+      ok = false
+      error(`${preset}: the recordings changed, but ${manifest} is missing, so they are not a build. Rebuild the preset.`)
       continue
     }
     const before = mkdtempSync(join(tmpdir(), `${preset}-before-`))
