@@ -45,12 +45,17 @@ export const rebuildSummaries = ({ base, write, root, log = console.log, error =
     if (!existsSync(join(root, dir, 'dump', 'manifest.json'))) continue
     const file = join(dir, 'REBUILD.md')
     // A pull request that leaves the recordings alone has nothing to describe, and the page stays as the last rebuild left it.
+    const recordings = [join(dir, 'dump'), join(dir, 'oracle')]
+    // git diff does not see untracked files, so a recording not yet staged is looked for separately.
+    let differs = git('ls-files', '--others', '--exclude-standard', '--', ...recordings).trim() !== ''
     try {
-      git('diff', '--quiet', commit, '--', join(dir, 'dump'), join(dir, 'oracle'))
+      git('diff', '--quiet', commit, '--', ...recordings)
+    } catch {
+      differs = true
+    }
+    if (!differs) {
       log(`${preset}: the recordings are as ${base} has them`)
       continue
-    } catch {
-      // They differ.
     }
     const before = mkdtempSync(join(tmpdir(), `${preset}-before-`))
     let page: string

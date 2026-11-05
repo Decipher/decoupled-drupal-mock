@@ -91,6 +91,9 @@ for _ in $(seq 50); do
 done
 if ! kill -0 "$server" 2> /dev/null || ! (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then
   echo "The server did not start on 127.0.0.1:$port. $site/server.log says why." >&2
+  # A server that runs but does not answer would keep the port, and nothing else knows its process id.
+  kill "$server" 2> /dev/null || true
+  wait "$server" 2> /dev/null || true
   exit 1
 fi
 echo "$server" > "$site/server.pid"

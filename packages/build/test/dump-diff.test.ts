@@ -159,6 +159,16 @@ describe('the pages beside the presets', () => {
     expect(withoutGit(() => rebuildSummaries({ base, write: false, root, log: () => {} }))).toBe(true)
   })
 
+  it('writes the page for recordings not yet staged, which git diff does not see', async () => {
+    const { rebuildSummaries } = await import('../src/rebuild-summary')
+    const { root, git } = repository()
+    const base = git('rev-parse', 'HEAD').trim()
+    preset(root, '11.4.11')
+    const log: string[] = []
+    expect(withoutGit(() => rebuildSummaries({ base, write: true, root, log: (line) => log.push(line) }))).toBe(true)
+    expect(log).toEqual(['p: wrote presets/p/REBUILD.md'])
+  })
+
   it('fails when the committed page does not say what changed, and names the base to write it from', async () => {
     const { rebuildSummaries } = await import('../src/rebuild-summary')
     const { root, git } = repository()
