@@ -93,6 +93,21 @@ describe('what a test runner on an older platform needs', () => {
     expect(presetDir('closed', root)).toBe(join(root, 'node_modules', 'decoupled-drupal-mock-closed', 'dump'))
   })
 
+  it('finds a preset installed beside the engine, as npx installs the two, when the current directory has none', () => {
+    const cache = mkdtempSync(join(tmpdir(), 'npx-'))
+    const engine = join(cache, 'node_modules', 'decoupled-drupal-mock', 'dist')
+    mkdirSync(engine, { recursive: true })
+    mkdirSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'), { recursive: true })
+    writeFileSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'package.json'), JSON.stringify({ name: 'decoupled-drupal-mock-beside' }))
+    writeFileSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump', 'manifest.json'), '{}')
+    const elsewhere = mkdtempSync(join(tmpdir(), 'cwd-'))
+    expect(presetDir('beside', elsewhere, engine)).toBe(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'))
+    // The current directory still wins, so a project's own copy is the one served.
+    mkdirSync(join(elsewhere, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'), { recursive: true })
+    writeFileSync(join(elsewhere, 'node_modules', 'decoupled-drupal-mock-beside', 'package.json'), JSON.stringify({ name: 'decoupled-drupal-mock-beside' }))
+    expect(presetDir('beside', elsewhere, engine)).toBe(join(elsewhere, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'))
+  })
+
   it('gives up on a port held by something that never answers', async () => {
     const silent = createServer(() => { /* Takes the connection and says nothing. */ })
     await new Promise<void>((resolve) => silent.listen(0, '127.0.0.1', resolve))
