@@ -16,6 +16,10 @@
       "types": "./dist/serve.d.ts",
       "import": "./dist/serve.js"
     },
+    "./cli": {
+      "types": "./dist/serve-command.d.ts",
+      "import": "./dist/serve-command.js"
+    },
     "./msw": {
       "types": "./dist/msw.d.ts",
       "import": "./dist/msw.js"

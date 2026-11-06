@@ -306,6 +306,10 @@ test:pack:
     - (npx decoupled-drupal-mock serve umami --port 3005 &)
     # Up to 30 seconds: the preset loads before the port opens.
     - 'node -e "const until = Date.now() + 30000; const probe = () => fetch(\"http://127.0.0.1:3005/jsonapi\").then((response) => process.exit(response.ok ? 0 : 1), () => (Date.now() < until ? setTimeout(probe, 500) : process.exit(1))); probe()"'
+    # A preset's own command, from a directory with nothing installed, as `npx decoupled-drupal-mock-umami` runs it.
+    - mkdir -p /tmp/empty && cd /tmp/empty
+    - (npx --yes -p /tmp/pack/decoupled-drupal-mock-1*.tgz -p /tmp/pack/decoupled-drupal-mock-umami-*.tgz decoupled-drupal-mock-umami --port 3006 &)
+    - 'node -e "const until = Date.now() + 60000; const probe = () => fetch(\"http://127.0.0.1:3006/jsonapi\").then((response) => process.exit(response.ok ? 0 : 1), () => (Date.now() < until ? setTimeout(probe, 500) : process.exit(1))); probe()"'
     - section_end "pack"
 
 test:e2e:

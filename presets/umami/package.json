@@ -3,6 +3,7 @@
   "version": "1.0.0-alpha.2",
   "description": "Drupal's Umami demo site as decoupled-drupal-mock fixtures, built from a real Drupal 11 install.",
   "type": "module",
+  "bin": "bin.js",
   "exports": {
     ".": {
       "types": "./index.d.ts",
@@ -11,6 +12,7 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "bin.js",
     "index.js",
     "index.d.ts",
     "dump"

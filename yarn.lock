@@ -5971,6 +5971,8 @@ __metadata:
   resolution: "decoupled-drupal-mock-umami@workspace:presets/umami"
   peerDependencies:
     decoupled-drupal-mock: ^1.0.0-alpha.2
+  bin:
+    decoupled-drupal-mock-umami: bin.js
   languageName: unknown
   linkType: soft
 
