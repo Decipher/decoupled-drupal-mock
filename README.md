@@ -76,7 +76,7 @@ afterAll(() => server.close());
 End-to-end suites and browsers need a server:
 
 ```sh
-npx decoupled-drupal-mock-umami --port 3005
+npx decoupled-drupal-mock-umami@alpha --port 3005
 ```
 
 ## Test runner support
@@ -116,7 +116,7 @@ The engine accepts POST, PATCH and DELETE requests on JSON:API resources and rel
 Any frontend that reads Drupal over HTTP can use the mock's server as its Drupal. Start the server, then point the frontend's Drupal URL at it:
 
 ```sh
-npx decoupled-drupal-mock-umami --port 3005
+npx decoupled-drupal-mock-umami@alpha --port 3005
 ```
 
 - Druxt 0.x on Nuxt 2: `druxt.baseUrl: 'http://127.0.0.1:3005'`, or `BASE_URL=http://127.0.0.1:3005` where the site reads it from the environment.
