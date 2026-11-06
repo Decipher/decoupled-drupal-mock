@@ -1,7 +1,9 @@
 # Links in the documentation. Local addresses are the examples' own, and drupal.org refuses most automated requests,
 # so its links, the preset's patch issues among them, are checked by hand: both answered 200 on 2026-11-02.
+# npmjs.com refuses automated requests with a 403 as well, so its package links are checked on the registry instead:
+# both packages answered 200 at registry.npmjs.org on 2026-11-06.
 # Each host is anchored at its end, so a lookalike such as www.drupal.org.example is still checked.
-exclude = ['^http://127\.0\.0\.1(?:[/?#:]|$)', '^http://localhost(?:[/?#:]|$)', '^https://drupal\.test(?:[/?#:]|$)', '^https://drupal\.invalid(?:[/?#:]|$)', '^https://www\.drupal\.org(?:[/?#:]|$)', '^https://devpod\.sh(?:[/?#:]|$)']
+exclude = ['^http://127\.0\.0\.1(?:[/?#:]|$)', '^http://localhost(?:[/?#:]|$)', '^https://drupal\.test(?:[/?#:]|$)', '^https://drupal\.invalid(?:[/?#:]|$)', '^https://www\.drupal\.org(?:[/?#:]|$)', '^https://devpod\.sh(?:[/?#:]|$)', '^https://www\.npmjs\.com(?:[/?#:]|$)']
 exclude_path = ['node_modules', 'presets/umami/dump', 'presets/umami/oracle', '.yarn']
 max_retries = 2
 timeout = 20
