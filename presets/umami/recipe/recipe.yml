@@ -1,0 +1,60 @@
+name: Decoupled Drupal mock, Umami preset
+description: 'The site the Umami preset is recorded from, applied to an install of the demo_umami profile: the Druxt module stack from released versions, what a visitor may read, the body field on Basic pages and the image styles that the druxt.js examples use.'
+type: Site
+install:
+  # JSON:API and Image are on an Umami site already. They are listed so the recipe may act on their configuration.
+  - jsonapi
+  - image
+  - druxt
+  - simple_oauth
+  - decoupled_settings
+config:
+  actions:
+    # Core ships JSON:API read-only, which answers every write with 405.
+    jsonapi.settings:
+      simpleConfigUpdate:
+        read_only: false
+    # A frontend reads schemas, displays, menus, views and settings as a visitor.
+    user.role.anonymous:
+      grantPermissions:
+        - 'access druxt resources'
+        - 'read decoupled settings'
+    user.role.authenticated:
+      grantPermissions:
+        - 'access druxt resources'
+        - 'read decoupled settings'
+    # Besides the site's name: the language prefixes, and the theme's settings.
+    decoupled_settings.settings:
+      simpleConfigUpdate:
+        exposed_objects:
+          - system.site
+          - language.negotiation
+          - umami.settings
+    # Umami's Basic page has field_body. The shared body field is the one druxt.js's schema example reads.
+    core.entity_view_display.node.page.default:
+      setComponent:
+        name: body
+        options:
+          type: text_default
+          label: above
+          weight: 3
+          region: content
+          settings: {}
+          third_party_settings: {}
+    core.entity_form_display.node.page.default:
+      setComponent:
+        name: body
+        options:
+          type: text_textarea_with_summary
+          weight: 26
+          region: content
+          settings:
+            rows: 9
+            summary_rows: 3
+            placeholder: ''
+            show_summary: false
+          third_party_settings: {}
+    # Responses may be cached for five minutes, as a configured site would have them.
+    system.performance:
+      simpleConfigUpdate:
+        cache.page.max_age: 300

@@ -58,10 +58,12 @@ const SKIP = new Set(['consumer--consumer', 'oauth2_scope--oauth2_scope', 'oauth
  *
  * @param status - The answer's status.
  * @param text - The answer's body.
+ * @param listed - Whether the client that asked lists the grant. Simple OAuth checks the grant before the client, so a
+ *   client refused for not listing it shows the grant installed.
  * @returns Whether the grant is installed.
  * @throws {Error} When the answer says neither.
  */
-export const passwordGrantInstalled = (status: number, text: string): boolean => {
+export const passwordGrantInstalled = (status: number, text: string, listed = true): boolean => {
   let answer: { hint?: string, error?: string } | undefined
   try {
     answer = JSON.parse(text) as typeof answer
@@ -70,6 +72,7 @@ export const passwordGrantInstalled = (status: number, text: string): boolean =>
   }
   if (answer?.hint === 'Grant type is not installed.' || answer?.error === 'unsupported_grant_type') return false
   if ((status >= 200 && status < 300) || answer?.error === 'invalid_grant') return true
+  if (!listed && answer?.error === 'invalid_client') return true
   throw new Error(`The password grant probe got ${status}: ${text.slice(0, 200)}`)
 }
 
@@ -223,6 +226,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     for (const [type, link] of Object.entries(links)) {
       if (type === 'self' || !link || SKIP.has(type) || options.skipTypes?.includes(type)) continue
       const collected = await collect(link.href, authorized())
+      // A token Drupal refuses, most often one that expired mid-crawl, would leave out every type read after it.
+      if (collected === 401 && token) throw new Error(`GET ${link.href} answered 401 with the build's token: the build would leave ${type} out.`)
       if (typeof collected === 'number') {
         log(collected === UNREADABLE ? `  ${type}: nothing readable, and a second page the site cannot serve, left out` : `  ${type}: ${collected}, left out`)
         continue
@@ -408,15 +413,18 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
 
   if (options.identities) {
     // Simple OAuth 6 ships the password grant as its own module: a grant the Drupal refuses as not installed is recorded as such.
-    const consumer = options.identities.consumers.find((candidate) => candidate.grants.includes('password'))
+    // It checks the grant before the client, so a client that does not list the grant can still ask whether it is there.
+    const listing = options.identities.consumers.find((candidate) => candidate.grants.includes('password'))
+    const consumer = listing || options.identities.consumers[0]
     const account = options.identities.accounts.find((candidate) => candidate.password !== undefined)
-    let passwordGrant = true
-    if (consumer && account) {
-      const response = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'password', client_id: consumer.clientId, ...(consumer.secret ? { client_secret: consumer.secret } : {}), username: account.name, password: account.password! }) })
-      passwordGrant = passwordGrantInstalled(response.status, await response.text())
+    // With no client to ask, the build says nothing about the grant it did not check.
+    let passwordGrant = options.identities.passwordGrant
+    if (consumer) {
+      const response = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'password', client_id: consumer.clientId, ...(consumer.secret ? { client_secret: consumer.secret } : {}), username: account?.name || 'decoupled-drupal-mock', password: account?.password || 'decoupled-drupal-mock' }) })
+      passwordGrant = passwordGrantInstalled(response.status, await response.text(), !!listing)
       log(`the password grant is ${passwordGrant ? 'installed' : 'not installed'}`)
     }
-    write('identities.json', { ...options.identities, passwordGrant })
+    write('identities.json', { ...options.identities, ...(passwordGrant === undefined ? {} : { passwordGrant }) })
   }
 
   const manifest: Manifest = {

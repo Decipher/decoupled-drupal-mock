@@ -1,0 +1,29 @@
+[
+  {
+    "name": "a visitor submits the contact form without the data it requires",
+    "as": "anonymous",
+    "steps": [
+      {
+        "method": "POST",
+        "path": "/jsonapi/contact_message/feedback",
+        "body": { "data": { "type": "contact_message--feedback" } }
+      }
+    ]
+  },
+  {
+    "name": "a visitor submits the contact form",
+    "as": "anonymous",
+    "steps": [
+      {
+        "method": "POST",
+        "path": "/jsonapi/contact_message/feedback",
+        "body": {
+          "data": {
+            "type": "contact_message--feedback",
+            "attributes": { "name": "Tester", "mail": "tester@example.com", "subject": "Subject", "message": "Test" }
+          }
+        }
+      }
+    ]
+  }
+]

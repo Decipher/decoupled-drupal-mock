@@ -1,0 +1,9 @@
+{
+  "name": "decoupled-drupal-mock/jsonapi-extras-recipe",
+  "description": "JSON:API Extras over the Umami preset, as a Drupal recipe.",
+  "type": "drupal-recipe",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "drupal/jsonapi_extras": "3.28.0"
+  }
+}

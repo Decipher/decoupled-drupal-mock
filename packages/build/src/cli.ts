@@ -2,14 +2,16 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { composerPatches, drupalModules } from './composer.ts'
+import { fromEnvironment } from './config.ts'
 import type { ComposerJson } from './composer.ts'
 import { crawl } from './crawl.ts'
 
 /**
- * `node --experimental-strip-types cli.ts <config.json>`: the crawl options as JSON, with `oracleFile` a path of one
+ * `node --experimental-strip-types cli.ts <config.json>`: the crawl options as JSON, with each `${NAME}` read from the
+ * environment, `oracleFile` a path of one
  * request per line, and `drush` as `{ bin, cwd }` to read what JSON:API refuses every user.
  */
-const config = JSON.parse(readFileSync(process.argv[2]!, 'utf8')) as Parameters<typeof crawl>[0] & { oracleFile?: string, writesFile?: string, composerDir?: string, patched?: boolean, drush?: { bin: string, cwd: string }, excludeUsers?: string[] }
+const config = fromEnvironment(JSON.parse(readFileSync(process.argv[2]!, 'utf8'))) as Parameters<typeof crawl>[0] & { oracleFile?: string, writesFile?: string, composerDir?: string, patched?: boolean, drush?: { bin: string, cwd: string }, excludeUsers?: string[] }
 const scripts = config.writesFile ? JSON.parse(readFileSync(config.writesFile, 'utf8')) as Parameters<typeof crawl>[0]['writes'] : undefined
 
 const drush = (script: string): string => {

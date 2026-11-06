@@ -9,13 +9,20 @@ import { crawl, passwordGrantInstalled } from '../src/crawl'
 
 type Answer = { status?: number, body: unknown }
 
-/** A Drupal small enough to read: a map of `path?query` to its answer, by whether the request carries a token. */
-const drupal = (routes: (path: string, admin: boolean) => Answer | undefined): Promise<{ server: Server, base: string }> => new Promise((resolve) => {
+/**
+ * A Drupal small enough to read: a map of `path?query` to its answer, by whether the request carries a token. The token
+ * endpoint gives every request a token, unless `token` answers its form.
+ */
+const drupal = (routes: (path: string, admin: boolean) => Answer | undefined, token?: (form: URLSearchParams) => Answer | undefined): Promise<{ server: Server, base: string }> => new Promise((resolve) => {
   const server = createServer((request, response) => {
-    const admin = !!request.headers.authorization
-    const answer = request.url === '/oauth/token' ? { body: { access_token: 't' } } : routes(request.url || '/', admin)
-    response.writeHead(answer?.status ?? (answer ? 200 : 404), { 'content-type': 'application/vnd.api+json' })
-    response.end(JSON.stringify(answer?.body ?? {}))
+    let form = ''
+    request.on('data', (chunk) => { form += chunk })
+    request.on('end', () => {
+      const admin = !!request.headers.authorization
+      const answer = request.url === '/oauth/token' ? (token?.(new URLSearchParams(form)) ?? { body: { access_token: 't' } }) : routes(request.url || '/', admin)
+      response.writeHead(answer?.status ?? (answer ? 200 : 404), { 'content-type': 'application/vnd.api+json' })
+      response.end(JSON.stringify(answer?.body ?? {}))
+    })
   })
   server.listen(0, '127.0.0.1', () => resolve({ server, base: `http://127.0.0.1:${(server.address() as { port: number }).port}` }))
 })
@@ -167,6 +174,15 @@ describe('a site that gets in the way', () => {
     expect(lines).toContain('  view--view: nothing readable, and a second page the site cannot serve, left out')
   })
 
+  it('stops when the site refuses the build\'s token, rather than leave out every type read after it', async () => {
+    const routes = (path: string) => {
+      if (path === '/jsonapi') return { body: { links: { self: { href: 'x' }, 'node--page': { href: 'http://x.test/jsonapi/node/page' } } } }
+      if (path === `/jsonapi/node/page${LIMIT}`) return { status: 401, body: { errors: [{ status: '401' }] } }
+      return undefined
+    }
+    await expect(build(routes)).rejects.toThrow('answered 401 with the build\'s token: the build would leave node--page out.')
+  })
+
   it('leaves no recording of an earlier build behind', async () => {
     const out = mkdtempSync(join(tmpdir(), 'crawl-'))
     const oracleOut = `${out}.oracle`
@@ -196,5 +212,45 @@ describe('the password grant probe', () => {
   it('stops the build on an answer that says neither', () => {
     expect(() => passwordGrantInstalled(401, '{"error":"invalid_client"}')).toThrow('The password grant probe got 401')
     expect(() => passwordGrantInstalled(500, '<html>')).toThrow('The password grant probe got 500')
+  })
+
+  it('reads a refused client as the grant installed, when the client does not list the grant', () => {
+    expect(passwordGrantInstalled(401, '{"error":"invalid_client"}', false)).toBe(true)
+    expect(passwordGrantInstalled(400, '{"error":"unsupported_grant_type"}', false)).toBe(false)
+  })
+
+  type Identities = NonNullable<Parameters<typeof crawl>[0]['identities']>
+  const identities = (grants: Identities['consumers'][number]['grants']): Identities => ({
+    accounts: [{ name: 'editor', password: 'editor', roles: [] }],
+    consumers: [{ clientId: 'reader', secret: 'reader', confidential: true, grants, user: 'editor' }],
+  })
+  const probe = async (options: Partial<Parameters<typeof crawl>[0]>, answer: Answer) => {
+    const asked: string[] = []
+    const { server, base } = await drupal(site({ admin: [], visitor: [] }), (form) => {
+      if (form.get('grant_type') !== 'password') return undefined
+      asked.push(form.get('client_id') || '')
+      return answer
+    })
+    servers.push(server)
+    const out = mkdtempSync(join(tmpdir(), 'crawl-'))
+    await crawl({ baseUrl: base, out, preset: 't', languages: { en: '' }, defaultLanguage: 'en', drupal: { core: '11', profile: 'x', modules: {} }, auth: { tokenUrl: `${base}/oauth/token`, clientId: 'c', clientSecret: 's' }, log: () => undefined, ...options })
+    return { asked, recorded: read(out, 'identities.json') as { passwordGrant?: boolean } }
+  }
+
+  it('asks the site even when no client lists the grant, and records its refusal', async () => {
+    const { asked, recorded } = await probe({ identities: identities(['client_credentials']) }, { status: 400, body: { error: 'unsupported_grant_type' } })
+    expect(asked).toEqual(['reader'])
+    expect(recorded.passwordGrant).toBe(false)
+  })
+
+  it('records the grant installed when the site refuses only the client that does not list it', async () => {
+    const { recorded } = await probe({ identities: identities(['client_credentials']) }, { status: 401, body: { error: 'invalid_client' } })
+    expect(recorded.passwordGrant).toBe(true)
+  })
+
+  it('records nothing about the grant when no client can ask', async () => {
+    const { asked, recorded } = await probe({ identities: { accounts: [], consumers: [] } }, { body: { access_token: 't' } })
+    expect(asked).toEqual([])
+    expect('passwordGrant' in recorded).toBe(false)
   })
 })
