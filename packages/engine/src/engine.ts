@@ -7,7 +7,7 @@ import { Store } from './store.js'
 import { Writes } from './writes.js'
 import type { WriteError } from './writes.js'
 // Named apart from the `own` URL each write builds, which would shadow it.
-import { own as member } from './own.js'
+import { hasOwn, own as member } from './own.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
 import { clone } from './clone.js'
 import { withoutTrailingSlashes } from './slashes.js'
@@ -602,13 +602,13 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const attributes = data?.attributes || {}
       const relationships = data?.relationships || {}
       for (const name of Object.keys(attributes)) {
-        if (!Object.hasOwn(resource.attributes || {}, name)) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The attribute ${name} does not exist on the ${type} resource type.`, links: { via: { href: via } } }] } }
+        if (!hasOwn(resource.attributes || {}, name)) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The attribute ${name} does not exist on the ${type} resource type.`, links: { via: { href: via } } }] } }
         // Drupal lets a field the user may not edit through when its value does not change.
         const refused = unchanged(resource.attributes?.[name], attributes[name]) ? undefined : writes.refusedField(session, resource, name)
         if (refused) return refusedBody(refused)
       }
       for (const name of Object.keys(relationships)) {
-        if (!Object.hasOwn(resource.relationships || {}, name)) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The relationship ${name} does not exist on the ${type} resource type.`, source: { pointer: `/data/relationships/${name}` } }] } }
+        if (!hasOwn(resource.relationships || {}, name)) return { status: 422, headers, body: { jsonapi: JSONAPI, errors: [{ title: 'Unprocessable Content', status: '422', detail: `The relationship ${name} does not exist on the ${type} resource type.`, source: { pointer: `/data/relationships/${name}` } }] } }
         const refused = unchanged(identifiers(resource.relationships?.[name]?.data), identifiers((relationships[name] as { data?: unknown } | undefined)?.data)) ? undefined : writes.refusedField(session, resource, name)
         if (refused) return refusedBody(refused)
       }

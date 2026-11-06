@@ -1,4 +1,4 @@
-import { own } from './own.js'
+import { hasOwn, own } from './own.js'
 import type { Resource } from './types.js'
 
 export interface Condition { path: string, operator: string, value: unknown, memberOf: string }
@@ -50,7 +50,7 @@ export const createReader = (related: (identifier: { type: string, id: string })
     const [head, ...rest] = path
     if (head === undefined) return [resource]
     if (head === 'id' || head === 'type') return [resource[head]]
-    if (resource.attributes && Object.hasOwn(resource.attributes, head)) return dig(resource.attributes[head], rest)
+    if (resource.attributes && hasOwn(resource.attributes, head)) return dig(resource.attributes[head], rest)
     const relationship = own(resource.relationships, head)
     if (relationship) {
       const identifiers = Array.isArray(relationship.data) ? relationship.data : relationship.data ? [relationship.data] : []
@@ -72,7 +72,7 @@ const dig = (value: unknown, path: string[]): unknown[] => {
   if (!path.length) return Array.isArray(value) ? value : [value]
   const [head, ...rest] = path
   if (Array.isArray(value)) return value.flatMap((item) => dig(item, path))
-  if (value && typeof value === 'object' && head !== undefined && Object.hasOwn(value as object, head)) return dig((value as Record<string, unknown>)[head], rest)
+  if (value && typeof value === 'object' && head !== undefined && hasOwn(value as object, head)) return dig((value as Record<string, unknown>)[head], rest)
   return []
 }
 

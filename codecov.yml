@@ -1,0 +1,25 @@
+# The coverage floor in vitest.config.ts is the gate, so Codecov reports and never fails a check.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+# The engine is what npm users get. The crawler is not published, so it is measured on its own.
+component_management:
+  individual_components:
+    - component_id: engine
+      name: engine
+      paths:
+        - packages/engine/src/**
+    - component_id: build
+      name: build
+      paths:
+        - packages/build/src/**
+
+ignore:
+  - examples/**
+  - scripts/**

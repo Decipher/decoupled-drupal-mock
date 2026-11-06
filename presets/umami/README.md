@@ -18,6 +18,12 @@ The package also serves itself over HTTP, with nothing installed first. It takes
 npx decoupled-drupal-mock-umami@alpha --port 3005
 ```
 
+npm installs the engine with it, as the preset's peer. Where npm skips peers, as with `legacy-peer-deps`, name the engine too:
+
+```sh
+npx -p decoupled-drupal-mock@alpha -p decoupled-drupal-mock-umami@alpha decoupled-drupal-mock-umami --port 3005
+```
+
 The baseline is the site as released modules answer it, and `dump/manifest.json` names each module's version.
 
 ## Accounts and OAuth clients

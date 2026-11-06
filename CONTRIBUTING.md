@@ -1,6 +1,6 @@
 # Contributing
 
-Changes go to the `1.0.x` branch, by a merge request on GitLab or a pull request on GitHub. GitLab's pipeline is the full gate: GitHub's runs the lint, type checks, tests and examples, but not the coverage floor, the size budget, the prose linter, the link checker or the secret scan.
+Changes go to the `1.0.x` branch, by a merge request on GitLab or a pull request on GitHub. GitLab's pipeline is the full gate: GitHub's runs the lint, type checks, tests with the coverage floor and examples, and uploads coverage to Codecov, but not the size budget, the prose linter, the link checker or the secret scan.
 
 ## Getting set up
 
