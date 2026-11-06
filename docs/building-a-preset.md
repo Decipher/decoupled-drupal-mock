@@ -39,6 +39,21 @@ The build writes the dump to `out`, and its recordings beside it in `<out>.oracl
 | `excludeUsers`, `skipTypes` | Users to leave out of the dump, such as the build's own account. Types that the site lists in its index but answers with an error                                                                                                                                          |
 | `composerDir`, `patched`    | The site's Composer directory, so the manifest names what the site really runs from its lock file. With `patched`, its patches too                                                                                                                                         |
 
+## Packaging it
+
+A preset in this repository is a package under `presets/`, with the dump in `dump/`. Copy `index.js`, `index.d.ts` and `bin.js` from `presets/umami`. They don't need changing, because each finds the dump beside it.
+
+`bin.js` is the preset's own command, so `npx <package> --port 3005` serves it with nothing installed first. Give it as `bin`, which npm names after the package, and list it in `files`. Leave out a leading `./`, as npm removes a command with one when it publishes:
+
+```json
+{
+  "bin": "bin.js",
+  "files": ["bin.js", "index.js", "index.d.ts", "dump"]
+}
+```
+
+`packages/engine/test/preset-command.test.ts` holds every preset under `presets/` to this. It also starts the command and reads from it.
+
 ## Modules and settings on the site
 
 Only JSON:API is required. Everything else widens what the build records:
