@@ -45,7 +45,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json && esbuild src/runner.ts --bundle --platform=node --format=cjs --target=node16 --outfile=dist/runner.cjs --log-level=warning",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json && esbuild src/runner.ts --bundle --platform=node --format=cjs --target=node16 --outfile=dist/runner.cjs --define:import.meta.url=importMetaUrl --inject:import-meta-url.js --log-level=warning",
     "prepack": "yarn build"
   },
   "license": "GPL-2.0-or-later",

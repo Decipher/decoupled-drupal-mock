@@ -297,6 +297,10 @@ test:pack:
     - (cd packages/engine && npm pack --pack-destination /tmp/pack)
     - (cd presets/umami && npm pack --pack-destination /tmp/pack)
     - for tarball in /tmp/pack/*.tgz; do if tar -xOzf "$tarball" package/package.json | grep -q '"workspace:'; then echo "$tarball has a workspace range"; exit 1; fi; done
+    # The engine and a preset that npx installs side by side, from a directory with neither installed.
+    - mkdir -p /tmp/bare && cd /tmp/bare
+    - (npx --yes -p /tmp/pack/decoupled-drupal-mock-1*.tgz -p /tmp/pack/decoupled-drupal-mock-umami-*.tgz decoupled-drupal-mock serve umami --port 3007 &)
+    - 'node -e "const until = Date.now() + 60000; const probe = () => fetch(\"http://127.0.0.1:3007/jsonapi\").then((response) => process.exit(response.ok ? 0 : 1), () => (Date.now() < until ? setTimeout(probe, 500) : process.exit(1))); probe()"'
     - cd /tmp/consumer && npm init -y > /dev/null
     - npm install /tmp/pack/*.tgz --no-audit --no-fund
     - (npx decoupled-drupal-mock serve umami --port 3005 &)

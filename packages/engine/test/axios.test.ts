@@ -1,7 +1,10 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { buildSync } from 'esbuild'
 import { describe, expect, it, vi } from 'vitest'
 import { createDrupal } from '../src'
 import { answerAxios, axiosAdapter, axiosVerbs } from '../src/axios'
@@ -91,6 +94,46 @@ describe('what a test runner on an older platform needs', () => {
     mkdirSync(join(root, 'node_modules', 'decoupled-drupal-mock-closed', 'dump'))
     writeFileSync(join(root, 'node_modules', 'decoupled-drupal-mock-closed', 'dump', 'manifest.json'), '{}')
     expect(presetDir('closed', root)).toBe(join(root, 'node_modules', 'decoupled-drupal-mock-closed', 'dump'))
+  })
+
+  it('finds a preset installed beside the engine, as npx installs the two, when the current directory has none', () => {
+    const cache = mkdtempSync(join(tmpdir(), 'npx-'))
+    const engine = join(cache, 'node_modules', 'decoupled-drupal-mock', 'dist')
+    mkdirSync(engine, { recursive: true })
+    mkdirSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'), { recursive: true })
+    writeFileSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'package.json'), JSON.stringify({ name: 'decoupled-drupal-mock-beside' }))
+    writeFileSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump', 'manifest.json'), '{}')
+    const elsewhere = mkdtempSync(join(tmpdir(), 'cwd-'))
+    expect(presetDir('beside', elsewhere, engine)).toBe(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'))
+    // The current directory still wins, so a project's own copy is the one served.
+    mkdirSync(join(elsewhere, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'), { recursive: true })
+    writeFileSync(join(elsewhere, 'node_modules', 'decoupled-drupal-mock-beside', 'package.json'), JSON.stringify({ name: 'decoupled-drupal-mock-beside' }))
+    writeFileSync(join(elsewhere, 'node_modules', 'decoupled-drupal-mock-beside', 'dump', 'manifest.json'), '{}')
+    expect(presetDir('beside', elsewhere, engine)).toBe(join(elsewhere, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'))
+  })
+
+  it('looks past a package of the same name that holds no build', () => {
+    const cache = mkdtempSync(join(tmpdir(), 'npx-'))
+    const engine = join(cache, 'node_modules', 'decoupled-drupal-mock', 'dist')
+    mkdirSync(engine, { recursive: true })
+    mkdirSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'), { recursive: true })
+    writeFileSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'package.json'), JSON.stringify({ name: 'decoupled-drupal-mock-beside' }))
+    writeFileSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump', 'manifest.json'), '{}')
+    // A project can hold an unrelated package by the short name, as `umami` is on npm.
+    const elsewhere = mkdtempSync(join(tmpdir(), 'cwd-'))
+    mkdirSync(join(elsewhere, 'node_modules', 'beside'), { recursive: true })
+    writeFileSync(join(elsewhere, 'node_modules', 'beside', 'package.json'), JSON.stringify({ name: 'beside' }))
+    expect(presetDir('beside', elsewhere, engine)).toBe(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'))
+  })
+
+  it('still finds a preset when a CommonJS bundle leaves out the module URL', () => {
+    // A consumer that bundles the engine to CommonJS with no shim gets an empty import.meta.
+    const { outputFiles } = buildSync({ entryPoints: [fileURLToPath(new URL('../src/preset.ts', import.meta.url))], bundle: true, platform: 'node', format: 'cjs', write: false, logLevel: 'silent' })
+    const bundled = { exports: {} as { presetDir: typeof presetDir } }
+    new Function('module', 'exports', 'require', outputFiles[0]!.text)(bundled, bundled.exports, createRequire(import.meta.url))
+    const dir = mkdtempSync(join(tmpdir(), 'dump-'))
+    expect(bundled.exports.presetDir(dir)).toBe(dir)
+    expect(() => bundled.exports.presetDir('no-such-preset')).toThrow('no-such-preset is not an installed preset package')
   })
 
   it('gives up on a port held by something that never answers', async () => {
