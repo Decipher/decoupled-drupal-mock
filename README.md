@@ -1,5 +1,9 @@
 # Decoupled Drupal mock
 
+[![CI](https://github.com/Decipher/decoupled-drupal-mock/actions/workflows/ci.yml/badge.svg?branch=1.0.x)](https://github.com/Decipher/decoupled-drupal-mock/actions/workflows/ci.yml?query=branch%3A1.0.x)
+[![Coverage](https://codecov.io/gh/Decipher/decoupled-drupal-mock/branch/1.0.x/graph/badge.svg)](https://codecov.io/gh/Decipher/decoupled-drupal-mock/branch/1.0.x)
+[![npm](https://img.shields.io/npm/v/decoupled-drupal-mock/alpha)](https://www.npmjs.com/package/decoupled-drupal-mock)
+
 **Built by a human using an AI assistant.** Much of the code and documentation in this repository was written with an AI coding assistant, directed and reviewed by its maintainer. The mock's answers are checked against answers recorded from a real Drupal. See [AI use](CONTRIBUTING.md#ai-use).
 
 This package answers requests to Drupal's decoupled APIs without a running Drupal site. It covers JSON:API, Decoupled Router, menus through JSON:API Menu Items, and Simple OAuth, with answers from a preset: a recording of a real Drupal site. Your tests can call the mock directly, or run it as an HTTP server for a frontend.
@@ -22,7 +26,7 @@ The engine and the Umami preset are published to npm as prereleases, under the `
 npm install --save-dev decoupled-drupal-mock@alpha decoupled-drupal-mock-umami@alpha
 ```
 
-With Yarn, `yarn add --dev decoupled-drupal-mock@alpha decoupled-drupal-mock-umami@alpha`. Install the two at the same version. The preset needs an engine that reads its dump, and a mismatched engine refuses it with an error that says so. An alpha can change between releases, so pin the version you test against.
+With Yarn, `yarn add --dev decoupled-drupal-mock@alpha decoupled-drupal-mock-umami@alpha`. Install the two at the same version. The preset needs an engine that reads its dump. The preset's default export reads it with `loadDump`, which refuses a dump format the engine cannot read with an error that says so. An alpha can change between releases, so pin the version you test against.
 
 ## Terms
 
@@ -34,10 +38,10 @@ With Yarn, `yarn add --dev decoupled-drupal-mock@alpha decoupled-drupal-mock-uma
 ## Packages
 
 - `decoupled-drupal-mock`, the engine. `createDrupal(dump, { baseUrl })` serves the JSON:API index, individual and related resources, and collections with Drupal's filter, sort, page, sparse fieldset and include rules, under each language prefix. Anonymous requests see only what Drupal shows a visitor, with the same resources left out. Signed-in requests see the rest. Router lookups, menus and views are answered from what the build recorded.
-- `decoupled-drupal-mock-umami`, the Umami preset. It holds Drupal's demo site in English and Spanish, recorded from a real Drupal 11 install. Its README lists the accounts and OAuth clients it holds.
+- `decoupled-drupal-mock-umami`, the Umami preset. It holds Drupal's demo site in English and Spanish, recorded from a real Drupal 11.4.11 install. Its README lists the accounts and OAuth clients it holds.
 - `packages/build`, the crawler that records a preset from a running Drupal. It is part of this repository and is not published.
 
-The engine runs on Node, including under a test runner's jsdom environment, and its root entry also runs in a browser or a service worker. `loadDump` and the server need Node, so read the dump there and pass the object to `createDrupal` in the page.
+The engine runs on Node, including under a test runner's jsdom environment, and its root entry also runs in a browser or a service worker. `loadDump` and the server need Node, so read the dump there and pass the object to `createDrupal` in the page. `drupal.fetch` and `createMock().fetch` build a `Request` and a `Response`, which Node provides from version 18. On Node 16, and in Jest's jsdom environment on any Node, use the axios entry point or a fetch polyfill.
 
 | Entry point                             | What it holds                                                               |
 | --------------------------------------- | --------------------------------------------------------------------------- |
@@ -50,6 +54,7 @@ The engine runs on Node, including under a test runner's jsdom environment, and 
 | `decoupled-drupal-mock/jest`            | `loadPreset`, `spawnMock`, `globalSetup` and the axios helpers, in CommonJS |
 | `decoupled-drupal-mock/cypress`         | `spawnMock` and `cypressTasks`, in CommonJS                                 |
 | `decoupled-drupal-mock/recorded-writes` | Helpers for replaying recorded writes                                       |
+| `decoupled-drupal-mock/cli`             | `serveCommand`, the `serve` command a preset package runs                   |
 
 ## Using the mock in a test
 
@@ -127,7 +132,7 @@ The images and other files the content links to are included in the preset and s
 
 ## Fidelity
 
-Each preset includes an oracle: a list of real client requests, with the answers a real Drupal gave. It covers reads as well as writes and sign-in, errors included. The fidelity tests send each request to the engine and compare its answer with Drupal's. For Drupal's themed HTML pages they compare the status and headers, not the markup. All 151 of the Umami preset's read entries match, of which 10 are 404s and 1 is a 403, and so do all 52 write steps. The oracle covers Umami's request list, not every request a client could make.
+Each preset includes an oracle: a list of real client requests, with the answers a real Drupal gave. It covers reads as well as writes and sign-in, errors included. The fidelity tests send each request to the engine and compare its answer with Drupal's. For Drupal's themed HTML pages they compare the status and headers, not the markup. All 151 of the Umami preset's read entries match, of which 11 are 404s and 1 is a 403, and so do all 52 write steps. The oracle covers Umami's request list, not every request a client could make.
 
 ## Building a preset
 

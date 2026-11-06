@@ -10,3 +10,4 @@ Each example is a project that uses the mock as a consumer would. CI runs them a
 | `cypress`    | Tasks for reset and sign-in                                                                |
 | `nextjs`     | A real Next.js site with next-drupal, covering draft mode and a save calling the site back |
 | `extensions` | The extensions those use                                                                   |
+| `overlays`   | Overlays recorded from sites with more than the preset, which the engine's tests replay    |

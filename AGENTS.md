@@ -11,7 +11,7 @@ Drupal's decoupled APIs without a Drupal site, answered from recordings of a rea
 - **Conventional Commits,** and the same for pull request titles. These repositories squash-merge, so the title becomes the commit subject.
 - **No AI tool is credited** in commits or tracked files: commitlint refuses the trailers. AI use is disclosed in the merge request's AI disclosure section instead, as Drupal.org's policy asks. Fill it in for every merge request an agent writes.
 - **A review finding is fixed on the pull request it was raised on,** not answered with a later one.
-- **Target `1.0.x`.** A change someone using the packages sees extends `.changeset/first-release.md` until the first release, and gets its own changeset after it.
+- **Target `1.0.x`.** A change someone using the packages sees gets its own changeset.
 - **Commit headers and body lines are 100 characters at most,** and the subject starts in lower case.
 - **The prose linter reads commit messages and the merge request description too,** not only Markdown. No em-dashes, semicolons joining sentences, three-item lists of parallel phrases, or the other patterns `.vale/styles` lists.
 

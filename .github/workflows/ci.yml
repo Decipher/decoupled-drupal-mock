@@ -27,7 +27,17 @@ jobs:
       - if: github.event_name == 'pull_request'
         run: yarn rebuild:summary ${{ github.event.pull_request.base.sha }}
       - run: '[ -d packages ] && yarn typecheck || echo "nothing to typecheck"'
-      - run: '[ -d packages ] && yarn test || echo "nothing to test"'
+      - run: '[ -d packages ] && yarn test:coverage || echo "nothing to test"'
+      # A fork's pull request has no token, so it runs the floor above and uploads nothing.
+      - name: Upload coverage report to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
+        if: ${{ env.CODECOV_TOKEN != '' }}
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   # Each runner, as a consumer uses it. Jest runs as druxt.js's 0.x branch does: Node 16, CommonJS, jsdom.
   runners:

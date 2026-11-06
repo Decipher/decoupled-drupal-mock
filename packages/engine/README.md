@@ -16,6 +16,8 @@ const drupal = createDrupal(umami(), { baseUrl: 'https://drupal.test' });
 const response = await drupal.fetch('https://drupal.test/jsonapi/node/recipe?page[limit]=5');
 ```
 
+To serve a preset over HTTP for a browser or an end-to-end suite, run its package's command, such as `npx decoupled-drupal-mock-umami@alpha --port 3005`.
+
 The [repository](https://github.com/Decipher/decoupled-drupal-mock) documents how to use the mock from Jest, Vitest, Playwright and Cypress, as an HTTP server, and with extensions and overlays.
 
 GPL-2.0-or-later.

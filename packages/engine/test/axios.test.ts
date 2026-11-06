@@ -126,6 +126,28 @@ describe('what a test runner on an older platform needs', () => {
     expect(presetDir('beside', elsewhere, engine)).toBe(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'))
   })
 
+  it('looks past a path of the short name that holds no build', () => {
+    const cache = mkdtempSync(join(tmpdir(), 'npx-'))
+    const engine = join(cache, 'node_modules', 'decoupled-drupal-mock', 'dist')
+    mkdirSync(engine, { recursive: true })
+    mkdirSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'), { recursive: true })
+    writeFileSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'package.json'), JSON.stringify({ name: 'decoupled-drupal-mock-beside' }))
+    writeFileSync(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump', 'manifest.json'), '{}')
+    // A project can hold a directory of the short name that is not a build, such as its own `umami` theme.
+    const elsewhere = mkdtempSync(join(tmpdir(), 'cwd-'))
+    mkdirSync(join(elsewhere, 'beside'))
+    const cwd = process.cwd()
+    process.chdir(elsewhere)
+    try {
+      expect(presetDir('beside', elsewhere, engine)).toBe(join(cache, 'node_modules', 'decoupled-drupal-mock-beside', 'dump'))
+      // A build directory of that name is still served as it stands.
+      writeFileSync(join(elsewhere, 'beside', 'manifest.json'), '{}')
+      expect(presetDir('beside', elsewhere, engine)).toBe('beside')
+    } finally {
+      process.chdir(cwd)
+    }
+  })
+
   it('still finds a preset when a CommonJS bundle leaves out the module URL', () => {
     // A consumer that bundles the engine to CommonJS with no shim gets an empty import.meta.
     const { outputFiles } = buildSync({ entryPoints: [fileURLToPath(new URL('../src/preset.ts', import.meta.url))], bundle: true, platform: 'node', format: 'cjs', write: false, logLevel: 'silent' })

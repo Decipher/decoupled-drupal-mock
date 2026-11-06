@@ -1,7 +1,16 @@
 {
   "name": "decoupled-drupal-mock",
   "version": "1.0.0-alpha.2",
-  "description": "Drupal's decoupled APIs over a fixture dump: JSON:API, Decoupled Router, menu linksets and Simple OAuth, as Drupal answers them, without Drupal.",
+  "description": "Drupal's decoupled APIs over a fixture dump: JSON:API, Decoupled Router, menus and Simple OAuth, as Drupal answers them, without Drupal.",
+  "keywords": [
+    "drupal",
+    "decoupled",
+    "jsonapi",
+    "mock",
+    "msw",
+    "testing",
+    "fixtures"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -53,6 +62,9 @@
     "prepack": "yarn build"
   },
   "license": "GPL-2.0-or-later",
+  "engines": {
+    "node": ">=16"
+  },
   "devDependencies": {
     "esbuild": "^0.25.0",
     "typescript": "^5.9.0"

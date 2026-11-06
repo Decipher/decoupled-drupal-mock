@@ -13,9 +13,10 @@ import { fileURLToPath } from 'node:url'
  * @throws {Error} When nothing is there, with a message that names what was wrong.
  */
 export const presetDir = (target: string, from = process.cwd(), beside?: string): string => {
-  if (existsSync(target)) return target
   // A path that is not there is a mistake to name, not a package to look for.
   const isPackage = !target.startsWith('.') && !target.startsWith('/') && (target.startsWith('@') ? target.split('/').length === 2 : !target.includes('/'))
+  // A bare name is served as a directory only when it holds a build, since a project can have its own `umami`.
+  if (existsSync(target) && (!isPackage || existsSync(join(target, 'manifest.json')))) return target
   const candidates = !isPackage ? [] : target.includes('-') || target.startsWith('@') ? [target] : [`decoupled-drupal-mock-${target}`, target]
   // A package with no build in it is not a preset, so the search goes on past it.
   // An unrelated package can share the short name, as `umami` does on npm.
