@@ -6007,7 +6007,7 @@ __metadata:
     esbuild: "npm:^0.25.0"
     typescript: "npm:^5.9.0"
   bin:
-    decoupled-drupal-mock: ./dist/cli.js
+    decoupled-drupal-mock: dist/cli.js
   languageName: unknown
   linkType: soft
 
