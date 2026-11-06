@@ -1,8 +1,8 @@
 # decoupled-drupal-mock-umami
 
-Drupal's Umami demo site as fixtures for `decoupled-drupal-mock`, in English and Spanish. It was recorded from a Drupal 11 install of the `demo_umami` profile, with Decoupled Router, JSON:API Menu Items, JSON:API Views and Decoupled Settings.
+Drupal's Umami demo site as fixtures for `decoupled-drupal-mock`, in English and Spanish. It was recorded from a Drupal 11 install of the `demo_umami` profile, with Decoupled Router, JSON:API Menu Items, JSON:API Views and Decoupled Settings, all from released versions.
 
-The site also has the Druxt examples recipe from druxt.js applied, so it differs from a plain Umami install. The recipe enables the Druxt module, Simple OAuth and Decoupled Settings, and grants visitors `access druxt resources` and `read decoupled settings`, so a visitor can read configuration such as displays. It also turns off JSON:API's read-only mode, adds `body` to Basic pages and adds image styles. Core's menu linksets are not turned on, so the mock answers them 404, as this site did.
+The site also has the recipe in `recipe/` applied, so it differs from a plain Umami install. It holds what druxt.js's examples need. The recipe enables the Druxt module, Simple OAuth and Decoupled Settings, and grants visitors `access druxt resources` and `read decoupled settings`, so a visitor can read configuration such as displays. It also turns off JSON:API's read-only mode, adds `body` to Basic pages and adds image styles. Core's menu linksets are not turned on, so the mock answers them 404, as this site did.
 
 ```js
 import { createDrupal } from 'decoupled-drupal-mock';
@@ -32,11 +32,25 @@ The build added these to the site, and the mock signs them in. Each password, an
 | `decoupled-drupal-mock-reader` | Client credentials                                                                                           | `reader`              |
 | `decoupled-drupal-mock-public` | Authorization code with PKCE, refresh token. No secret, and it redirects to `http://127.0.0.1:3000/callback` | The user who signs in |
 
-The password grant is installed too. In a test, `tokenFor('editor')` returns a token for an account directly, without going through a grant.
+The password grant is not installed. Simple OAuth 6 provides it as a separate module, and the site refuses it. In a test, `tokenFor('editor')` returns a token for an account directly, without going through a grant.
 
 ## A site with more
 
 The preset is the stock site only. A site with a contrib module or a patch the preset lacks records the difference as an overlay of its own, from a build of that site: see [Overlays](../../docs/overlays.md). [`examples/overlays/`](../../examples/overlays) holds three made that way, Druxt's language routing patches among them, which the engine's tests replay. None is published with the preset.
+
+## Rebuilding it
+
+`site.sh` stands up the site from a stock `drupal/recommended-project` on the core release `build.json` names. It installs the `demo_umami` profile and applies the recipe in `recipe/` over it. Every module the recipe installs is pinned to a release in its `composer.json`. `build.json` is the build's configuration. It doesn't name a machine or hold a secret. The site's address and directory come from the environment, and so does the build client's secret:
+
+```sh
+export DECOUPLED_DRUPAL_MOCK_CLIENT_SECRET=$(openssl rand -hex 24)
+presets/umami/site.sh ../umami-site 8906
+DECOUPLED_DRUPAL_MOCK_BASE_URL=http://127.0.0.1:8906 DECOUPLED_DRUPAL_MOCK_SITE=$PWD/../umami-site yarn crawl presets/umami/build.json
+git fetch origin
+yarn rebuild:summary origin/1.0.x --write
+```
+
+The last step writes `REBUILD.md`, which says what changed against the dump on the branch the pull request targets. Name that branch if it isn't `1.0.x`. Read the page before committing. The pipeline writes it again from the pull request's base commit and fails when the two differ, so a rebuild merges only with that page beside it. A failure prints the exact command to run. Then move the overlays in `examples/overlays/` onto the new dump, as [Overlays](../../docs/overlays.md) describes, or record them again as [their README](../../examples/overlays/README.md) describes.
 
 ## Published files and evidence
 
