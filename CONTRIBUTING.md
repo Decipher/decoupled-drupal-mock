@@ -56,7 +56,7 @@ Check what a real Drupal answers first. To cover it with a recording, add the re
 
 ## Changes that affect users
 
-Add a changeset with `yarn changeset`. The engine and the Umami preset are versioned together, so a changeset names both. `packages/build` and the examples are not published and need none. Until the first release, extend `.changeset/first-release.md` instead of adding another.
+Add a changeset with `yarn changeset`. The engine and the Umami preset are versioned together, so a changeset names both. `packages/build` and the examples are not published and need none.
 
 ## Releases
 

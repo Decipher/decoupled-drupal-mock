@@ -1,6 +1,6 @@
 # decoupled-drupal-mock-umami
 
-Drupal's Umami demo site as fixtures for `decoupled-drupal-mock`, in English and Spanish. It was recorded from a Drupal 11 install of the `demo_umami` profile, with Decoupled Router, JSON:API Menu Items, JSON:API Views and Decoupled Settings, all from released versions.
+Drupal's Umami demo site as fixtures for `decoupled-drupal-mock`, in English and Spanish. It was recorded from a Drupal 11.4.11 install of the `demo_umami` profile, with Decoupled Router, JSON:API Menu Items, JSON:API Views and Decoupled Settings, all from released versions.
 
 The site also has the recipe in `recipe/` applied, so it differs from a plain Umami install. It holds what druxt.js's examples need. The recipe enables the Druxt module, Simple OAuth and Decoupled Settings, and grants visitors `access druxt resources` and `read decoupled settings`, so a visitor can read configuration such as displays. It also turns off JSON:API's read-only mode, adds `body` to Basic pages and adds image styles. Core's menu linksets are not turned on, so the mock answers them 404, as this site did.
 
@@ -10,6 +10,12 @@ import umami from 'decoupled-drupal-mock-umami';
 
 const drupal = createDrupal(umami(), { baseUrl: 'https://drupal.test' });
 const index = await drupal.fetch('https://drupal.test/jsonapi');
+```
+
+The package also serves itself over HTTP, with nothing installed first. It takes the same options as `decoupled-drupal-mock serve`:
+
+```sh
+npx decoupled-drupal-mock-umami@alpha --port 3005
 ```
 
 The baseline is the site as released modules answer it, and `dump/manifest.json` names each module's version.
@@ -36,7 +42,7 @@ The password grant is not installed. Simple OAuth 6 provides it as a separate mo
 
 ## A site with more
 
-The preset is the stock site only. A site with a contrib module or a patch the preset lacks records the difference as an overlay of its own, from a build of that site: see [Overlays](../../docs/overlays.md). [`examples/overlays/`](../../examples/overlays) holds three made that way, Druxt's language routing patches among them, which the engine's tests replay. None is published with the preset.
+The preset is the stock site only. A site with a contrib module or a patch the preset lacks records the difference as an overlay of its own, from a build of that site: see [Overlays](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/docs/overlays.md). [`examples/overlays/`](https://github.com/Decipher/decoupled-drupal-mock/tree/1.0.x/examples/overlays) holds three made that way, Druxt's language routing patches among them, which the engine's tests replay. None is published with the preset.
 
 ## Rebuilding it
 
@@ -50,7 +56,7 @@ git fetch origin
 yarn rebuild:summary origin/1.0.x --write
 ```
 
-The last step writes `REBUILD.md`, which says what changed against the dump on the branch the pull request targets. Name that branch if it isn't `1.0.x`. Read the page before committing. The pipeline writes it again from the pull request's base commit and fails when the two differ, so a rebuild merges only with that page beside it. A failure prints the exact command to run. Then move the overlays in `examples/overlays/` onto the new dump, as [Overlays](../../docs/overlays.md) describes, or record them again as [their README](../../examples/overlays/README.md) describes.
+The last step writes `REBUILD.md`, which says what changed against the dump on the branch the pull request targets. Name that branch if it isn't `1.0.x`. Read the page before committing. The pipeline writes it again from the pull request's base commit and fails when the two differ, so a rebuild merges only with that page beside it. A failure prints the exact command to run. Then move the overlays in `examples/overlays/` onto the new dump, as [Overlays](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/docs/overlays.md) describes, or record them again as [their README](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/examples/overlays/README.md) describes.
 
 ## Published files and evidence
 
