@@ -50,7 +50,7 @@ A rebuild of the preset makes its UUIDs and install times afresh, so an overlay 
 yarn overlay realign <old dump> node_modules/decoupled-drupal-mock-umami/dump language-routing-patches overlays
 ```
 
-Each entity is matched by its internal id or machine name, as when the overlay was made, and the recordings beside it move with it. It only renames. An index or collection the overlay replaces keeps what the old build served, and its recordings agree with it, so a replay passes either way. Compare the result with a fresh build of your site on the preset's core, and record the overlay again where the two differ.
+Each entity is matched by its internal id or machine name, as when the overlay was made, and the recordings beside it move with it. It changes only UUIDs and install times (`created`, `changed` and the sign-in times), which a snapshot of the answers will show. An index or collection the overlay replaces keeps what the old build served, and its recordings agree with it, so a replay passes either way. Compare the result with a fresh build of your site on the preset's core, and record the overlay again where the two differ.
 
 ## The examples
 
