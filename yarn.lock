@@ -5970,7 +5970,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "decoupled-drupal-mock-umami@workspace:presets/umami"
   peerDependencies:
-    decoupled-drupal-mock: ^1.0.0-alpha.2
+    decoupled-drupal-mock: ^1.0.0-alpha.3
   bin:
     decoupled-drupal-mock-umami: bin.js
   languageName: unknown

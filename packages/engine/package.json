@@ -1,6 +1,6 @@
 {
   "name": "decoupled-drupal-mock",
-  "version": "1.0.0-alpha.2",
+  "version": "1.0.0-alpha.3",
   "description": "Drupal's decoupled APIs over a fixture dump: JSON:API, Decoupled Router, menus and Simple OAuth, as Drupal answers them, without Drupal.",
   "keywords": [
     "drupal",
