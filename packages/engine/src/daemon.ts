@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { createServer } from 'node:net'
@@ -23,6 +23,8 @@ export interface Instance {
   url?: string
   /** Set once the server listens. */
   preset?: string
+  /** The server's command line as `ps` saw it once the server listened, which a process given the same pid lacks. */
+  command?: string
 }
 
 /**
@@ -73,6 +75,26 @@ const alive = (pid: number): boolean => {
   }
 }
 
+/** A process's command line, or undefined when it has gone or `ps` cannot say. */
+const commandOf = (pid: number): string | undefined => {
+  try {
+    return execFileSync('ps', ['-ww', '-o', 'args=', '-p', String(pid)], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Whether a pid is still the server a pid file recorded. A server that has listened must still hold its port and, where
+ * `ps` recorded its command line, still have it. One that has not listened yet has only its pid to go on.
+ */
+const isServer = async (instance: Instance): Promise<boolean> => {
+  if (!alive(instance.pid)) return false
+  if (!instance.url) return true
+  if (!await taken(instance.port, instance.host)) return false
+  return instance.command === undefined || commandOf(instance.pid) === instance.command
+}
+
 /** Whether something holds the port, found by trying to bind it. */
 const taken = (port: number, host: string): Promise<boolean> => new Promise((done) => {
   const probe = createServer()
@@ -99,8 +121,7 @@ const isInstance = (value: unknown): value is Instance => {
 
 /**
  * The server a pid file names, if it is still running. A pid file left by a server that has gone is removed. So is
- * one whose process lives on while the port is free, since the system has given that pid to something else, unless
- * the server has not listened yet and is still starting.
+ * one whose pid now belongs to something else: the port is free, or the process has another command line.
  *
  * @param pidFile - The pid file.
  */
@@ -116,7 +137,7 @@ export const running = async (pidFile: string): Promise<Instance | undefined> =>
     rmSync(pidFile, { force: true })
     return undefined
   }
-  if (alive(instance.pid) && (!instance.url || await taken(instance.port, instance.host))) return instance
+  if (await isServer(instance)) return instance
   rmSync(pidFile, { force: true })
   return undefined
 }
@@ -200,6 +221,8 @@ export const start = async (options: StartOptions): Promise<{ line: string, inst
         if (Date.now() > deadline) fail(`The mock did not answer within ${readyTimeout} seconds.`)
         await sleep(100)
       }
+      const command = commandOf(instance.pid)
+      if (command) instance.command = command
       writeFileSync(pidFile, JSON.stringify(instance))
       return { line: line.trim(), instance }
     }
@@ -262,28 +285,32 @@ export const daemonCommand = async (command: DaemonCommand, entry: string[], res
     console.error('--pid-file names a file: --pid-file ./mock.pid')
     process.exit(1)
   }
-  try {
-    const pidFile = pidFileFor(port, at >= 0 ? rest[at + 1] : undefined)
-    if (command === 'status') {
-      const instance = await running(pidFile)
-      if (!instance) {
-        console.log(`No mock is running on port ${port}.`)
-        process.exit(1)
-      }
-      console.log(instance.url ? `${instance.preset ?? 'A mock'} is running on ${instance.url}, pid ${instance.pid}.` : `A mock is starting on port ${instance.port}, pid ${instance.pid}.`)
-      return
+  // A failure is printed and ends the process, which a test that stubs process.exit sees as the same.
+  const orExit = async <T>(work: () => T | Promise<T>): Promise<T> => {
+    try {
+      return await work()
+    } catch (error) {
+      console.error((error as Error).message)
+      return process.exit(1)
     }
-    if (command === 'stop') {
-      const instance = await stop(pidFile)
-      console.log(instance ? `Stopped the mock on port ${instance.port}, pid ${instance.pid}.` : `No mock is running on port ${port}.`)
-      return
-    }
-    // The server is given the options serve takes, and none of these.
-    const args = rest.filter((argument, index) => !['--pid-file', '--ready-timeout'].includes(argument) && !['--pid-file', '--ready-timeout'].includes(rest[index - 1]!))
-    const { line } = await start({ entry, args, port, host: option('host', '127.0.0.1'), pidFile, readyTimeout })
-    console.log(line)
-  } catch (error) {
-    console.error((error as Error).message)
-    process.exit(1)
   }
+  const pidFile = await orExit(() => pidFileFor(port, at >= 0 ? rest[at + 1] : undefined))
+  if (command === 'status') {
+    const instance = await orExit(() => running(pidFile))
+    if (!instance) {
+      console.log(`No mock is running on port ${port}.`)
+      process.exit(1)
+    }
+    console.log(instance.url ? `${instance.preset ?? 'A mock'} is running on ${instance.url}, pid ${instance.pid}.` : `A mock is starting on port ${instance.port}, pid ${instance.pid}.`)
+    return
+  }
+  if (command === 'stop') {
+    const instance = await orExit(() => stop(pidFile))
+    console.log(instance ? `Stopped the mock on port ${instance.port}, pid ${instance.pid}.` : `No mock is running on port ${port}.`)
+    return
+  }
+  // The server is given the options serve takes, and none of these.
+  const args = rest.filter((argument, index) => !['--pid-file', '--ready-timeout'].includes(argument) && !['--pid-file', '--ready-timeout'].includes(rest[index - 1]!))
+  const { line } = await orExit(() => start({ entry, args, port, host: option('host', '127.0.0.1'), pidFile, readyTimeout }))
+  console.log(line)
 }
