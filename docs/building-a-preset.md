@@ -43,7 +43,7 @@ The build writes the dump to `out`, and its recordings beside it in `<out>.oracl
 
 A preset in this repository is a package under `presets/`, with the dump in `dump/`. Copy `index.js`, `index.d.ts` and `bin.js` from `presets/umami`. They don't need changing, because each finds the dump beside it.
 
-`bin.js` is the preset's own command, so `npx <package> --port 3005` serves it with nothing installed first. Give it as `bin`, which npm names after the package, and list it in `files`. Leave out a leading `./`, as npm removes a command with one when it publishes:
+`bin.js` is the preset's own command, so `npx <package> --port 3005` serves it with nothing installed first, and `npx <package> start --port 3005` runs it in the background. Give it as `bin`, which npm names after the package, and list it in `files`. Leave out a leading `./`, as npm removes a command with one when it publishes:
 
 ```json
 {
