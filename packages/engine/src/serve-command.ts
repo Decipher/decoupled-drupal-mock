@@ -1,5 +1,7 @@
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
+import { daemonCommand, daemonCommands } from './daemon.js'
+import type { DaemonCommand } from './daemon.js'
 import type { Extension } from './extend.js'
 import { createMock } from './mock.js'
 import { loadDump, loadOverlay } from './load.js'
@@ -80,4 +82,19 @@ export const serveCommand = async (target: string, rest: string[]): Promise<void
     process.exit(1)
   })
   console.log(`${dump.manifest.preset} from Drupal ${dump.manifest.drupal.core}, listening on ${url}`)
+}
+
+/**
+ * A preset package's own command: `serve`, or no command at all, serves the preset in the foreground, and `start`,
+ * `status` and `stop` run it in the background as `daemonCommand` says. Each preset's `bin.js` calls it with its own
+ * build directory and its own path, which `start` runs again in the background.
+ *
+ * @param dir - The preset's build directory.
+ * @param argv - The command and its options.
+ * @param entry - The path of the preset's command.
+ */
+export const presetCommand = async (dir: string, argv: string[], entry: string): Promise<void> => {
+  const [command, ...rest] = argv
+  if (daemonCommands.includes(command as DaemonCommand)) return daemonCommand(command as DaemonCommand, [entry], rest)
+  return serveCommand(dir, command === 'serve' ? rest : argv)
 }
