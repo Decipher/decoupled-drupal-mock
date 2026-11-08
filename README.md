@@ -92,7 +92,7 @@ DRUPAL_BASE_URL=http://127.0.0.1:3005 npm test
 npx --yes decoupled-drupal-mock-umami@alpha stop --port 3005
 ```
 
-`start` takes the options `serve` takes and prints the same line. A server that exits or does not answer within `--ready-timeout` seconds, 30 unless you say, is stopped, and `start` prints its log and exits with status 1. `status --port 3005` says whether a server runs there, with its preset and process ID, and exits with status 1 when none does. `stop` exits with status 0 when no server was running, so a script can call it twice. A pid file in the system's temporary directory, one per port, ties the three together, and `--pid-file <file>` names another. The engine has the same commands: `decoupled-drupal-mock start umami --port 3005`. They need a POSIX system, and CI runs them on Linux. On Windows, run `serve` in the background yourself.
+`start` takes the options `serve` takes and prints the same line. A server that exits or does not answer within `--ready-timeout` seconds, 30 unless you say, is stopped, and `start` prints its log and exits with status 1. `status --port 3005` says whether a server runs there, with its preset and process ID, and exits with status 1 when none does. `stop` exits with status 0 when no server was running, so a script can call it twice. A pid file per port, in a directory of your own under the system's temporary directory, ties the three together, and `--pid-file <file>` names another. The engine has the same commands: `decoupled-drupal-mock start umami --port 3005`. They need a POSIX system, and CI runs them on Linux. On Windows, run `serve` in the background yourself.
 
 ## Test runner support
 

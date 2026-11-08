@@ -1,4 +1,5 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -63,15 +64,51 @@ describe('the background server', () => {
     writeFileSync(pidFile, 'not json')
     expect(await running(pidFile)).toBeUndefined()
     expect(existsSync(pidFile)).toBe(false)
-    // This process is alive, but it holds no server on the port, so the pid is not the mock's.
-    writeFileSync(pidFile, JSON.stringify({ pid: process.pid, port, host: '127.0.0.1', log: '' }))
+    // This process is alive, but the server that listened has left the port, so the pid is no longer the mock's.
+    writeFileSync(pidFile, JSON.stringify({ pid: process.pid, port, host: '127.0.0.1', log: '', url: `http://127.0.0.1:${port}` }))
     expect(await running(pidFile)).toBeUndefined()
     expect(existsSync(pidFile)).toBe(false)
     expect(await running(pidFile)).toBeUndefined()
   })
 
-  it('keeps one pid file per port in the temporary directory unless told otherwise', () => {
-    expect(pidFileFor(8925)).toBe(join(tmpdir(), 'decoupled-drupal-mock-8925.pid'))
+  it('waits past the listening line until /jsonapi answers, and stops a server that never does', async () => {
+    const { port, ...options } = await setUp()
+    const says = `console.log("umami from Drupal 11, listening on http://127.0.0.1:${port}"); setInterval(() => {}, 1000)`
+    await expect(start({ entry: ['-e', says], args: [], port, ...options, readyTimeout: 0.5 })).rejects.toThrow(/did not answer within 0\.5 seconds\.\numami from Drupal 11/)
+    expect(existsSync(options.pidFile)).toBe(false)
+  })
+
+  it('keeps a server that has not listened yet, so it can be stopped, and refuses a second start meanwhile', async () => {
+    const { port, ...options } = await setUp()
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })
+    const gone = new Promise((done) => child.on('exit', done))
+    const record = { pid: child.pid!, port, host: '127.0.0.1', log: '' }
+    writeFileSync(options.pidFile, JSON.stringify(record))
+    expect(await running(options.pidFile)).toEqual(record)
+    await expect(start({ entry: [cli, 'serve', umami], args: ['--port', String(port)], port, ...options })).rejects.toThrow(`already running on port ${port}, pid ${child.pid}`)
+    expect(await stop(options.pidFile)).toEqual(record)
+    await gone
+    expect(existsSync(options.pidFile)).toBe(false)
+  })
+
+  it('never signals a pid a pid file could not have been given by start', async () => {
+    const { pidFile } = await setUp()
+    // 0 and -1 would signal this process group and every process the user owns.
+    for (const pid of [0, -1, 1.5, '42', null]) {
+      writeFileSync(pidFile, JSON.stringify({ pid, port: 8925, host: '127.0.0.1', log: '' }))
+      expect(await stop(pidFile)).toBeUndefined()
+      expect(existsSync(pidFile)).toBe(false)
+    }
+    writeFileSync(pidFile, 'null')
+    expect(await running(pidFile)).toBeUndefined()
+  })
+
+  it('keeps one pid file per port in a directory of the user\'s own unless told otherwise', () => {
+    const pidFile = pidFileFor(8925)
+    expect(pidFile.startsWith(tmpdir())).toBe(true)
+    expect(pidFile.endsWith('8925.pid')).toBe(true)
+    // Nobody else can leave a link where the pid file and the log go.
+    expect(statSync(join(pidFile, '..')).mode & 0o077).toBe(0)
     expect(pidFileFor(8925, 'run/mock.pid')).toBe(join(process.cwd(), 'run', 'mock.pid'))
   })
 })

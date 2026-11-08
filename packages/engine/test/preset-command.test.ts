@@ -76,5 +76,6 @@ describe.each(presets)('the %s preset package', (preset) => {
     expect(run('stop')).toMatchObject({ status: 0, output: expect.stringMatching(/^Stopped the mock on port \d+, pid \d+\.$/) })
     expect(run('stop')).toEqual({ status: 0, output: `No mock is running on port ${port}.` })
     expect(run('start', '--ready-timeout', 'soon')).toEqual({ status: 1, output: '--ready-timeout is a number of seconds, not soon.' })
+    expect(spawnSync(process.execPath, [join(dir, 'bin.js'), 'start', '--pid-file', '--port', port], { cwd: root, encoding: 'utf8' }).stderr.trim()).toBe('--pid-file names a file: --pid-file ./mock.pid')
   }, 30000)
 })
