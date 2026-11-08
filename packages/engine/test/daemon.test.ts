@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -110,5 +110,64 @@ describe('the background server', () => {
     // Nobody else can leave a link where the pid file and the log go.
     expect(statSync(join(pidFile, '..')).mode & 0o077).toBe(0)
     expect(pidFileFor(8925, 'run/mock.pid')).toBe(join(process.cwd(), 'run', 'mock.pid'))
+  })
+})
+
+describe('the background server when things go wrong', () => {
+  it('lets one of two starts at once run a server, and tells the other', async () => {
+    const { port, ...options } = await setUp()
+    const both = await Promise.allSettled([1, 2].map(() => start({ entry: [cli, 'serve', umami], args: ['--port', String(port)], port, ...options })))
+    expect(both.filter(({ status }) => status === 'fulfilled')).toHaveLength(1)
+    expect((both.find(({ status }) => status === 'rejected') as PromiseRejectedResult).reason.message).toMatch(new RegExp(`already (starting|running) on port ${port}`))
+  }, 30000)
+
+  it('fails with the log when the server exits after it listens and before it answers', async () => {
+    const { port, ...options } = await setUp()
+    const says = `console.log("umami from Drupal 11, listening on http://127.0.0.1:${port}"); setTimeout(() => process.exit(4), 200)`
+    await expect(start({ entry: ['-e', says], args: [], port, ...options })).rejects.toThrow(/exited with status 4\.\numami from Drupal 11/)
+  })
+
+  it('gives up its claim on the pid file when the log cannot be written', async () => {
+    const { port, ...options } = await setUp()
+    mkdirSync(options.pidFile.replace(/\.pid$/, '.log'))
+    await expect(start({ entry: [cli, 'serve', umami], args: [], port, ...options })).rejects.toThrow(/EISDIR/)
+    expect(existsSync(options.pidFile)).toBe(false)
+  })
+
+  it('kills a server that ignores SIGTERM, and forgets one that has already gone', async () => {
+    const { port, pidFile } = await setUp()
+    const child = spawn(process.execPath, ['-e', 'process.on("SIGTERM", () => {}); console.log("up"); setInterval(() => {}, 1000)'], { stdio: ['ignore', 'pipe', 'ignore'] })
+    await new Promise((done) => child.stdout.once('data', done))
+    const gone = new Promise((done) => child.on('exit', (_code, signal) => done(signal)))
+    writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port, host: '127.0.0.1', log: '' }))
+    expect(await stop(pidFile)).toMatchObject({ pid: child.pid })
+    expect(await gone).toBe('SIGKILL')
+    writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port, host: '127.0.0.1', log: '' }))
+    expect(await running(pidFile)).toBeUndefined()
+  }, 15000)
+
+  it('says so when the port is still held after the server has gone', async () => {
+    const { port, pidFile } = await setUp()
+    const holder = spawn(process.execPath, ['-e', `require('node:net').createServer().listen(${port}, '127.0.0.1', () => console.log('up'))`], { stdio: ['ignore', 'pipe', 'ignore'] })
+    onTestFinished(() => {
+      holder.kill('SIGKILL')
+    })
+    await new Promise((done) => holder.stdout.once('data', done))
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })
+    writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port, host: '127.0.0.1', log: '' }))
+    await expect(stop(pidFile)).rejects.toThrow(`Port ${port} is still in use after stopping pid ${child.pid}.`)
+  }, 15000)
+
+  it('refuses a directory for the pid file that someone else could write to', () => {
+    const saved = process.env.TMPDIR
+    const shared = mkdtempSync(join(tmpdir(), 'ddm-shared-'))
+    mkdirSync(join(shared, `decoupled-drupal-mock-${process.getuid?.() ?? 'user'}`), { mode: 0o777 })
+    process.env.TMPDIR = shared
+    try {
+      expect(() => pidFileFor(8925)).toThrow('is not a directory that only you can write to')
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = saved
+    }
   })
 })
