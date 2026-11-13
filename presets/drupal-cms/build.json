@@ -1,0 +1,68 @@
+{
+  "site": {
+    "cms": "2.2.9"
+  },
+  "baseUrl": "${DECOUPLED_DRUPAL_MOCK_BASE_URL}",
+  "out": "presets/drupal-cms/dump",
+  "oracleOut": "presets/drupal-cms/oracle",
+  "preset": "drupal-cms",
+  "languages": {
+    "en": ""
+  },
+  "defaultLanguage": "en",
+  "drupal": {
+    "profile": "drupal_cms_starter"
+  },
+  "composerDir": "${DECOUPLED_DRUPAL_MOCK_SITE}",
+  "drush": {
+    "bin": "${DECOUPLED_DRUPAL_MOCK_SITE}/vendor/bin/drush",
+    "cwd": "${DECOUPLED_DRUPAL_MOCK_SITE}"
+  },
+  "auth": {
+    "tokenUrl": "${DECOUPLED_DRUPAL_MOCK_BASE_URL}/oauth/token",
+    "clientId": "build",
+    "clientSecret": "${DECOUPLED_DRUPAL_MOCK_CLIENT_SECRET}",
+    "scope": "build"
+  },
+  "oracleFile": "presets/drupal-cms/oracle.txt",
+  "skipTypes": [
+    "staged_config_update--staged_config_update",
+    "staged_language_config_override--staged_language_config_override"
+  ],
+  "identities": {
+    "accounts": [
+      {
+        "name": "editor",
+        "password": "editor",
+        "roles": ["content_editor"]
+      },
+      {
+        "name": "reader",
+        "password": "reader",
+        "roles": []
+      }
+    ],
+    "consumers": [
+      {
+        "clientId": "decoupled-drupal-mock",
+        "secret": "decoupled-drupal-mock",
+        "confidential": true,
+        "grants": ["client_credentials", "refresh_token"],
+        "scopes": {
+          "editor": "content_editor"
+        },
+        "user": "editor"
+      },
+      {
+        "clientId": "decoupled-drupal-mock-reader",
+        "secret": "decoupled-drupal-mock-reader",
+        "confidential": true,
+        "grants": ["client_credentials"],
+        "scopes": {
+          "reader": "authenticated"
+        },
+        "user": "reader"
+      }
+    ]
+  }
+}
