@@ -138,6 +138,19 @@ describe('the crawl', () => {
     expect(existsSync(join(out, 'oracle/queries.json.gz'))).toBe(false)
     expect(read(out, 'recorded/routes.json.gz')).toHaveProperty(['GET /router/translate-path?path=%2Ftaxonomy%2Fterm%2F7'])
   })
+
+  it('records a type a visitor may not filter on a build without a token too, from the visitor\'s own read', async () => {
+    const { server, base } = await drupal((path) => {
+      if (path === '/jsonapi') return { body: { links: { 'canvas_page--canvas_page': { href: '/jsonapi/canvas_page/canvas_page' } } } }
+      if (path === `/jsonapi/canvas_page/canvas_page${LIMIT}`) return { body: { data: [{ type: 'canvas_page--canvas_page', id: 'p' }], links: {} } }
+      if (path.startsWith('/jsonapi/canvas_page/canvas_page?filter')) return { body: { data: [], links: {} } }
+      return undefined
+    })
+    servers.push(server)
+    const out = mkdtempSync(join(tmpdir(), 'crawl-'))
+    await crawl({ baseUrl: base, out, preset: 't', languages: { en: '' }, defaultLanguage: 'en', drupal: { core: '11', profile: 'x', modules: {} }, log: () => undefined })
+    expect((read(out, 'access/en.json.gz') as Record<string, { unfilterable?: true }>)['canvas_page--canvas_page']).toEqual({ unfilterable: true })
+  })
 })
 
 describe('a site that gets in the way', () => {

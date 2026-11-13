@@ -215,6 +215,12 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     const phantom: Record<string, string[]> = {}
     /** The attribute and relationship names a set of resources carries. */
     const fieldNames = (resources: Resource[]): Set<string> => new Set(resources.flatMap((resource) => [...Object.keys(resource.attributes || {}), ...Object.keys(resource.relationships || {})]))
+    /** Whether a visitor's filter that holds for every resource answers nothing: JSON:API's query guard, for a type no module lets a visitor filter. */
+    const unfilterable = async (href: string): Promise<boolean> => {
+      const filtered = await get(`${pathOf(href)}?${MATCH_ALL}`)
+      const data = (filtered.body as { data?: unknown[] } | undefined)?.data
+      return filtered.status === 200 && Array.isArray(data) && !data.length
+    }
     /** Every resource of a type, page by page, as the given user reads it. */
     const collect = async (href: string, headers: Record<string, string>): Promise<Resource[] | number> => {
       const resources: Resource[] = []
@@ -268,6 +274,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       }
       const full = options.exclude ? collected.filter((resource) => !options.exclude!(resource)) : collected
       for (const resource of collected) if (!full.includes(resource)) excludedIds.add(`${resource.type}:${resource.id}`)
+      // A build without a token read the type as a visitor, so its filter guard is learned from that read.
+      if (!token && full.length && await unfilterable(link.href)) access[type] = { unfilterable: true }
       if (token) {
         // What a visitor may read of it.
         const anonymous = await collect(link.href, {})
@@ -281,12 +289,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
           const seen = fieldNames(seenByVisitor)
           const hidden = [...fieldNames(full)].filter((name) => !seen.has(name))
           if (hidden.length && seenByVisitor.length) entry.hidden = hidden
-          // A filter that holds for every resource: a type a visitor may not filter answers it with nothing.
-          if (seenByVisitor.length) {
-            const filtered = await get(`${pathOf(link.href)}?${MATCH_ALL}`)
-            const data = (filtered.body as { data?: unknown[] } | undefined)?.data
-            if (filtered.status === 200 && Array.isArray(data) && !data.length) entry.unfilterable = true
-          }
+          if (seenByVisitor.length && await unfilterable(link.href)) entry.unfilterable = true
           if (Object.keys(entry).length) access[type] = entry
         }
         const ids = [...new Set(phantom[link.href] || [])]
