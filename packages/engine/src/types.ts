@@ -64,5 +64,10 @@ export interface Dump {
     forbidden?: true
     /** Resources Drupal reports as omitted to every user, so no view holds their data: they take a place in a collection and are reported, never served. */
     phantom?: string[]
+    /**
+     * A type no module lets a visitor filter, so JSON:API answers any filtered collection of it with nothing. A content
+     * entity type is filterable only where a module implements `hook_jsonapi_ENTITY_TYPE_filter_access()`.
+     */
+    unfilterable?: true
   }>>
 }

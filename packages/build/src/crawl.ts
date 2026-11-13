@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import type { Answer, RecordedWrite, WriteScript } from 'decoupled-drupal-mock/recorded-writes'
 import type { Document, Dump, Manifest, Recorded, Resource } from 'decoupled-drupal-mock'
-import { DUMP_FORMAT, sortedSearch } from 'decoupled-drupal-mock'
+import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND, DUMP_FORMAT, sortedSearch } from 'decoupled-drupal-mock'
 import { KEPT_HEADERS, resolve } from 'decoupled-drupal-mock/recorded-writes'
 
 export interface CrawlOptions {
@@ -46,6 +46,8 @@ export interface CrawlOptions {
 
 /** What `collect` gives for a type it could read none of, past a page the site cannot serve. No status says that. */
 const UNREADABLE = -1
+/** A JSON:API filter every resource passes, as a visitor asks it to learn whether the type may be filtered at all. */
+const MATCH_ALL = 'filter%5Bdecoupled_drupal_mock%5D%5Bcondition%5D%5Bpath%5D=id&filter%5Bdecoupled_drupal_mock%5D%5Bcondition%5D%5Boperator%5D=IS%20NOT%20NULL'
 
 const PLACEHOLDER = 'https://drupal.invalid'
 
@@ -170,6 +172,33 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     return entry
   }
 
+  /** Whether the site runs Canvas Headless, asked once: its content API answers the front page, where a site without it has no such route. */
+  let canvas: boolean | undefined
+  /**
+   * Canvas Headless's routes, as a visitor reads them: the content API for each path, the entity endpoint for each Canvas
+   * page and node, and the site data. A path Canvas does not know answers one problem document, recorded once by a path no
+   * site has, which the engine gives every path it has no recording of. A `requestUri` Canvas refuses is recorded once too.
+   */
+  const recordCanvas = async (paths: string[], resources: Record<string, Resource[]>): Promise<void> => {
+    if (canvas === undefined) {
+      const front = await get('/canvas/content-api?requestUri=/')
+      canvas = front.status === 200 && !!front.headers['content-type']?.includes('json')
+      if (!canvas) return
+      log('Canvas Headless: the site data, a path no site has and a path that is not site-relative')
+      await record('/canvas/api/v0/site-data')
+      await record(`/canvas/content-api?requestUri=${encodeURIComponent(CANVAS_NOT_FOUND)}`)
+      await record(`/canvas/content-api?requestUri=${encodeURIComponent(CANVAS_BAD_REQUEST)}`)
+    }
+    if (!canvas) return
+    log(`Canvas Headless: ${paths.length} paths`)
+    for (const path of paths) await record(`/canvas/content-api?requestUri=${encodeURIComponent(path)}`)
+    const entities = [
+      ...(resources['canvas_page--canvas_page'] || []).map((page) => ['canvas_page', (page.attributes as { drupal_internal__id?: number }).drupal_internal__id] as const),
+      ...Object.entries(resources).filter(([type]) => type.startsWith('node--')).flatMap(([, list]) => list.map((node) => ['node', (node.attributes as { drupal_internal__nid?: number }).drupal_internal__nid] as const)),
+    ]
+    for (const [type, id] of entities) await record(`/canvas/content-api/entity?type=${type}&id=${String(id)}`)
+  }
+
   const all: Record<string, Record<string, Resource[]>> = {}
   for (const [langcode, prefix] of Object.entries(options.languages)) {
     const lang = prefix ? `/${prefix}` : ''
@@ -181,7 +210,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     write(`index/${langcode}.json`, index.body)
     const links = ((index.body as Document).links || {}) as Record<string, { href: string } | null>
     all[langcode] = {}
-    const access: Record<string, { visible?: string[], hidden?: string[], forbidden?: true, phantom?: string[] }> = {}
+    const access: Record<string, { visible?: string[], hidden?: string[], forbidden?: true, phantom?: string[], unfilterable?: true }> = {}
     /** What Drupal reported as omitted on the administrator's crawl: resources no user reads. */
     const phantom: Record<string, string[]> = {}
     /** The attribute and relationship names a set of resources carries. */
@@ -221,6 +250,11 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
           next = last === undefined ? undefined : `${pathOf(href)}?sort=id&page%5Blimit%5D=50&filter%5Bafter%5D%5Bcondition%5D%5Bpath%5D=id&filter%5Bafter%5D%5Bcondition%5D%5Boperator%5D=%3E&filter%5Bafter%5D%5Bcondition%5D%5Bvalue%5D=${encodeURIComponent(last)}`
         }
       }
+      // Read by uuid, kept in the order Drupal lists a configuration type unsorted: by name, as config storage lists them.
+      if (byId) {
+        const name = (resource: Resource): string => String((resource.attributes as { drupal_internal__id?: unknown } | undefined)?.drupal_internal__id ?? '')
+        resources.sort((a, b) => (name(a) < name(b) ? -1 : name(a) > name(b) ? 1 : 0))
+      }
       return resources
     }
     for (const [type, link] of Object.entries(links)) {
@@ -239,7 +273,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         const anonymous = await collect(link.href, {})
         if (typeof anonymous === 'number') access[type] = { forbidden: true }
         else {
-          const entry: { visible?: string[], hidden?: string[] } = {}
+          const entry: { visible?: string[], hidden?: string[], unfilterable?: true } = {}
           const seenByVisitor = anonymous.filter((resource) => !excluded(resource))
           const ids = new Set(seenByVisitor.map((resource) => resource.id))
           if (full.some((resource) => !ids.has(resource.id))) entry.visible = [...ids]
@@ -247,6 +281,12 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
           const seen = fieldNames(seenByVisitor)
           const hidden = [...fieldNames(full)].filter((name) => !seen.has(name))
           if (hidden.length && seenByVisitor.length) entry.hidden = hidden
+          // A filter that holds for every resource: a type a visitor may not filter answers it with nothing.
+          if (seenByVisitor.length) {
+            const filtered = await get(`${pathOf(link.href)}?${MATCH_ALL}`)
+            const data = (filtered.body as { data?: unknown[] } | undefined)?.data
+            if (filtered.status === 200 && Array.isArray(data) && !data.length) entry.unfilterable = true
+          }
           if (Object.keys(entry).length) access[type] = entry
         }
         const ids = [...new Set(phantom[link.href] || [])]
@@ -275,7 +315,9 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     const aliases = Object.values(all[langcode]!).flat().map((resource) => (resource.attributes as { path?: { alias?: string | null } } | undefined)?.path?.alias).filter((alias): alias is string => !!alias)
     const nodes = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('node--')).flatMap(([, list]) => list.map((node) => `/node/${String((node.attributes as { drupal_internal__nid?: number } | undefined)?.drupal_internal__nid)}`))
     const terms = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('taxonomy_term--')).flatMap(([, list]) => list.map((term) => `/taxonomy/term/${String((term.attributes as { drupal_internal__tid?: number } | undefined)?.drupal_internal__tid)}`))
-    const systemPaths = [...nodes, ...terms]
+    // A Canvas page's own path, which Canvas answers with a redirect to its alias.
+    const canvasPages = (all[langcode]!['canvas_page--canvas_page'] || []).map((page) => `/page/${String((page.attributes as { drupal_internal__id?: number } | undefined)?.drupal_internal__id)}`)
+    const systemPaths = [...nodes, ...terms, ...canvasPages]
     // The pages views give: every enabled page display with a path a client can ask for, such as /recipes.
     const viewPages = (all[langcode]!['view--view'] || []).flatMap((view) => {
       const attributes = view.attributes as { status?: boolean, display?: Record<string, { display_plugin?: string, display_options?: { path?: string } }> }
@@ -288,6 +330,9 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     const paths = [...new Set([...prefixed, ...unprefixed])]
     log(`${langcode}: ${paths.length} router lookups`)
     for (const path of paths) await record(`/router/translate-path?path=${encodeURIComponent(path)}`)
+
+    // Canvas Headless resolves a path itself, so its content API is recorded for every path the router was asked.
+    await recordCanvas(paths, all[langcode]!)
 
     // Menus, as JSON:API Menu Items and as linksets.
     for (const menu of all[langcode]!['menu--menu'] || []) {
