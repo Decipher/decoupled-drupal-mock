@@ -1,0 +1,37 @@
+name: Decoupled Drupal mock, Drupal CMS preset
+description: 'The site the Drupal CMS preset is recorded from, applied to an install of Drupal CMS with its Starter template: Canvas Headless, the Druxt module stack from released versions, and what a visitor may read.'
+type: Site
+install:
+  - jsonapi
+  - consumers
+  - simple_oauth
+  - custom_elements
+  - canvas_headless
+  - decoupled_router
+  - jsonapi_menu_items
+  - jsonapi_views
+  - druxt
+  - decoupled_settings
+config:
+  actions:
+    # Core ships JSON:API read-only, which answers every write with 405.
+    jsonapi.settings:
+      simpleConfigUpdate:
+        read_only: false
+    # A frontend reads schemas, displays, menus, views and settings as a visitor.
+    user.role.anonymous:
+      grantPermissions:
+        - 'access druxt resources'
+        - 'read decoupled settings'
+    user.role.authenticated:
+      grantPermissions:
+        - 'access druxt resources'
+        - 'read decoupled settings'
+    # An editor may open a draft in the frontend from the Canvas editor.
+    user.role.content_editor:
+      grantPermissions:
+        - 'access canvas headless preview'
+    decoupled_settings.settings:
+      simpleConfigUpdate:
+        exposed_objects:
+          - system.site

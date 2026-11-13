@@ -97,4 +97,9 @@ DDEV
 lndo
 cacheinfo
 unstub
+checklistapi
+klaro
+linkit
+metatag
+pathauto
 unfilterable
