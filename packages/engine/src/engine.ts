@@ -11,6 +11,7 @@ import { hasOwn, own as member } from './own.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
 import { clone } from './clone.js'
 import { withoutTrailingSlashes } from './slashes.js'
+import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND } from './format.js'
 
 export interface DrupalOptions {
   /** The origin the server answers for, written into every link. Default `https://drupal.invalid`. */
@@ -359,6 +360,14 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       }
       return { status: hit.status, headers: hit.headers, body }
     }
+    // Canvas Headless answers a path it does not know as it answered the path no site has, when the build recorded that,
+    // and a requestUri that is not site-relative as it answered the one the build sent. The rule is Canvas's own.
+    if (lookup === 'GET' && path === '/canvas/content-api') {
+      const requestUri = query.requestUri
+      const valid = typeof requestUri === 'string' && requestUri.startsWith('/') && !requestUri.startsWith('//') && !requestUri.includes('\\') && !requestUri.includes('#')
+      const answer = recorded(lookup, path, `requestUri=${encodeURIComponent(valid ? CANVAS_NOT_FOUND : CANVAS_BAD_REQUEST)}`)
+      if (answer) return { status: answer.status, headers: answer.headers, body: relink(answer.body) }
+    }
     // Decoupled Router answers for the paths the build recorded, and as itself for the rest.
     if (path === '/router/translate-path') {
       const asked = String((query.path as string | undefined) ?? '')
@@ -455,7 +464,9 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (head && fieldNames.size > 2 && !fieldNames.has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, self) }
     }
     const reader = read(langcode)
-    let matched = collection.filter((resource) => passes(resource, filter, reader))
+    // JSON:API's query guard answers a visitor's filter on a type no module lets a visitor filter with an empty list.
+    const guarded = !all && Object.keys(filter.conditions).length > 0 && !!accessOf(langcode, type)?.unfilterable
+    let matched = guarded ? [] : collection.filter((resource) => passes(resource, filter, reader))
     const sort = typeof query.sort === 'string' ? query.sort.split(',').map((item) => item.trim()).filter(Boolean) : []
     if (sort.length) {
       const keys = sort.map((item) => ({ path: item.replace(/^-/, '').split('.'), direction: item.startsWith('-') ? -1 : 1 }))

@@ -161,6 +161,45 @@ describe('recorded routes', () => {
   })
 })
 
+describe('a type no module lets a visitor filter', () => {
+  const guarded = createDrupal({ ...dump, access: { ...dump.access, en: { ...dump.access?.en, 'node--page': { ...dump.access?.en?.['node--page'], unfilterable: true } } } }, { baseUrl: 'https://drupal.test' })
+  const list = async (drupal: ReturnType<typeof createDrupal>, path: string, headers: Record<string, string> = {}) => (JSON.parse(await (await drupal.fetch(`https://drupal.test${path}`, { headers })).text()) as Document).data as Resource[]
+
+  it('answers a visitor\'s filtered collection with nothing, as JSON:API\'s query guard does, and an unfiltered one in full', async () => {
+    expect(await list(guarded, '/jsonapi/node/page?filter[title]=About%20Umami')).toEqual([])
+    expect((await list(guarded, '/jsonapi/node/page')).length).toBeGreaterThan(0)
+    expect((await list(drupal, '/jsonapi/node/page?filter[title]=About%20Umami')).length).toBe(1)
+  })
+})
+
+describe('Canvas Headless\'s content API', () => {
+  const problem = { status: 404, headers: { 'content-type': 'application/problem+json' }, body: { type: 'about:blank', title: 'Not Found', status: 404 } }
+  const page = { status: 200, headers: { 'content-type': 'application/json' }, body: { content: { element: 'drupal-markup' }, context: { site: { baseUrl: ORIGIN } } } }
+  const canvas = createDrupal({ ...dump, recorded: { ...dump.recorded, 'GET /canvas/content-api?requestUri=%2Fcanvas': page, 'GET /canvas/content-api?requestUri=%2Fdecoupled-drupal-mock%2Fnot-found': problem } }, { baseUrl: 'https://drupal.test' })
+  const ask = async (drupal: ReturnType<typeof createDrupal>, path: string) => {
+    const response = await drupal.fetch(`https://drupal.test${path}`)
+    return { status: response.status, type: response.headers.get('content-type'), text: await response.text() }
+  }
+
+  it('answers a recorded path from its recording, however the client encodes it', async () => {
+    for (const path of ['/canvas/content-api?requestUri=/canvas', '/canvas/content-api?requestUri=%2Fcanvas']) {
+      const answer = await ask(canvas, path)
+      expect(answer.status).toBe(200)
+      expect(JSON.parse(answer.text)).toEqual({ content: { element: 'drupal-markup' }, context: { site: { baseUrl: 'https://drupal.test' } } })
+    }
+  })
+
+  it('answers a path it has no recording of as Canvas answered the path no site has', async () => {
+    const answer = await ask(canvas, '/canvas/content-api?requestUri=/nope')
+    expect(answer).toMatchObject({ status: 404, type: 'application/problem+json' })
+    expect(JSON.parse(answer.text)).toEqual(problem.body)
+  })
+
+  it('has no content API on a site the build found without Canvas', async () => {
+    expect((await ask(drupal, '/canvas/content-api?requestUri=/nope')).type).toContain('text/html')
+  })
+})
+
 describe('what the anonymous user may reach', () => {
   const get = async (drupal: ReturnType<typeof createDrupal>, path: string) => {
     const response = await drupal.fetch(`https://drupal.test${path}`)

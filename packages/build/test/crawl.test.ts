@@ -138,6 +138,19 @@ describe('the crawl', () => {
     expect(existsSync(join(out, 'oracle/queries.json.gz'))).toBe(false)
     expect(read(out, 'recorded/routes.json.gz')).toHaveProperty(['GET /router/translate-path?path=%2Ftaxonomy%2Fterm%2F7'])
   })
+
+  it('records a type a visitor may not filter on a build without a token too, from the visitor\'s own read', async () => {
+    const { server, base } = await drupal((path) => {
+      if (path === '/jsonapi') return { body: { links: { 'canvas_page--canvas_page': { href: '/jsonapi/canvas_page/canvas_page' } } } }
+      if (path === `/jsonapi/canvas_page/canvas_page${LIMIT}`) return { body: { data: [{ type: 'canvas_page--canvas_page', id: 'p' }], links: {} } }
+      if (path.startsWith('/jsonapi/canvas_page/canvas_page?filter')) return { body: { data: [], links: {} } }
+      return undefined
+    })
+    servers.push(server)
+    const out = mkdtempSync(join(tmpdir(), 'crawl-'))
+    await crawl({ baseUrl: base, out, preset: 't', languages: { en: '' }, defaultLanguage: 'en', drupal: { core: '11', profile: 'x', modules: {} }, log: () => undefined })
+    expect((read(out, 'access/en.json.gz') as Record<string, { unfilterable?: true }>)['canvas_page--canvas_page']).toEqual({ unfilterable: true })
+  })
 })
 
 describe('a site that gets in the way', () => {
@@ -160,6 +173,19 @@ describe('a site that gets in the way', () => {
     }
     const { out } = await build(routes)
     expect((read(out, 'resources/en/view--view.json.gz') as Array<{ id: string }>).map((resource) => resource.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('keeps a type it read by id in the order Drupal lists it, by machine name', async () => {
+    const component = (id: string, name: string) => ({ type: 'component--component', id, attributes: { drupal_internal__id: name } })
+    const routes = (path: string) => {
+      if (path === '/jsonapi') return { body: { links: { 'component--component': { href: '/jsonapi/component/component' } } } }
+      if (path === `/jsonapi/component/component${LIMIT}`) return { body: { data: [component('2', 'block.a')], links: { next: { href: '/jsonapi/component/component?page%5Boffset%5D=1&page%5Blimit%5D=50' } } } }
+      if (path.includes('page%5Boffset%5D')) return { status: 500, body: { errors: [{ detail: 'array_slice(): Argument #2 ($offset) must be of type int, string given' }] } }
+      if (path.startsWith('/jsonapi/component/component?sort=id')) return { body: { data: path.includes('filter') ? [] : [component('1', 'sdc.z'), component('2', 'block.a'), component('3', 'js.m')], links: {} } }
+      return undefined
+    }
+    const { out } = await build(routes)
+    expect((read(out, 'resources/en/component--component.json.gz') as Array<{ attributes: { drupal_internal__id: string } }>).map((resource) => resource.attributes.drupal_internal__id)).toEqual(['block.a', 'js.m', 'sdc.z'])
   })
 
   it('says so when it reads none of a type and cannot go past the first page', async () => {
@@ -252,5 +278,45 @@ describe('the password grant probe', () => {
     const { asked, recorded } = await probe({ identities: { accounts: [], consumers: [] } }, { body: { access_token: 't' } })
     expect(asked).toEqual([])
     expect('passwordGrant' in recorded).toBe(false)
+  })
+})
+
+describe('a site with Canvas Headless', () => {
+  const canvasSite = (path: string, _admin?: boolean): Answer | undefined => {
+    if (path === '/jsonapi') return { body: { links: { 'canvas_page--canvas_page': { href: '/jsonapi/canvas_page/canvas_page' }, 'node--page': { href: '/jsonapi/node/page' } } } }
+    if (path === `/jsonapi/canvas_page/canvas_page${LIMIT}`) return { body: { data: [{ type: 'canvas_page--canvas_page', id: 'p', attributes: { drupal_internal__id: 3, path: { alias: '/canvas' } } }], links: {} } }
+    if (path === `/jsonapi/node/page${LIMIT}`) return { body: { data: [{ type: 'node--page', id: 'n', attributes: { drupal_internal__nid: 5 } }], links: {} } }
+    if (path.startsWith('/canvas/content-api?requestUri=')) return decodeURIComponent(path.split('=')[1]!) === '/decoupled-drupal-mock/not-found' ? { status: 404, body: { title: 'Not Found' } } : { body: { content: path } }
+    if (path.startsWith('/canvas/content-api/entity?') || path === '/canvas/api/v0/site-data') return { body: { path } }
+    return undefined
+  }
+
+  it('records the content API for every path the router was asked, a Canvas page\'s own path among them, and a path no site has', async () => {
+    const { out } = await build(canvasSite)
+    const routes = read(out, 'recorded/routes.json.gz') as Record<string, { status: number }>
+    for (const path of ['/', '/canvas', '/page/3', '/node/5']) {
+      expect(routes).toHaveProperty([`GET /canvas/content-api?requestUri=${encodeURIComponent(path)}`])
+      expect(routes).toHaveProperty([`GET /router/translate-path?path=${encodeURIComponent(path)}`])
+    }
+    expect(routes[`GET /canvas/content-api?requestUri=${encodeURIComponent('/decoupled-drupal-mock/not-found')}`]).toMatchObject({ status: 404 })
+    expect(routes).toHaveProperty(['GET /canvas/api/v0/site-data'])
+    expect(routes).toHaveProperty(['GET /canvas/content-api/entity?id=3&type=canvas_page'])
+    expect(routes).toHaveProperty(['GET /canvas/content-api/entity?id=5&type=node'])
+  })
+
+  it('records a type a visitor reads but may not filter, as JSON:API\'s query guard answers that filter with nothing', async () => {
+    const { out } = await build((path, admin) => {
+      if (path.startsWith('/jsonapi/canvas_page/canvas_page?filter')) return { body: { data: [], links: {} } }
+      if (path.startsWith('/jsonapi/node/page?filter')) return { body: { data: [{ type: 'node--page', id: 'n' }], links: {} } }
+      return canvasSite(path, admin)
+    })
+    const access = read(out, 'access/en.json.gz') as Record<string, { unfilterable?: true }>
+    expect(access['canvas_page--canvas_page']?.unfilterable).toBe(true)
+    expect(access['node--page']?.unfilterable).toBeUndefined()
+  })
+
+  it('records none of it on a site whose content API does not answer', async () => {
+    const { out } = await build((path, admin) => path.startsWith('/canvas/') ? undefined : canvasSite(path, admin))
+    expect(Object.keys(read(out, 'recorded/routes.json.gz') as object).filter((key) => key.includes('/canvas/'))).toEqual([])
   })
 })
