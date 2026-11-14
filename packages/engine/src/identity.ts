@@ -36,9 +36,11 @@ export interface Session {
   roles: string[]
   /** The scopes a token carried, which limit its roles. */
   scopes?: string[]
+  /** A Canvas Headless preview token's session, which reads drafts. */
+  preview?: true
 }
 
-export interface Token { access: string, refresh?: string, name: string, roles: string[], scopes?: string[], clientId: string, issued: number, expires: number }
+export interface Token { access: string, refresh?: string, name: string, roles: string[], scopes?: string[], clientId: string, issued: number, expires: number, preview?: true }
 
 export const ANONYMOUS: Session = { uid: 0, roles: ['anonymous'] }
 
@@ -96,16 +98,27 @@ export class Identity {
       if (!token) return { invalid: value.split('.').length === 3 ? 'The JWT string is invalid' : 'The JWT string must have two dots' }
       if (token.expires < this.now()) return { invalid: 'The access token has expired' }
       const user = this.userNamed(token.name)
-      return user ? this.sessionFor(user, token.scopes, token.clientId) : ANONYMOUS
+      if (!user) return ANONYMOUS
+      // A preview token holds its editor's own roles, with the preview's scope.
+      return token.preview ? { ...this.sessionFor(user), ...(token.scopes ? { scopes: token.scopes } : {}), preview: true } : this.sessionFor(user, token.scopes, token.clientId)
     }
+    return this.cookieSession(headers)
+  }
+
+  /** The session a request's cookie names, whatever token it also carries: a route that takes only cookies reads this. */
+  cookieSession(headers: Record<string, string>): Session {
     const cookie = Object.entries(headers).find(([name]) => name.toLowerCase() === 'cookie')?.[1]
     const session = cookie?.match(/(?:^|;\s*)SESS[0-9a-f]+=([^;]+)/)?.[1]
     const signedIn = session ? this.cookies.get(session) : undefined
-    if (signedIn) {
-      const user = this.userNamed(signedIn.name)
-      if (user) return this.sessionFor(user)
-    }
-    return ANONYMOUS
+    const user = signedIn && this.userNamed(signedIn.name)
+    return user ? this.sessionFor(user) : ANONYMOUS
+  }
+
+  /** A Canvas Headless preview token for a user, as its preview assertion grant issues one: the `canvas_headless` scope, for 900 seconds. */
+  issuePreview(name: string, seconds: number): Token {
+    const token: Token = { access: mint(), name, roles: this.sessionFor(this.userNamed(name)!).roles, scopes: ['canvas_headless'], clientId: 'canvas_headless', issued: this.now(), expires: this.now() + seconds * 1000, preview: true }
+    this.tokens.set(token.access, token)
+    return token
   }
 
   /** A token for a user, past the grant: a test's shortcut. */

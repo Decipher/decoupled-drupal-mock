@@ -12,6 +12,7 @@ import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './t
 import { clone } from './clone.js'
 import { withoutTrailingSlashes } from './slashes.js'
 import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND } from './format.js'
+import { CanvasPreview } from './canvas.js'
 
 export interface DrupalOptions {
   /** The origin the server answers for, written into every link. Default `https://drupal.invalid`. */
@@ -76,6 +77,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   const store = new Store(dump)
   const rolesByUuid = () => new Map((store.get(dump.manifest.defaultLanguage, 'user_role--user_role') || []).map((role) => [role.id, role]))
   const identity = new Identity(dump, identities, () => store.get(dump.manifest.defaultLanguage, 'user--user') || [], rolesByUuid, options.now)
+  const canvas = new CanvasPreview(dump, identity, options.now)
   const writes = new Writes(store, identity, dump.manifest.defaultLanguage)
   // The `jsonapi` object as the dump's Drupal writes it: the version it speaks.
   const JSONAPI = (dump.index[dump.manifest.defaultLanguage]?.jsonapi || JSONAPI_DEFAULT) as NonNullable<Document['jsonapi']>
@@ -256,9 +258,9 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
 
   // C. A recorded route answers unprefixed for the default language, as Drupal does.
   const defaultPrefix = languages[dump.manifest.defaultLanguage] ? `/${languages[dump.manifest.defaultLanguage]}` : ''
-  const recorded = (method: string, path: string, search: string): Recorded | undefined => {
+  const recorded = (method: string, path: string, search: string, marker = ''): Recorded | undefined => {
     // A request with a query string answers only from a recording of that query: the unqueried answer is not its answer.
-    const keyed = (prefix: string) => `${method} ${prefix}${path}${search ? `?${sortedSearch(search)}` : ''}`
+    const keyed = (prefix: string) => `${method} ${prefix}${path}${search ? `?${sortedSearch(search)}` : ''}${marker}`
     const keys = [keyed('')]
     if (defaultPrefix && !prefixes.some(([, prefix]) => path === `/${prefix}` || path.startsWith(`/${prefix}/`))) keys.push(keyed(defaultPrefix))
     for (const key of keys) if (dump.recorded[key]) return dump.recorded[key]
@@ -304,6 +306,9 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
 
     // Who asks. A token the mock did not issue is refused as Drupal refuses one.
     const resolved = identity.session(requestHeaders)
+    // Canvas Headless answers a token Drupal does not know with its own problem document, which the build recorded.
+    const unauthorized = 'invalid' in resolved && (path === '/canvas/content-api' || path === '/canvas/content-api/entity') ? dump.recorded['GET /canvas/content-api#unauthorized'] : undefined
+    if (unauthorized) return { status: unauthorized.status, headers: unauthorized.headers, body: relink(unauthorized.body) }
     if ('invalid' in resolved) return { status: 401, headers: { 'content-type': 'text/html; charset=UTF-8', 'www-authenticate': `Bearer realm="OAuth", error="access_denied", error_description="${resolved.invalid}"` }, body: '<!DOCTYPE html><html><body><h1>Unauthorized</h1></body></html>' }
     const session: Session = resolved
     // A signed-in user reads the whole dump, as the administrator's crawl read it.
@@ -316,7 +321,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     const form = () => new URLSearchParams(requestBody || '')
     if (path === '/oauth/token') {
       if (upper !== 'POST') return html(405, 'Method Not Allowed')
-      const { status, body } = identity.grant(form())
+      const { status, body } = canvas.grant(form()) ?? identity.grant(form())
       return { status, headers: { 'content-type': 'application/json; charset=UTF-8', 'cache-control': 'no-store, private' }, body }
     }
     if (path === '/oauth/userinfo') {
@@ -347,9 +352,18 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     if (path === '/session/token') return { status: 200, headers: { 'content-type': 'text/plain; charset=UTF-8' }, body: identity.csrf(requestHeaders) }
     void lang0
 
+    // Canvas Headless's draft preview: an assertion for an editor's cookie session, and the renewal that redirects.
+    if (canvas.available) {
+      const typed = (prefix: string) => Object.keys(dump.resources[dump.manifest.defaultLanguage] || {}).filter((type) => type.startsWith(prefix)).flatMap((type) => store.get(dump.manifest.defaultLanguage, type) || [])
+      const answer = canvas.route(upper, path, query, requestHeaders, baseUrl, relink, typed)
+      if (answer) return answer
+    }
+
     // A HEAD is answered as its GET is, as Drupal answers it; the transport leaves the body out.
     const lookup = upper === 'HEAD' ? 'GET' : upper
-    const hit = recorded(lookup, path, search) ?? menuItems(lookup, path, search)
+    // A preview token reads the content API's drafts, which the build recorded apart.
+    const previewed = session.preview && (path === '/canvas/content-api' || path === '/canvas/content-api/entity')
+    const hit = previewed ? recorded(lookup, path, search, '#preview') : recorded(lookup, path, search) ?? menuItems(lookup, path, search)
     if (hit) {
       const body = relink(hit.body)
       // A JSON:API answer names the request it answered: the path as Drupal wrote it, under its language prefix, with the request's query.
@@ -666,5 +680,5 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return new Response(request.method === 'HEAD' || status === 204 || status === 304 ? null : text, { status, statusText: STATUS_TEXT[status] ?? '', headers })
   }
 
-  return { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset(); identity.reset() } }
+  return { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset(); identity.reset(); canvas.reset() } }
 }

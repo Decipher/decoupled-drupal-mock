@@ -7,21 +7,21 @@ import { gunzipSync } from 'node:zlib'
 import { afterEach, describe, expect, it } from 'vitest'
 import { crawl, passwordGrantInstalled } from '../src/crawl'
 
-type Answer = { status?: number, body: unknown }
+type Answer = { status?: number, body: unknown, headers?: Record<string, string>, raw?: true }
 
 /**
  * A Drupal small enough to read: a map of `path?query` to its answer, by whether the request carries a token. The token
  * endpoint gives every request a token, unless `token` answers its form.
  */
-const drupal = (routes: (path: string, admin: boolean) => Answer | undefined, token?: (form: URLSearchParams) => Answer | undefined): Promise<{ server: Server, base: string }> => new Promise((resolve) => {
+const drupal = (routes: (path: string, admin: boolean, headers?: Record<string, string | string[] | undefined>) => Answer | undefined, token?: (form: URLSearchParams) => Answer | undefined): Promise<{ server: Server, base: string }> => new Promise((resolve) => {
   const server = createServer((request, response) => {
     let form = ''
     request.on('data', (chunk) => { form += chunk })
     request.on('end', () => {
       const admin = !!request.headers.authorization
-      const answer = request.url === '/oauth/token' ? (token?.(new URLSearchParams(form)) ?? { body: { access_token: 't' } }) : routes(request.url || '/', admin)
-      response.writeHead(answer?.status ?? (answer ? 200 : 404), { 'content-type': 'application/vnd.api+json' })
-      response.end(JSON.stringify(answer?.body ?? {}))
+      const answer = request.url === '/oauth/token' ? (token?.(new URLSearchParams(form)) ?? { body: { access_token: 't' } }) : routes(request.url || '/', admin, request.headers)
+      response.writeHead(answer?.status ?? (answer ? 200 : 404), { 'content-type': 'application/vnd.api+json', ...answer?.headers })
+      response.end(answer?.raw ? String(answer.body) : JSON.stringify(answer?.body ?? {}))
     })
   })
   server.listen(0, '127.0.0.1', () => resolve({ server, base: `http://127.0.0.1:${(server.address() as { port: number }).port}` }))
@@ -323,6 +323,36 @@ describe('a site with Canvas Headless', () => {
     const access = read(out, 'access/en.json.gz') as Record<string, { unfilterable?: true }>
     expect(access['canvas_page--canvas_page']?.unfilterable).toBe(true)
     expect(access['node--page']?.unfilterable).toBeUndefined()
+  })
+
+  it('signs the preview account in and records the drafts its token reads, the assertion\'s claims and a refused token', async () => {
+    const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
+    const claims = { iss: 'site', aud: '/oauth/token', sub: '2', use: 'activation', path: '/', renewUrl: 'https://drupal.test/canvas-headless/renew' }
+    const asked: string[] = []
+    const { out } = await build((path, admin, headers = {}) => {
+      if (path === '/user/login?_format=json') return { body: { csrf_token: 'c' }, headers: { 'set-cookie': 'SESSabc=1; path=/' } }
+      if (path === '/session/token') return { body: 'csrf', raw: true }
+      if (path.startsWith('/canvas-headless/assertion')) {
+        asked.push(`${String(headers.cookie)} ${String(headers['x-csrf-token'])}`)
+        return { body: { assertion: `${part({ typ: 'canvas-headless-preview-assertion+jwt', alg: 'RS256' })}.${part(claims)}.sig` } }
+      }
+      if (path.startsWith('/canvas-headless/renew')) return { status: 302, body: '', raw: true, headers: { location: 'http://127.0.0.1:3000/api/draft?assertion=a.b.c' } }
+      if (path.startsWith('/user/logout')) return { status: 204, body: '', raw: true }
+      if (path.startsWith('/canvas/content-api') && headers.authorization === 'Bearer decoupled.drupal.mock') return { status: 401, body: { title: 'Unauthorized' } }
+      if (path.startsWith('/canvas/content-api?requestUri=%2Fcanvas') && headers.authorization === 'Bearer t') return { body: { content: 'draft' } }
+      return canvasSite(path, admin)
+    }, { identities: { accounts: [{ name: 'editor', password: 'editor' }], consumers: [] }, canvasPreview: { account: 'editor' } })
+    expect(asked).toEqual(['SESSabc=1 csrf'])
+    const routes = read(out, 'recorded/routes.json.gz') as Record<string, { status: number, body: unknown }>
+    expect(routes['GET /canvas/content-api?requestUri=%2Fcanvas#preview']?.body).toEqual({ content: 'draft' })
+    expect(routes['GET /canvas/content-api?requestUri=%2Fcanvas']?.body).toEqual({ content: '/canvas/content-api?requestUri=%2Fcanvas' })
+    expect(routes).toHaveProperty(['GET /canvas/content-api/entity?id=3&type=canvas_page#preview'])
+    expect(routes['GET /canvas/content-api#unauthorized']?.status).toBe(401)
+    expect(routes['POST /canvas-headless/assertion#claims']?.body).toEqual({ header: { typ: 'canvas-headless-preview-assertion+jwt', alg: 'RS256' }, claims, draftUrl: 'http://127.0.0.1:3000/api/draft' })
+  })
+
+  it('stops when the preview account has no password to sign in with', async () => {
+    await expect(build(canvasSite, { identities: { accounts: [{ name: 'editor' }], consumers: [] }, canvasPreview: { account: 'editor' } })).rejects.toThrow('canvasPreview names editor, which has no password in identities.')
   })
 
   it('records none of it on a site whose content API does not answer', async () => {
