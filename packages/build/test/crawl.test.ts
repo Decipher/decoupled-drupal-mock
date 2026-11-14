@@ -221,6 +221,16 @@ describe('a site that gets in the way', () => {
     expect(manifest.oracle).toBeUndefined()
   })
 
+  it('leaves out Simple OAuth\'s tokens, whatever their bundle, as they hold each token\'s identifier', async () => {
+    const token = { type: 'oauth2_token--access_token', id: 't', attributes: { client_id: 'build', value: 'secret' } }
+    const { out } = await build((path) => {
+      if (path === '/jsonapi') return { body: { links: { 'oauth2_token--access_token': { href: '/jsonapi/oauth2_token/access_token' } } } }
+      if (path === `/jsonapi/oauth2_token/access_token${LIMIT}`) return { body: { data: [token], links: {} } }
+      return undefined
+    })
+    expect(existsSync(join(out, 'resources/en/oauth2_token--access_token.json.gz'))).toBe(false)
+  })
+
   it('leaves out a type it is told to', async () => {
     const { out } = await build(site({ admin: [], visitor: [] }), { skipTypes: ['user--user'] })
     expect(existsSync(join(out, 'resources/en/user--user.json.gz'))).toBe(false)

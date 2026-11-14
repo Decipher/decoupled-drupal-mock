@@ -53,6 +53,8 @@ const PLACEHOLDER = 'https://drupal.invalid'
 
 /** The resource types the crawl leaves out: they hold secrets or vary per install. */
 const SKIP = new Set(['consumer--consumer', 'oauth2_scope--oauth2_scope', 'oauth2_token_type--oauth2_token_type', 'action--action'])
+/** Whether the build leaves a type out: Simple OAuth's tokens, whatever their bundle, hold each token's identifier. */
+const skipped = (type: string): boolean => SKIP.has(type) || type.startsWith('oauth2_token--')
 
 /**
  * Whether a password grant's answer shows the grant installed. Only an answer that can come from the grant itself does:
@@ -280,7 +282,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       return resources
     }
     for (const [type, link] of Object.entries(links)) {
-      if (type === 'self' || !link || SKIP.has(type) || options.skipTypes?.includes(type)) continue
+      if (type === 'self' || !link || skipped(type) || options.skipTypes?.includes(type)) continue
       const collected = await collect(link.href, authorized())
       // A token Drupal refuses, most often one that expired mid-crawl, would leave out every type read after it.
       if (collected === 401 && token) throw new Error(`GET ${link.href} answered 401 with the build's token: the build would leave ${type} out.`)

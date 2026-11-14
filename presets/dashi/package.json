@@ -1,0 +1,48 @@
+{
+  "name": "decoupled-drupal-mock-dashi",
+  "version": "1.0.0-alpha.3",
+  "description": "Drupal CMS's Dashi site template, with Drupal Canvas and Canvas Headless, as decoupled-drupal-mock fixtures: Umami's recipes and articles in English and Spanish, built from a real Drupal CMS 2.2.9 install.",
+  "keywords": [
+    "drupal",
+    "decoupled",
+    "jsonapi",
+    "mock",
+    "testing",
+    "fixtures",
+    "drupal-cms",
+    "canvas",
+    "dashi",
+    "umami"
+  ],
+  "type": "module",
+  "bin": "bin.js",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin.js",
+    "index.js",
+    "index.d.ts",
+    "dump"
+  ],
+  "peerDependencies": {
+    "decoupled-drupal-mock": "^1.0.0-alpha.3"
+  },
+  "license": "GPL-2.0-or-later",
+  "engines": {
+    "node": ">=16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Decipher/decoupled-drupal-mock.git",
+    "directory": "presets/dashi"
+  },
+  "homepage": "https://github.com/Decipher/decoupled-drupal-mock#readme",
+  "bugs": {
+    "url": "https://github.com/Decipher/decoupled-drupal-mock/issues"
+  }
+}

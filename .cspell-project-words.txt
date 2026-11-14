@@ -103,3 +103,4 @@ linkit
 metatag
 pathauto
 unfilterable
+dashi

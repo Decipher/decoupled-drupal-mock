@@ -2,7 +2,7 @@
 # so its links, the preset's patch issues among them, are checked by hand: both answered 200 on 2026-11-02.
 # Each host is anchored at its end, so a lookalike such as www.drupal.org.example is still checked.
 exclude = ['^http://127\.0\.0\.1(?:[/?#:]|$)', '^http://localhost(?:[/?#:]|$)', '^https://drupal\.test(?:[/?#:]|$)', '^https://drupal\.invalid(?:[/?#:]|$)', '^https://www\.drupal\.org(?:[/?#:]|$)', '^https://devpod\.sh(?:[/?#:]|$)']
-exclude_path = ['node_modules', 'presets/umami/dump', 'presets/umami/oracle', 'presets/drupal-cms/dump', 'presets/drupal-cms/oracle', '.yarn']
+exclude_path = ['node_modules', 'presets/umami/dump', 'presets/umami/oracle', 'presets/dashi/dump', 'presets/dashi/oracle', '.yarn']
 max_retries = 2
 timeout = 20
 accept = [200, 206, 429]
