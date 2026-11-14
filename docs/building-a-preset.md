@@ -38,6 +38,7 @@ The build writes the dump to `out`, and its recordings beside it in `<out>.oracl
 | `drush`                     | `{ bin, cwd }`. Reads, through `drush php-eval`, the configuration entities JSON:API leaves out for every user, such as a block whose visibility denies every request                                                                                                      |
 | `excludeUsers`, `skipTypes` | Users to leave out of the dump, such as the build's own account. Types that the site lists in its index but answers with an error                                                                                                                                          |
 | `composerDir`, `patched`    | The site's Composer directory, so the manifest names what the site really runs from its lock file. With `patched`, its patches too                                                                                                                                         |
+| `canvasPreview`             | `{ account }`, an account of `identities` with a password. On a site with Canvas Headless, the build signs it in, redeems a preview assertion and records the drafts the content API answers its token, so the mock gives Canvas's draft preview                           |
 
 ## Packaging it
 
@@ -58,14 +59,15 @@ A preset in this repository is a package under `presets/`, with the dump in `dum
 
 Only JSON:API is required. Everything else widens what the build records:
 
-| On the site                                                            | What it adds                                                                                      |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| JSON:API                                                               | The index, resources, collections and access                                                      |
-| Decoupled Router                                                       | Router lookups                                                                                    |
-| JSON:API Menu Items, JSON:API Views, Decoupled Settings                | Their routes. If the site answers a route with an error, the build records that error or skips it |
-| Core's linkset endpoint, turned on at `/admin/config/services/linkset` | Menu linksets                                                                                     |
-| `jsonapi.settings:read_only` set to `false`                            | Writes, for `writesFile`                                                                          |
-| The Simple OAuth Password Grant module                                 | The password grant, for an identity with a password                                               |
+| On the site                                                            | What it adds                                                                                                                                     |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| JSON:API                                                               | The index, resources, collections and access                                                                                                     |
+| Decoupled Router                                                       | Router lookups                                                                                                                                   |
+| JSON:API Menu Items, JSON:API Views, Decoupled Settings                | Their routes. If the site answers a route with an error, the build records that error or skips it                                                |
+| Canvas Headless                                                        | Its content API for every path the router is asked about, its entity endpoint and site data. With `canvasPreview`, the drafts an editor previews |
+| Core's linkset endpoint, turned on at `/admin/config/services/linkset` | Menu linksets                                                                                                                                    |
+| `jsonapi.settings:read_only` set to `false`                            | Writes, for `writesFile`                                                                                                                         |
+| The Simple OAuth Password Grant module                                 | The password grant, for an identity with a password                                                                                              |
 
 To read as an administrator, `auth` needs a Simple OAuth 6 consumer with the client credentials grant and a secret, whose user has the administrator role. Its scope must grant the administrator role by role, as a token holds only the roles that the user and the scope both give. The site also needs an OAuth keypair in `simple_oauth.settings`.
 

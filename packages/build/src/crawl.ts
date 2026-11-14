@@ -34,6 +34,11 @@ export interface CrawlOptions {
   identities?: NonNullable<Dump['identities']>
   /** Write and sign-in scripts, run against the Drupal as their accounts and recorded for the engine's replay. */
   writes?: WriteScript[]
+  /**
+   * The account Canvas Headless previews as, one of `identities` with a password. The build signs it in, redeems a
+   * preview assertion for a token, and records what the content API answers that token: the drafts an editor sees.
+   */
+  canvasPreview?: { account: string }
   /** Where the oracle's recordings go: the evidence for the engine's tests, which a consumer has no use for. Beside the dump by default, as `<out>.oracle`. */
   oracleOut?: string
   /**
@@ -166,16 +171,48 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     const meta = body.meta && typeof body.meta.count === 'number' ? { ...body.meta, count: body.meta.count - (body.data.length - kept.length) } : body.meta
     return { ...entry, body: { ...body, data: kept, ...(body.included ? { included: body.included.filter((resource) => !excluded(resource)).map(unlinked) } : {}), ...(meta ? { meta } : {}) } }
   }
-  const record = async (path: string): Promise<Recorded> => {
+  /** Records a GET under its key, with a `#` marker for one asked with credentials a visitor's request does not carry. */
+  const record = async (path: string, headers: Record<string, string> = {}, marker = ''): Promise<Recorded> => {
     const [pathname, search = ''] = path.split('?') as [string, string?]
-    const key = `GET ${pathname}${search ? `?${sortedSearch(search)}` : ''}`
-    const entry = scrub(await get(path))
+    const key = `GET ${pathname}${search ? `?${sortedSearch(search)}` : ''}${marker}`
+    const entry = scrub(await get(path, headers))
     recorded[key] = entry
     return entry
   }
 
   /** Whether the site runs Canvas Headless, asked once: its content API answers the front page, where a site without it has no such route. */
   let canvas: boolean | undefined
+  /** The preview token the content API's drafts are read with, from `canvasPreview`'s account. */
+  let previewToken: string | undefined
+  /**
+   * Signs the preview account in with its password, mints a preview assertion for the front page and redeems it, as the
+   * Canvas editor and a frontend's server do. The assertion's decoded claims are recorded, so the engine mints its own
+   * with the same issuer, audience and renewal URL. Nothing signed is kept.
+   */
+  const previewSignIn = async (): Promise<string> => {
+    const { account } = options.canvasPreview!
+    const password = options.identities?.accounts.find((candidate) => candidate.name === account)?.password
+    if (password === undefined) throw new Error(`canvasPreview names ${account}, which has no password in identities.`)
+    const login = await fetch(`${base}/user/login?_format=json`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: account, pass: password }) })
+    const cookie = (login.headers.get('set-cookie') || '').split(';')[0]!
+    if (login.status !== 200 || !cookie) throw new Error(`${account} could not sign in to preview: /user/login answered ${login.status}.`)
+    const csrf = await (await fetch(`${base}/session/token`, { headers: { cookie } })).text()
+    const minted = await fetch(`${base}/canvas-headless/assertion?path=%2F`, { method: 'POST', headers: { cookie, 'x-csrf-token': csrf, accept: 'application/json' } })
+    if (minted.status !== 200) throw new Error(`/canvas-headless/assertion answered ${minted.status} to ${account}: does the account have "access canvas headless preview"?`)
+    const assertion = (await minted.json() as { assertion: string }).assertion
+    const [header, claims] = assertion.split('.').slice(0, 2).map((part) => JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as Record<string, unknown>)
+    // Where the standalone renewal sends the editor: the frontend's draft route, which the site's settings name.
+    const renewed = await fetch(`${base}/canvas-headless/renew?path=%2F`, { headers: { cookie }, redirect: 'manual' })
+    const draftUrl = (renewed.headers.get('location') || '').split('?')[0]
+    if (renewed.status !== 302 || !draftUrl) throw new Error(`/canvas-headless/renew answered ${renewed.status}: is a frontend set in canvas_headless.settings?`)
+    recorded['POST /canvas-headless/assertion#claims'] = { status: 200, headers: { 'content-type': 'application/json' }, body: { header, claims, draftUrl } }
+    const form = new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion, client_id: 'canvas_headless' })
+    const redeemed = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: form })
+    const answer = await redeemed.json() as { access_token?: string, error_description?: string }
+    if (!answer.access_token) throw new Error(`The preview assertion could not be redeemed: ${answer.error_description || redeemed.status}.`)
+    await fetch(`${base}/user/logout?_format=json&token=${encodeURIComponent(csrf)}`, { method: 'POST', headers: { cookie } })
+    return answer.access_token
+  }
   /**
    * Canvas Headless's routes, as a visitor reads them: the content API for each path, the entity endpoint for each Canvas
    * page and node, and the site data. A path Canvas does not know answers one problem document, recorded once by a path no
@@ -190,15 +227,24 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       await record('/canvas/api/v0/site-data')
       await record(`/canvas/content-api?requestUri=${encodeURIComponent(CANVAS_NOT_FOUND)}`)
       await record(`/canvas/content-api?requestUri=${encodeURIComponent(CANVAS_BAD_REQUEST)}`)
+      if (options.canvasPreview) {
+        log(`Canvas Headless: previews, as ${options.canvasPreview.account}`)
+        previewToken = await previewSignIn()
+        // A token Drupal does not know, answered as Canvas answers any request with one.
+        recorded['GET /canvas/content-api#unauthorized'] = await get('/canvas/content-api?requestUri=%2F', { authorization: 'Bearer decoupled.drupal.mock' })
+      }
     }
     if (!canvas) return
     log(`Canvas Headless: ${paths.length} paths`)
-    for (const path of paths) await record(`/canvas/content-api?requestUri=${encodeURIComponent(path)}`)
     const entities = [
       ...(resources['canvas_page--canvas_page'] || []).map((page) => ['canvas_page', (page.attributes as { drupal_internal__id?: number }).drupal_internal__id] as const),
       ...Object.entries(resources).filter(([type]) => type.startsWith('node--')).flatMap(([, list]) => list.map((node) => ['node', (node.attributes as { drupal_internal__nid?: number }).drupal_internal__nid] as const)),
     ]
-    for (const [type, id] of entities) await record(`/canvas/content-api/entity?type=${type}&id=${String(id)}`)
+    const requests = [...paths.map((path) => `/canvas/content-api?requestUri=${encodeURIComponent(path)}`), ...entities.map(([type, id]) => `/canvas/content-api/entity?type=${type}&id=${String(id)}`)]
+    for (const request of requests) {
+      await record(request)
+      if (previewToken) await record(request, { authorization: `Bearer ${previewToken}` }, '#preview')
+    }
   }
 
   // Every language's index before anything else, a prefixed language's before the default's. Drupal's dynamic page cache

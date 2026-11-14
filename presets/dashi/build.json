@@ -34,6 +34,9 @@
     "staged_config_update--staged_config_update",
     "staged_language_config_override--staged_language_config_override"
   ],
+  "canvasPreview": {
+    "account": "editor"
+  },
   "identities": {
     "accounts": [
       {
