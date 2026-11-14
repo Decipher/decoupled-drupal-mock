@@ -83,6 +83,10 @@ writes it again and fails when the two differ, so a change to the recordings mer
 - en: what a visitor may read changed for `asset_library--asset_library`, `brand_kit--brand_kit`, `canvas_page--canvas_page`, `crop--focal_point`, `crop_type--crop_type`, `dashboard--dashboard`, `date_format--date_format`, `easy_email--default` and 31 more
 - es: what a visitor may read changed for `asset_library--asset_library`, `brand_kit--brand_kit`, `canvas_page--canvas_page`, `crop--focal_point`, `crop_type--crop_type`, `dashboard--dashboard`, `date_format--date_format`, `easy_email--default` and 31 more
 
+## Filter paths
+
+No change.
+
 ## Oracle reads
 
 - 39 added: `GET /canvas/api/v0/site-data`, `GET /canvas/content-api?requestUri=%2F`, `GET /canvas/content-api?requestUri=%2Fabout-dashi`, `GET /canvas/content-api?requestUri=%2Fcanvas-external`, `GET /canvas/content-api?requestUri=%2Fes%2Fhome`, `GET /canvas/content-api?requestUri=%2Fhome`, `GET /canvas/content-api?requestUri=%2Fnope`, `GET /canvas/content-api?requestUri=%2Fpage%2F2` and 31 more

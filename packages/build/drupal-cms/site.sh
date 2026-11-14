@@ -50,9 +50,6 @@ composer require --no-interaction --no-progress --quiet --with-all-dependencies 
 drush() { php -d memory_limit=-1 vendor/bin/drush.php "$@"; }
 drush site:install "$site/recipes/$template" --yes --db-url="sqlite://localhost/$site/site.sqlite" \
   --account-name=admin --account-pass="$(openssl rand -hex 12)" --site-name="$name"
-# Enabled on its own before the recipe: installed by a recipe, Canvas Headless leaves out its OAuth scope, and no preview
-# token can be issued without it.
-drush pm:enable --yes canvas_headless
 drush recipe "$site/recipes/drupal-cms-recipe" --yes
 # SEO Checklist's permission callback throws inside Canvas Headless's preview permission check, so every request with a
 # preview token answers 500 while it is installed.

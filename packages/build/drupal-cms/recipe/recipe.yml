@@ -13,6 +13,11 @@ install:
   - druxt
   - decoupled_settings
 config:
+  # A recipe installs a module's configuration entities only when it imports them. Without its scope, Canvas Headless
+  # issues no preview token, and Simple OAuth's token types are its own.
+  import:
+    canvas_headless: '*'
+    simple_oauth: '*'
   actions:
     # Core ships JSON:API read-only, which answers every write with 405.
     jsonapi.settings:

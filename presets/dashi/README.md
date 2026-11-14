@@ -58,7 +58,6 @@ The password grant is not installed. In a test, `tokenFor('editor')` returns a t
 Released Drupal CMS packages need these changes to run Canvas Headless. `site.sh` and the recipe make them:
 
 - **Custom Elements is held at 3.4.1.** Canvas Headless 1.12.0 cannot be enabled with 3.5.0, which Composer picks.
-- **Canvas Headless is enabled before the recipe.** Installed by a recipe, it leaves out its `canvas_headless` OAuth scope, and no preview token can be issued without it.
 - **SEO Checklist and Checklist API are uninstalled.** With them installed, every request with a Canvas preview token answers 500.
 - **`staged_config_update` and `staged_language_config_override` are not recorded.** Canvas refuses any query of these configuration types, so Drupal answers them 500. `build.json` lists them in `skipTypes`, and the mock answers them as an empty collection.
 
