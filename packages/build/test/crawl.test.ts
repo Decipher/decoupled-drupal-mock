@@ -34,8 +34,8 @@ const LIMIT = '?page%5Blimit%5D=50'
 const user = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ type: 'user--user', id, attributes: { name, ...extra } })
 const read = (out: string, file: string): unknown => JSON.parse((file.endsWith('.gz') ? gunzipSync(readFileSync(join(out, file))) : readFileSync(join(out, file))).toString('utf8'))
 
-const build = async (routes: Parameters<typeof drupal>[0], options: Partial<Parameters<typeof crawl>[0]> = {}, out = mkdtempSync(join(tmpdir(), 'crawl-'))) => {
-  const { server, base } = await drupal(routes)
+const build = async (routes: Parameters<typeof drupal>[0], options: Partial<Parameters<typeof crawl>[0]> = {}, out = mkdtempSync(join(tmpdir(), 'crawl-')), token?: Parameters<typeof drupal>[1]) => {
+  const { server, base } = await drupal(routes, token)
   servers.push(server)
   const manifest = await crawl({ baseUrl: base, out, preset: 't', languages: { en: '' }, defaultLanguage: 'en', drupal: { core: '11', profile: 'x', modules: {} }, auth: { tokenUrl: `${base}/oauth/token`, clientId: 'c', clientSecret: 's' }, log: () => undefined, ...options })
   return { manifest, out, base }
@@ -382,6 +382,36 @@ describe('a site with Canvas Headless', () => {
     expect(routes).toHaveProperty(['GET /canvas/content-api/entity?id=3&type=canvas_page#preview'])
     expect(routes['GET /canvas/content-api#unauthorized']?.status).toBe(401)
     expect(routes['POST /canvas-headless/assertion#claims']?.body).toEqual({ header: { typ: 'canvas-headless-preview-assertion+jwt', alg: 'RS256' }, claims, draftUrl: 'http://127.0.0.1:3000/api/draft' })
+  })
+
+  it('signs in again when the preview token lapses mid-crawl, and stops when a fresh one is refused too', async () => {
+    const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
+    const preview = (refuse: (token: string) => boolean) => {
+      let issued = 0
+      const site = (path: string, admin?: boolean, headers: Record<string, string | string[] | undefined> = {}): Answer | undefined => {
+        if (path === '/user/login?_format=json') return { body: {}, headers: { 'set-cookie': 'SESSabc=1; path=/' } }
+        if (path === '/session/token') return { body: 'csrf', raw: true }
+        if (path.startsWith('/canvas-headless/assertion')) return { body: { assertion: `${part({ typ: 'p' })}.${part({ sub: '2' })}.sig` } }
+        if (path.startsWith('/canvas-headless/renew')) return { status: 302, body: '', raw: true, headers: { location: 'http://127.0.0.1:3000/api/draft' } }
+        if (path.startsWith('/user/logout')) return { status: 204, body: '', raw: true }
+        const token = String(headers.authorization || '').replace('Bearer ', '')
+        if (path.startsWith('/canvas/content-api') && (token === 'decoupled.drupal.mock' || (token.startsWith('p') && refuse(token)))) return { status: 401, body: { title: 'Unauthorized' } }
+        if (path.startsWith('/canvas/content-api?requestUri=%2Fcanvas') && token.startsWith('p')) return { body: { content: `draft by ${token}` } }
+        return canvasSite(path, admin)
+      }
+      // Each preview sign-in redeems an assertion for a new token. The build's own token is the default.
+      const token = (form: URLSearchParams) => form.get('grant_type')?.endsWith('jwt-bearer') ? { body: { access_token: `p${++issued}` } } : undefined
+      return { site, token }
+    }
+    const options = { identities: { accounts: [{ name: 'editor', password: 'editor' }], consumers: [] }, canvasPreview: { account: 'editor' } }
+    // The first preview token lapses before the crawl reaches /canvas.
+    const lapsing = preview((token) => token === 'p1')
+    const { out } = await build(lapsing.site, options, undefined, lapsing.token)
+    const routes = read(out, 'recorded/routes.json.gz') as Record<string, { status: number, body: unknown }>
+    expect(routes['GET /canvas/content-api?requestUri=%2Fcanvas#preview']?.body).toEqual({ content: 'draft by p2' })
+    expect(Object.entries(routes).filter(([key, entry]) => key.endsWith('#preview') && entry.status === 401)).toEqual([])
+    const refusing = preview(() => true)
+    await expect(build(refusing.site, options, undefined, refusing.token)).rejects.toThrow('refused a preview token issued a moment before')
   })
 
   it('stops when the preview account has no password to sign in with', async () => {

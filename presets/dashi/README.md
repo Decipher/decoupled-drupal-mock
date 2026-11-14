@@ -42,7 +42,7 @@ Dashi's About page, `/about-dashi`, has an edit that is auto-saved and not publi
 
 1. Sign `editor` in with a cookie, through `POST /user/login?_format=json`, and fetch `GET /session/token`.
 2. `POST /canvas-headless/assertion?path=/about-dashi`, or `?entity_type=canvas_page&entity=5`, with the cookie and `X-CSRF-Token`. It answers `{"assertion": "<jwt>"}`.
-3. Redeem it at `POST /oauth/token` with `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`, `client_id=canvas_headless` and the assertion, and optionally a PKCE `code_challenge`. It answers a preview token that lives 900 seconds.
+3. Redeem it at `POST /oauth/token` with `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`, `client_id=canvas_headless` and the assertion, and optionally a PKCE `code_challenge` with `code_challenge_method=S256`. It answers a preview token that lives 900 seconds.
 4. Read `/canvas/content-api?requestUri=/about-dashi` with `Authorization: Bearer <token>`.
 
 An assertion is single-use and lives 60 seconds. A renewal, minted with `renewal=1`, redeems only with the `code_verifier` of the challenge the last redemption registered. `GET /canvas-headless/renew?path=/about-dashi` redirects to `http://127.0.0.1:3000/api/draft?assertion=<jwt>`, the frontend the site names.

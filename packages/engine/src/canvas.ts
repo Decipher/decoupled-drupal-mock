@@ -6,7 +6,7 @@ import type { Dump, Resource } from './types.js'
 interface AssertionTemplate { header: Record<string, unknown>, claims: Record<string, unknown>, draftUrl: string }
 
 /** An assertion the mock minted, by its `jti`, until it is redeemed or expires. */
-interface Minted { name: string, use: 'activation' | 'renewal', expires: number, used: boolean }
+interface Minted { name: string, use: 'activation' | 'renewal', expires: number, used: boolean, signature: string }
 
 export interface CanvasAnswer { status: number, headers: Record<string, string>, body: unknown }
 
@@ -91,9 +91,10 @@ export class CanvasPreview {
     const jti = randomUUID()
     const name = String((session.user!.attributes as { name?: string }).name)
     const claims: Record<string, unknown> = { ...template.claims, iat: seconds, nbf: seconds, exp: seconds + ASSERTION_SECONDS, sub: String(session.uid), jti, use: renewal ? 'renewal' : 'activation', path, renewUrl: relink(template.claims.renewUrl) }
-    this.minted.set(jti, { name, use: renewal ? 'renewal' : 'activation', expires: (seconds + ASSERTION_SECONDS) * 1000, used: false })
     // RS256 over a 2048-bit key is 256 bytes of signature.
-    return `${base64url(JSON.stringify(template.header))}.${base64url(JSON.stringify(claims))}.${base64url(randomBytes(256))}`
+    const signature = base64url(randomBytes(256))
+    this.minted.set(jti, { name, use: renewal ? 'renewal' : 'activation', expires: (seconds + ASSERTION_SECONDS) * 1000, used: false, signature })
+    return `${base64url(JSON.stringify(template.header))}.${base64url(JSON.stringify(claims))}.${signature}`
   }
 
   /** `POST /oauth/token` with the jwt-bearer grant, as Canvas Headless's grant answers it. Any other grant is not this one's. */
@@ -115,9 +116,9 @@ export class CanvasPreview {
     }
     if (parts.length !== 3 || !header || !claims) return invalidGrant('The assertion is malformed.')
     if (header.typ !== this.template()!.header.typ) return invalidGrant('The assertion is not a preview assertion.')
-    // An assertion the mock did not mint is one whose signature Drupal's key would not verify.
+    // An assertion the mock did not mint, or minted with another signature, is one Drupal's key would not verify.
     const minted = this.minted.get(String(claims.jti))
-    if (!minted) return invalidGrant('Token signature mismatch')
+    if (!minted || minted.signature !== parts[2]) return invalidGrant('Token signature mismatch')
     if (this.now() > minted.expires + LEEWAY_SECONDS * 1000) return invalidGrant('The token is expired')
     if (claims.azp !== 'canvas_headless') return invalidGrant('The assertion was issued to a different client.')
     let proof: string | undefined
@@ -128,7 +129,9 @@ export class CanvasPreview {
       if ((this.challenges.get(proof) ?? 0) < this.now()) return invalidGrant('The code_verifier does not prove a running preview session.')
     }
     if (minted.used) return invalidGrant('The assertion has already been used.')
+    // Drupal spends the assertion before it looks for the user, and before it reads the challenge.
     minted.used = true
+    if (!this.identity.userNamed(minted.name)) return invalidGrant('The asserted user is unknown or inactive.')
     const challenge = form.get('code_challenge')
     if (challenge !== null) {
       if (form.get('code_challenge_method') !== 'S256') return invalidRequest('code_challenge_method', 'Only the S256 code challenge method is supported.')

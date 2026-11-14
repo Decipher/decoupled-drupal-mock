@@ -243,7 +243,12 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     const requests = [...paths.map((path) => `/canvas/content-api?requestUri=${encodeURIComponent(path)}`), ...entities.map(([type, id]) => `/canvas/content-api/entity?type=${type}&id=${String(id)}`)]
     for (const request of requests) {
       await record(request)
-      if (previewToken) await record(request, { authorization: `Bearer ${previewToken}` }, '#preview')
+      if (!previewToken) continue
+      // A preview token lives 900 seconds, and a crawl can outlast it. A refusal then is the lapsed token, not the draft.
+      if ((await record(request, { authorization: `Bearer ${previewToken}` }, '#preview')).status !== 401) continue
+      previewToken = await previewSignIn()
+      const again = await record(request, { authorization: `Bearer ${previewToken}` }, '#preview')
+      if (again.status === 401) throw new Error(`${request} refused a preview token issued a moment before, so it records no draft.`)
     }
   }
 

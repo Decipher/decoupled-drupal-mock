@@ -59,15 +59,15 @@ A preset in this repository is a package under `presets/`, with the dump in `dum
 
 Only JSON:API is required. Everything else widens what the build records:
 
-| On the site                                                            | What it adds                                                                                                                                     |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| JSON:API                                                               | The index, resources, collections and access                                                                                                     |
-| Decoupled Router                                                       | Router lookups                                                                                                                                   |
-| JSON:API Menu Items, JSON:API Views, Decoupled Settings                | Their routes. If the site answers a route with an error, the build records that error or skips it                                                |
-| Canvas Headless                                                        | Its content API for every path the router is asked about, its entity endpoint and site data. With `canvasPreview`, the drafts an editor previews |
-| Core's linkset endpoint, turned on at `/admin/config/services/linkset` | Menu linksets                                                                                                                                    |
-| `jsonapi.settings:read_only` set to `false`                            | Writes, for `writesFile`                                                                                                                         |
-| The Simple OAuth Password Grant module                                 | The password grant, for an identity with a password                                                                                              |
+| On the site                                                            | What it adds                                                                                                                                           |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| JSON:API                                                               | The index, resources, collections and access                                                                                                           |
+| Decoupled Router                                                       | Router lookups                                                                                                                                         |
+| JSON:API Menu Items, JSON:API Views, Decoupled Settings                | Their routes. If the site answers a route with an error, the build records that error or skips it                                                      |
+| Canvas Headless                                                        | The site data, and the content API for each path the router is asked about and each page and node. With `canvasPreview`, the drafts an editor previews |
+| Core's linkset endpoint, turned on at `/admin/config/services/linkset` | Menu linksets                                                                                                                                          |
+| `jsonapi.settings:read_only` set to `false`                            | Writes, for `writesFile`                                                                                                                               |
+| The Simple OAuth Password Grant module                                 | The password grant, for an identity with a password                                                                                                    |
 
 To read as an administrator, `auth` needs a Simple OAuth 6 consumer with the client credentials grant and a secret, whose user has the administrator role. Its scope must grant the administrator role by role, as a token holds only the roles that the user and the scope both give. The site also needs an OAuth keypair in `simple_oauth.settings`.
 

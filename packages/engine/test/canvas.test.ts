@@ -113,6 +113,9 @@ describe('Canvas Headless\'s draft preview', () => {
     const [header, claims] = assertion.split('.')
     const forged = `${header}.${Buffer.from(JSON.stringify({ ...decode(claims!), jti: 'forged' })).toString('base64url')}.sig`
     expect((await redeem(forged)).body).toMatchObject({ hint: 'Token signature mismatch' })
+    // The jti the mock minted, under a signature it did not.
+    expect((await redeem(`${header}.${claims}.sig`)).body).toMatchObject({ hint: 'Token signature mismatch' })
+    expect((await redeem(assertion)).status).toBe(200)
     expect((await redeem('not-a-jwt')).body).toMatchObject({ hint: 'The assertion is malformed.' })
     expect((await redeem(`${Buffer.from('{"typ":"JWT"}').toString('base64url')}.${claims}.sig`)).body).toMatchObject({ hint: 'The assertion is not a preview assertion.' })
     expect((await redeem((await mint('path=/', credentials)).body!.assertion as string, { code_challenge: challenge, code_challenge_method: 'plain' })).body).toMatchObject({ error: 'invalid_request' })
@@ -120,6 +123,15 @@ describe('Canvas Headless\'s draft preview', () => {
     tick(91_000)
     expect((await redeem(late)).body).toMatchObject({ hint: 'The token is expired' })
     expect((await redeem(late, { client_id: 'nope' })).status).toBe(401)
+  })
+
+  it('spends the assertion of a user deleted since it was minted, and refuses it as Drupal does', async () => {
+    const { drupal, signIn, mint, redeem } = setUp()
+    const assertion = (await mint('path=/', await signIn())).body!.assertion as string
+    const admin = { authorization: `Bearer ${drupal.tokenFor('admin').access}` }
+    expect((await drupal.fetch('https://drupal.test/jsonapi/user/user/u-1', { method: 'DELETE', headers: admin })).status).toBe(204)
+    expect((await redeem(assertion)).body).toMatchObject({ error: 'invalid_grant', hint: 'The asserted user is unknown or inactive.' })
+    expect((await redeem(assertion)).body).toMatchObject({ hint: 'The assertion has already been used.' })
   })
 
   it('redirects a standalone renewal to the frontend\'s draft route with a fresh assertion', async () => {
