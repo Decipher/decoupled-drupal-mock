@@ -104,3 +104,4 @@ metatag
 pathauto
 unfilterable
 dashi
+Drupical

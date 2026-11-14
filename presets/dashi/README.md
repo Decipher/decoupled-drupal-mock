@@ -2,7 +2,7 @@
 
 Drupal CMS's Dashi site template as fixtures for `decoupled-drupal-mock`, with Drupal Canvas and its headless content API. Dashi is a food magazine with Umami's recipes and articles in English and Spanish, with their images, categories, tags and authors, so a frontend has real content to theme and test against. It was recorded from a Drupal CMS 2.2.9 install of Dashi 1.0.1, on Drupal 11.4.12. Canvas Headless, Decoupled Router, JSON:API Menu Items, JSON:API Views and Decoupled Settings are on the site, all from released versions.
 
-The site also has the shared recipe and content in `packages/build/drupal-cms/` applied, so it differs from a plain Dashi install. The recipe enables Canvas Headless and the Druxt module, and grants visitors `access druxt resources` and `read decoupled settings`, so a visitor can read configuration such as displays. It also turns off JSON:API's read-only mode. The content adds one Canvas page, `/canvas-external`, built from components the frontend renders. Everything else is Dashi's own.
+The site also has the shared recipe and content in `packages/build/drupal-cms/` applied, so it differs from a plain Dashi install. The recipe enables Canvas Headless and the Druxt module, and grants visitors `access druxt resources` and `read decoupled settings`, so a visitor can read configuration such as displays. It also turns off JSON:API's read-only mode. The content adds one Canvas page, `/canvas-external`, built from components the frontend renders, and `content.php` here adds an unpublished draft of the About page. Everything else is Dashi's own.
 
 ```js
 import { createDrupal } from 'decoupled-drupal-mock';
@@ -36,6 +36,21 @@ Canvas Headless's content API answers for every path the build asked the router 
 
 A query on the content API that the build did not record, such as `requestUri=/home?page=1`, answers as an unknown path. Dashi's privacy policy page is unpublished, so the entity route answers it 403, as Drupal does.
 
+## Draft preview
+
+Dashi's About page, `/about-dashi`, has an edit that is auto-saved and not published: its heading reads "About Dashi, in draft". The heading sits three levels deep, in a group inside a grid inside a section. A visitor reads the published page, and a preview token reads the draft, with Canvas's comment markers around each component. The mock gives the preview as Canvas Headless does:
+
+1. Sign `editor` in with a cookie, through `POST /user/login?_format=json`, and fetch `GET /session/token`.
+2. `POST /canvas-headless/assertion?path=/about-dashi`, or `?entity_type=canvas_page&entity=5`, with the cookie and `X-CSRF-Token`. It answers `{"assertion": "<jwt>"}`.
+3. Redeem it at `POST /oauth/token` with `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`, `client_id=canvas_headless` and the assertion, and optionally a PKCE `code_challenge`. It answers a preview token that lives 900 seconds.
+4. Read `/canvas/content-api?requestUri=/about-dashi` with `Authorization: Bearer <token>`.
+
+An assertion is single-use and lives 60 seconds. A renewal, minted with `renewal=1`, redeems only with the `code_verifier` of the challenge the last redemption registered. `GET /canvas-headless/renew?path=/about-dashi` redirects to `http://127.0.0.1:3000/api/draft?assertion=<jwt>`, the frontend the site names.
+
+The cookie steps run on a server, such as a frontend's draft route. The mock's CORS answer allows any origin but no credentials, so a browser on another origin cannot send the cookie.
+
+The assertion's claims are a real one's, with the issuer, audience and renewal URL the build recorded. Its signature is random bytes of an RS256 signature's length. Canvas's SDK reads the claims without checking the signature, as a frontend does. A client that checks it cannot use the mock's.
+
 ## Accounts and OAuth clients
 
 The build added these to the site, and the mock signs them in. Each password, and each client's secret, is the same as its name. Dashi's eight recipe and article authors are on the site too, without passwords.
@@ -43,7 +58,7 @@ The build added these to the site, and the mock signs them in. Each password, an
 | Account  | Role                                                                                                                  |
 | -------- | --------------------------------------------------------------------------------------------------------------------- |
 | `admin`  | Administrator, from the install. It has no password here and no OAuth client, so only `tokenFor('admin')` signs it in |
-| `editor` | Content editor                                                                                                        |
+| `editor` | Content editor, who may preview drafts                                                                                |
 | `reader` | None beyond authenticated                                                                                             |
 
 | OAuth client                   | Grants                            | Acts as  |

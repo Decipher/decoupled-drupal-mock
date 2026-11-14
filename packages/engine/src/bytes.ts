@@ -121,3 +121,9 @@ export const toBase64 = (input: string | Uint8Array): string => {
 
 /** URL-safe, unpadded base64, as JWTs and PKCE use. */
 export const base64url = (input: string | Uint8Array): string => toBase64(input).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
+/** The UTF-8 text of URL-safe base64, as a JWT's header and claims are written. Throws on what is not base64. */
+export const fromBase64url = (input: string): string => {
+  const binary = atob(input.replace(/-/g, '+').replace(/_/g, '/'))
+  return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)))
+}
