@@ -5966,13 +5966,13 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"decoupled-drupal-mock-drupal-cms@workspace:presets/drupal-cms":
+"decoupled-drupal-mock-dashi@workspace:presets/dashi":
   version: 0.0.0-use.local
-  resolution: "decoupled-drupal-mock-drupal-cms@workspace:presets/drupal-cms"
+  resolution: "decoupled-drupal-mock-dashi@workspace:presets/dashi"
   peerDependencies:
     decoupled-drupal-mock: ^1.0.0-alpha.3
   bin:
-    decoupled-drupal-mock-drupal-cms: bin.js
+    decoupled-drupal-mock-dashi: bin.js
   languageName: unknown
   linkType: soft
 
