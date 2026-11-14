@@ -221,6 +221,16 @@ describe('a site that gets in the way', () => {
     expect(manifest.oracle).toBeUndefined()
   })
 
+  it('leaves out Simple OAuth\'s tokens, whatever their bundle, as they hold each token\'s identifier', async () => {
+    const token = { type: 'oauth2_token--access_token', id: 't', attributes: { client_id: 'build', value: 'secret' } }
+    const { out } = await build((path) => {
+      if (path === '/jsonapi') return { body: { links: { 'oauth2_token--access_token': { href: '/jsonapi/oauth2_token/access_token' } } } }
+      if (path === `/jsonapi/oauth2_token/access_token${LIMIT}`) return { body: { data: [token], links: {} } }
+      return undefined
+    })
+    expect(existsSync(join(out, 'resources/en/oauth2_token--access_token.json.gz'))).toBe(false)
+  })
+
   it('leaves out a type it is told to', async () => {
     const { out } = await build(site({ admin: [], visitor: [] }), { skipTypes: ['user--user'] })
     expect(existsSync(join(out, 'resources/en/user--user.json.gz'))).toBe(false)
@@ -318,5 +328,31 @@ describe('a site with Canvas Headless', () => {
   it('records none of it on a site whose content API does not answer', async () => {
     const { out } = await build((path, admin) => path.startsWith('/canvas/') ? undefined : canvasSite(path, admin))
     expect(Object.keys(read(out, 'recorded/routes.json.gz') as object).filter((key) => key.includes('/canvas/'))).toEqual([])
+  })
+})
+
+describe('a language with a prefix', () => {
+  const node = (title: string) => ({ type: 'node--a', id: 'n', attributes: { title } })
+  /** Drupal's dynamic page cache, as Dashi on Drupal CMS 2.2.9 has it: after a visitor's `/jsonapi`, `/es/jsonapi` answers with its links. */
+  const cached = (stale = false) => {
+    let english = stale
+    return (path: string): Answer | undefined => {
+      if (path === '/jsonapi') english = true
+      for (const lang of ['', '/es']) {
+        if (path === `${lang}/jsonapi`) return { body: { links: { 'node--a': { href: `${english ? '' : lang}/jsonapi/node/a` } } } }
+        if (path === `${lang}/jsonapi/node/a${LIMIT}`) return { body: { data: [node(lang ? 'Hola' : 'Hello')], links: {} } }
+      }
+      return undefined
+    }
+  }
+
+  it('reads its index before the default language\'s, so the cache cannot answer it with another language\'s links', async () => {
+    const { out } = await build(cached(), { languages: { en: '', es: 'es' } })
+    expect((read(out, 'resources/es/node--a.json.gz') as Array<{ attributes: { title: string } }>)[0]!.attributes.title).toBe('Hola')
+    expect((read(out, 'index/es.json') as { links: Record<string, { href: string }> }).links['node--a']!.href).toContain('/es/jsonapi/node/a')
+  })
+
+  it('fails the build when the index links outside its own language, rather than record one language as another', async () => {
+    await expect(build(cached(true), { languages: { en: '', es: 'es' } })).rejects.toThrow(/\/es\/jsonapi links node--a to \/jsonapi\/node\/a/)
   })
 })

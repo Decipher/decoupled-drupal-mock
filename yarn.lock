@@ -5966,6 +5966,16 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"decoupled-drupal-mock-dashi@workspace:presets/dashi":
+  version: 0.0.0-use.local
+  resolution: "decoupled-drupal-mock-dashi@workspace:presets/dashi"
+  peerDependencies:
+    decoupled-drupal-mock: ^1.0.0-alpha.3
+  bin:
+    decoupled-drupal-mock-dashi: bin.js
+  languageName: unknown
+  linkType: soft
+
 "decoupled-drupal-mock-umami@workspace:^, decoupled-drupal-mock-umami@workspace:presets/umami":
   version: 0.0.0-use.local
   resolution: "decoupled-drupal-mock-umami@workspace:presets/umami"
