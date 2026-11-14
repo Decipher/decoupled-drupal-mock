@@ -170,6 +170,19 @@ describe('a type no module lets a visitor filter', () => {
     expect((await list(guarded, '/jsonapi/node/page')).length).toBeGreaterThan(0)
     expect((await list(drupal, '/jsonapi/node/page?filter[title]=About%20Umami')).length).toBe(1)
   })
+
+  it('matches nothing through a relationship into such a type, and leaves the relationship\'s meta and an OR group alone', async () => {
+    const en = dump.access?.en
+    const users = createDrupal({ ...dump, access: { ...dump.access, en: { ...en, 'user--user': { ...en?.['user--user'], unfilterable: true }, 'file--file': { ...en?.['file--file'], unfilterable: true } } } }, { baseUrl: 'https://drupal.test' })
+    expect(await list(users, '/jsonapi/node/page?filter[uid.id]=u-1')).toEqual([])
+    expect((await list(drupal, '/jsonapi/node/page?filter[uid.id]=u-1')).length).toBeGreaterThan(0)
+    expect(await list(users, '/jsonapi/media/image?filter[field_media_image.id]=f-1')).toEqual([])
+    expect((await list(users, '/jsonapi/media/image?filter[field_media_image.meta.alt]=A%20quiche')).length).toBe(1)
+    const either = 'filter[g][group][conjunction]=OR&filter[a][condition][path]=uid.id&filter[a][condition][value]=u-1&filter[a][condition][memberOf]=g&filter[b][condition][path]=title&filter[b][condition][value]=About%20Umami&filter[b][condition][memberOf]=g'
+    expect((await list(users, `/jsonapi/node/page?${either}`)).map((page) => page.attributes!.title)).toEqual(['About Umami'])
+    const admin = { authorization: `Bearer ${users.tokenFor('admin').access}` }
+    expect((await list(users, '/jsonapi/node/page?filter[uid.id]=u-1', admin)).length).toBeGreaterThan(0)
+  })
 })
 
 describe('Canvas Headless\'s content API', () => {

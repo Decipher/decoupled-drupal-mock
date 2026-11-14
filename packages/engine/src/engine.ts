@@ -106,6 +106,28 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return undefined
   }
 
+  /**
+   * Whether a filter path crosses a relationship into a type no module lets a visitor filter. JSON:API's query guard
+   * puts that type's access condition on the join, so the condition reads nothing there. A relationship's own `meta`
+   * stays on the resource filtered.
+   */
+  const crossesUnfilterable = (langcode: string, type: string, path: string[]): boolean => {
+    let types = new Set([type])
+    for (const [index, field] of path.entries()) {
+      const next = new Set<string>()
+      for (const current of types) {
+        for (const resource of dump.resources[langcode]?.[current] || []) {
+          const data = resource.relationships?.[field]?.data
+          for (const identifier of Array.isArray(data) ? data : data ? [data] : []) next.add(identifier.type)
+        }
+      }
+      if (!next.size || path[index + 1] === 'meta') return false
+      if ([...next].some((target) => accessOf(langcode, target)?.unfilterable)) return true
+      types = next
+    }
+    return false
+  }
+
   const visible = (langcode: string, resource: Resource): boolean => {
     const access = accessOf(langcode, resource.type)
     return !access?.visible || access.visible.includes(resource.id)
@@ -463,7 +485,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (refused) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', `The current user is not authorized to filter by the \`${refused.field}\` field, given in the path \`${refused.path}\`.`, self) }
       if (head && fieldNames.size > 2 && !fieldNames.has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, self) }
     }
-    const reader = read(langcode)
+    const readAny = read(langcode)
+    const reader: typeof readAny = all ? readAny : (resource, path) => crossesUnfilterable(langcode, resource.type, path) ? [] : readAny(resource, path)
     // JSON:API's query guard answers a visitor's filter on a type no module lets a visitor filter with an empty list.
     const guarded = !all && Object.keys(filter.conditions).length > 0 && !!accessOf(langcode, type)?.unfilterable
     let matched = guarded ? [] : collection.filter((resource) => passes(resource, filter, reader))
