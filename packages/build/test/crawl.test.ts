@@ -320,3 +320,29 @@ describe('a site with Canvas Headless', () => {
     expect(Object.keys(read(out, 'recorded/routes.json.gz') as object).filter((key) => key.includes('/canvas/'))).toEqual([])
   })
 })
+
+describe('a language with a prefix', () => {
+  const node = (title: string) => ({ type: 'node--a', id: 'n', attributes: { title } })
+  /** Drupal's dynamic page cache, as Dashi on Drupal CMS 2.2.9 has it: after a visitor's `/jsonapi`, `/es/jsonapi` answers with its links. */
+  const cached = (stale = false) => {
+    let english = stale
+    return (path: string): Answer | undefined => {
+      if (path === '/jsonapi') english = true
+      for (const lang of ['', '/es']) {
+        if (path === `${lang}/jsonapi`) return { body: { links: { 'node--a': { href: `${english ? '' : lang}/jsonapi/node/a` } } } }
+        if (path === `${lang}/jsonapi/node/a${LIMIT}`) return { body: { data: [node(lang ? 'Hola' : 'Hello')], links: {} } }
+      }
+      return undefined
+    }
+  }
+
+  it('reads its index before the default language\'s, so the cache cannot answer it with another language\'s links', async () => {
+    const { out } = await build(cached(), { languages: { en: '', es: 'es' } })
+    expect((read(out, 'resources/es/node--a.json.gz') as Array<{ attributes: { title: string } }>)[0]!.attributes.title).toBe('Hola')
+    expect((read(out, 'index/es.json') as { links: Record<string, { href: string }> }).links['node--a']!.href).toContain('/es/jsonapi/node/a')
+  })
+
+  it('fails the build when the index links outside its own language, rather than record one language as another', async () => {
+    await expect(build(cached(true), { languages: { en: '', es: 'es' } })).rejects.toThrow(/\/es\/jsonapi links node--a to \/jsonapi\/node\/a/)
+  })
+})

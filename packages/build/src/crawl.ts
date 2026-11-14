@@ -199,16 +199,32 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     for (const [type, id] of entities) await record(`/canvas/content-api/entity?type=${type}&id=${String(id)}`)
   }
 
+  // Every language's index before anything else, a prefixed language's before the default's. Drupal's dynamic page cache
+  // keeps a visitor's index without the language it was asked in, so after a visitor's `/jsonapi`, `/es/jsonapi`
+  // answers with the English links.
+  const indexes: Record<string, Awaited<ReturnType<typeof get>>> = {}
+  for (const [langcode, prefix] of Object.entries(options.languages).sort(([, a], [, b]) => Number(!a) - Number(!b))) {
+    indexes[langcode] = await get(`${prefix ? `/${prefix}` : ''}/jsonapi`)
+  }
+
   const all: Record<string, Record<string, Resource[]>> = {}
   for (const [langcode, prefix] of Object.entries(options.languages)) {
     const lang = prefix ? `/${prefix}` : ''
     log(`${langcode}: the index`)
-    const index = await get(`${lang}/jsonapi`)
+    const index = indexes[langcode]!
     if (index.status !== 200) throw new Error(`${lang}/jsonapi answered ${index.status}.`)
     // An installer or a login page also answers 200, and an empty dump would look like a build.
     if (!(index.body as Document | undefined)?.links) throw new Error(`${lang}/jsonapi is not a JSON:API index: is Drupal installed, with JSON:API on?`)
-    write(`index/${langcode}.json`, index.body)
     const links = ((index.body as Document).links || {}) as Record<string, { href: string } | null>
+    // Following such a link would record one language as another.
+    if (lang) {
+      for (const [type, link] of Object.entries(links)) {
+        if (type === 'self' || !link?.href) continue
+        const path = pathOf(link.href)
+        if (!path.startsWith(`${lang}/`)) throw new Error(`${lang}/jsonapi links ${type} to ${path}, outside ${langcode}. Rebuild Drupal's caches and build again.`)
+      }
+    }
+    write(`index/${langcode}.json`, index.body)
     all[langcode] = {}
     const access: Record<string, { visible?: string[], hidden?: string[], forbidden?: true, phantom?: string[], unfilterable?: true }> = {}
     /** What Drupal reported as omitted on the administrator's crawl: resources no user reads. */
