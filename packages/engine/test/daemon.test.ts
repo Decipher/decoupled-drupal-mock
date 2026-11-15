@@ -65,7 +65,7 @@ describe('the background server', () => {
     expect(await running(pidFile)).toBeUndefined()
     expect(existsSync(pidFile)).toBe(false)
     // This process is alive, but it started at another time than the server did, so the pid is no longer the mock's.
-    const reused = { pid: process.pid, port, host: '127.0.0.1', log: '', identity: `Thu Jan  1 00:00:00 1970 ${identityOf(process.pid)!.slice(25)}` }
+    const reused = { pid: process.pid, port, host: '127.0.0.1', log: '', identity: 'Thu Jan  1 00:00:00 1970 node' }
     for (const record of [reused, { ...reused, url: `http://127.0.0.1:${port}` }]) {
       writeFileSync(pidFile, JSON.stringify(record))
       expect(await running(pidFile)).toBeUndefined()
@@ -187,6 +187,54 @@ describe('the background server when things go wrong', () => {
     expect(child.exitCode).toBeNull()
     expect(child.signalCode).toBeNull()
   })
+
+  it('sends no SIGKILL, and keeps the record, when ps stops answering while a server ignores SIGTERM', async () => {
+    const { port, pidFile } = await setUp()
+    const child = spawn(process.execPath, ['-e', 'process.on("SIGTERM", () => {}); console.log("up"); setInterval(() => {}, 1000)'], { stdio: ['ignore', 'pipe', 'ignore'] })
+    onTestFinished(() => {
+      rmSync(pidFile, { force: true })
+      child.kill('SIGKILL')
+    })
+    await new Promise((done) => child.stdout.once('data', done))
+    writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port, host: '127.0.0.1', log: '', identity: identityOf(child.pid!) }))
+    // stop checks the pid and sends SIGTERM before its first wait, so ps goes away only after that.
+    const stopping = stop(pidFile)
+    const saved = process.env.PATH
+    process.env.PATH = mkdtempSync(join(tmpdir(), 'ddm-no-ps-'))
+    try {
+      await expect(stopping).rejects.toThrow(`ps cannot say whether pid ${child.pid} is still the mock, so it was sent SIGTERM and not SIGKILL.`)
+    } finally {
+      process.env.PATH = saved
+    }
+    expect(child.signalCode).toBeNull()
+    expect(existsSync(pidFile)).toBe(true)
+  }, 15000)
+
+  it('ends the server it started, and gives up the record, when a stop signals start before it returns', async () => {
+    const daemon = join(root, 'packages', 'engine', 'dist', 'daemon.js')
+    for (const wait of ['claim', 'server']) {
+      const { port, pidFile } = await setUp()
+      const marker = join(pidFile, '..', 'server.pid')
+      // A server that records its pid and never listens, so start is still waiting when stop comes.
+      const server = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid)); setInterval(() => {}, 1000)`
+      const script = `const { start } = await import(${JSON.stringify(daemon)}); await start({ entry: ['-e', ${JSON.stringify(server)}], args: [], port: ${port}, host: '127.0.0.1', pidFile: ${JSON.stringify(pidFile)}, readyTimeout: 60 })`
+      const launcher = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: 'ignore' })
+      const ended = new Promise((done) => launcher.on('exit', (_code, signal) => done(signal)))
+      // Once the claim is there, or once the server has written its pid.
+      const ready = wait === 'claim' ? pidFile : marker
+      while (!existsSync(ready)) await new Promise((done) => setTimeout(done, 5))
+      const stopped = await stop(pidFile)
+      // stop finds the claim, which names start, or the server's own record if start had already written it.
+      expect(stopped).toBeDefined()
+      const signalled = stopped!.pid === launcher.pid
+      expect(await ended).toBe(signalled ? 'SIGTERM' : null)
+      expect(existsSync(pidFile)).toBe(false)
+      // Whichever was signalled, no server is left running.
+      const servers = [...(signalled ? [] : [stopped!.pid]), ...(existsSync(marker) ? [Number(readFileSync(marker, 'utf8'))] : [])]
+      await new Promise((done) => setTimeout(done, 200))
+      for (const pid of servers) expect(() => process.kill(pid, 0)).toThrow()
+    }
+  }, 30000)
 
   it('refuses a pid file or a log that is a link, and leaves what it points to alone', async () => {
     const { port, ...options } = await setUp()

@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'node:child_process'
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { closeSync, constants, fstatSync, ftruncateSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
@@ -68,18 +68,34 @@ const alive = (pid: number): boolean => {
   }
 }
 
+/** When a process started in clock ticks since boot, where Linux says, which is finer than the second `ps` gives. */
+const ticksOf = (pid: number): string | undefined => {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    // The fields after the command's closing bracket start at the third, and the start time is the twenty-second.
+    return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * When a process started and its command line, as `ps` gives them, or undefined when it has gone or `ps` cannot say.
+ * On Linux the start time in clock ticks comes first.
  *
  * @param pid - The process.
  */
 export const identityOf = (pid: number): string | undefined => {
+  let said: string
   try {
     const env = { ...process.env, LC_ALL: 'C' }
-    return execFileSync('ps', ['-ww', '-o', 'lstart=', '-o', 'args=', '-p', String(pid)], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'ignore'] }).trim() || undefined
+    said = execFileSync('ps', ['-ww', '-o', 'lstart=', '-o', 'args=', '-p', String(pid)], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'ignore'] }).trim()
   } catch {
     return undefined
   }
+  if (!said) return undefined
+  const ticks = ticksOf(pid)
+  return ticks ? `${ticks} ${said}` : said
 }
 
 /**
@@ -271,61 +287,81 @@ export const start = async (options: StartOptions): Promise<{ line: string, inst
   // it, the record names this process, which is the one to stop.
   let text = JSON.stringify({ pid: process.pid, port, host, log, identity: own })
   if (!claim(pidFile, text)) throw new Error(`A mock is already starting on port ${port}: stop it first.`)
-  let fd: number
-  try {
-    fd = openLog(log)
-  } catch (error) {
-    forget(pidFile, text)
-    throw error
-  }
-  const child = spawn(process.execPath, [...entry, ...args], { detached: true, stdio: ['ignore', fd, fd] })
-  closeSync(fd)
+  let child: ChildProcess | undefined
   let exited: number | null | undefined
-  child.on('error', () => {
-    exited ??= 1
-  })
-  child.on('exit', (code, name) => {
-    exited = code ?? (name ? 1 : 0)
-  })
-  if (child.pid === undefined) {
+  const end = (): void => {
+    if (child && exited === undefined) child.kill('SIGKILL')
     forget(pidFile, text)
-    throw new Error(`The mock did not start: ${process.execPath} could not be run.`)
   }
-  child.unref()
-  const identity = identityOf(child.pid)
+  // A stop that read the claim signals this process. Until start returns, this process ends the server it started
+  // and gives up the record before it ends as the signal asks, so no server is left running without a record.
+  const signals = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const
+  const handOff = (name: NodeJS.Signals): void => {
+    end()
+    release()
+    process.kill(process.pid, name)
+  }
+  const release = (): void => {
+    for (const name of signals) process.off(name, handOff)
+  }
+  for (const name of signals) process.on(name, handOff)
   const fail = (reason: string): never => {
-    if (exited === undefined) child.kill('SIGKILL')
-    forget(pidFile, text)
+    end()
     throw new Error(`${reason}\n${readFileSync(log, 'utf8').trim()}`)
   }
-  if (identity === undefined) fail('ps cannot say when the mock started, so it was stopped rather than left unrecorded.')
-  const instance: Instance = { pid: child.pid, port, host, log, identity: identity! }
-  // Written before the server answers, so a start that is itself stopped leaves something for stop to find.
   try {
-    replace(pidFile, JSON.stringify(instance))
-    text = JSON.stringify(instance)
-  } catch (error) {
-    fail((error as Error).message)
-  }
-  const deadline = Date.now() + readyTimeout * 1000
-  for (;;) {
-    const output = readFileSync(log, 'utf8')
-    const line = output.split('\n').find((said) => said.includes(', listening on '))
-    if (line) {
-      instance.url = line.slice(line.lastIndexOf(' ') + 1)
-      instance.preset = line.slice(0, line.indexOf(' from Drupal '))
-      // Listening is not yet answering, and the issue a caller has is with the second.
-      while (await answers(`${instance.url}/jsonapi`) === undefined) {
-        if (exited !== undefined) fail(`The mock exited with status ${exited}.`)
-        if (Date.now() > deadline) fail(`The mock did not answer within ${readyTimeout} seconds.`)
-        await sleep(100)
-      }
-      replace(pidFile, JSON.stringify(instance))
-      return { line: line.trim(), instance }
+    let fd: number
+    try {
+      fd = openLog(log)
+    } catch (error) {
+      forget(pidFile, text)
+      throw error
     }
-    if (exited !== undefined) fail(`The mock exited with status ${exited} before it listened.`)
-    if (Date.now() > deadline) fail(`The mock did not listen within ${readyTimeout} seconds.`)
-    await sleep(100)
+    child = spawn(process.execPath, [...entry, ...args], { detached: true, stdio: ['ignore', fd, fd] })
+    closeSync(fd)
+    child.on('error', () => {
+      exited ??= 1
+    })
+    child.on('exit', (code, name) => {
+      exited = code ?? (name ? 1 : 0)
+    })
+    if (child.pid === undefined) {
+      forget(pidFile, text)
+      throw new Error(`The mock did not start: ${process.execPath} could not be run.`)
+    }
+    child.unref()
+    const identity = identityOf(child.pid)
+    if (identity === undefined) fail('ps cannot say when the mock started, so it was stopped rather than left unrecorded.')
+    const instance: Instance = { pid: child.pid, port, host, log, identity: identity! }
+    // Written before the server answers, so a start that is itself stopped leaves something for stop to find.
+    try {
+      replace(pidFile, JSON.stringify(instance))
+      text = JSON.stringify(instance)
+    } catch (error) {
+      fail((error as Error).message)
+    }
+    const deadline = Date.now() + readyTimeout * 1000
+    for (;;) {
+      const output = readFileSync(log, 'utf8')
+      const line = output.split('\n').find((said) => said.includes(', listening on '))
+      if (line) {
+        instance.url = line.slice(line.lastIndexOf(' ') + 1)
+        instance.preset = line.slice(0, line.indexOf(' from Drupal '))
+        // Listening is not yet answering, and the issue a caller has is with the second.
+        while (await answers(`${instance.url}/jsonapi`) === undefined) {
+          if (exited !== undefined) fail(`The mock exited with status ${exited}.`)
+          if (Date.now() > deadline) fail(`The mock did not answer within ${readyTimeout} seconds.`)
+          await sleep(100)
+        }
+        replace(pidFile, JSON.stringify(instance))
+        return { line: line.trim(), instance }
+      }
+      if (exited !== undefined) fail(`The mock exited with status ${exited} before it listened.`)
+      if (Date.now() > deadline) fail(`The mock did not listen within ${readyTimeout} seconds.`)
+      await sleep(100)
+    }
+  } finally {
+    release()
   }
 }
 
@@ -354,7 +390,11 @@ export const stop = async (pidFile: string): Promise<Instance | undefined> => {
   for (let waited = 0; there && waited < 10000; waited += 50) {
     await sleep(50)
     there = whose(instance) !== 'gone'
-    if (there && waited === 5000) there = whose(instance) === 'ours' && signal('SIGKILL')
+    if (there && waited === 5000) {
+      const state = whose(instance)
+      if (state === 'unknown') throw new Error(`ps cannot say whether pid ${instance.pid} is still the mock, so it was sent SIGTERM and not SIGKILL. Check it, then remove ${pidFile}.`)
+      there = state === 'ours' && signal('SIGKILL')
+    }
   }
   for (let waited = 0; await taken(instance.port, instance.host); waited += 50) {
     if (waited >= 5000) throw new Error(`Port ${instance.port} is still in use after stopping pid ${instance.pid}.`)

@@ -8,6 +8,6 @@
   {
     "name": "entry points, the loader, the server and the CLI",
     "path": "packages/engine/dist/{index,load,serve,serve-command,daemon,cli}.js",
-    "limit": "11 KB"
+    "limit": "12 KB"
   }
 ]
