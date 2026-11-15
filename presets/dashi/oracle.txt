@@ -38,3 +38,16 @@
 /canvas/content-api?requestUri=%2Fnope
 /canvas/content-api?requestUri=nope
 /canvas/api/v0/site-data
+/jsonapi/node/article?filter%5Buid.name%5D=admin
+/jsonapi/node/article?filter%5Buid%5D=x
+/jsonapi/node/article?filter%5Buid.nope%5D=x
+/jsonapi/node/article?filter%5Buid.mail%5D=x
+/jsonapi/node/article?filter%5Buid.meta.target_uuid%5D=x
+/jsonapi/node/article?filter%5Bfield_description.format%5D=x
+/jsonapi/node/article?filter%5Bfield_content.nope%5D=x
+/jsonapi/node/article?filter%5Bfield_content.value%5D=x
+/jsonapi/node/article?filter%5Bmetatag.tag%5D=x
+/jsonapi/node/article?filter%5Bfield_tags.entity.name%5D=x
+/jsonapi/node/article?sort=uid
+/jsonapi/node/article?filter%5Bzzz%5D=y&filter%5Buid.mail%5D=x
+/es/jsonapi/node/article?filter%5Bfield_tags.nope%5D=x

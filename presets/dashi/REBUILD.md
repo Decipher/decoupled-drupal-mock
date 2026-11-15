@@ -22,15 +22,16 @@ No change.
 
 ## Visitor access
 
-No change.
+- en: what a visitor may read changed for `filter_format--filter_format`
 
 ## Filter paths
 
-No change.
+- Recorded for 56 types, where the dump had no record
 
 ## Oracle reads
 
-- 3 of 39 answer with the same status and a different body: `GET /canvas/content-api?requestUri=%2F`, `GET /canvas/content-api?requestUri=%2Fabout-dashi`, `GET /canvas/content-api?requestUri=%2Frecipes%2Ffiery-chili-sauce`
+- 13 added: `GET /es/jsonapi/node/article?filter%5Bfield_tags.nope%5D=x`, `GET /jsonapi/node/article?filter%5Bfield_content.nope%5D=x`, `GET /jsonapi/node/article?filter%5Bfield_content.value%5D=x`, `GET /jsonapi/node/article?filter%5Bfield_description.format%5D=x`, `GET /jsonapi/node/article?filter%5Bfield_tags.entity.name%5D=x`, `GET /jsonapi/node/article?filter%5Bmetatag.tag%5D=x`, `GET /jsonapi/node/article?filter%5Buid%5D=x`, `GET /jsonapi/node/article?filter%5Buid.mail%5D=x` and 5 more
+- 3 of 52 answer with the same status and a different body: `GET /canvas/content-api?requestUri=%2F`, `GET /canvas/content-api?requestUri=%2Fabout-dashi`, `GET /canvas/content-api?requestUri=%2Frecipes%2Ffiery-chili-sauce`
 
 ## Oracle writes, by status
 
