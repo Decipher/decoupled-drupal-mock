@@ -89,13 +89,15 @@ drush cache:rebuild
 # From the docroot: the namespaces plugin discovery reads are relative to it.
 (cd web && exec php -d memory_limit=512M -S "127.0.0.1:$port" -t . .ht.router.php) > "$site/server.log" 2>&1 &
 server=$!
-# The install takes minutes, and something else may have taken the port meanwhile. The server must be up and answering.
+# The install takes minutes, and something else may have taken the port meanwhile. Another listener would answer a
+# connection too, so the server's own log line says the port is its own. PHP writes it only once the bind succeeds.
+started="Development Server (http://127.0.0.1:$port) started"
 for _ in $(seq 50); do
   kill -0 "$server" 2> /dev/null || break
-  if (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then break; fi
+  grep -qF "$started" "$site/server.log" && break
   sleep 0.2
 done
-if ! kill -0 "$server" 2> /dev/null || ! (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then
+if ! kill -0 "$server" 2> /dev/null || ! grep -qF "$started" "$site/server.log"; then
   echo "The server did not start on 127.0.0.1:$port. $site/server.log says why." >&2
   # A server that runs but does not answer would keep the port, and nothing else knows its process id.
   kill "$server" 2> /dev/null || true
