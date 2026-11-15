@@ -84,7 +84,7 @@ End-to-end suites and browsers need a server:
 npx decoupled-drupal-mock-umami@alpha --port 3005
 ```
 
-A script, a `Makefile` or a CI job can run it in the background instead. `start` returns once `/jsonapi` answers, so the next command can use the server, and `stop` returns once the port is free:
+A script can run it in the background instead. `start` returns once `/jsonapi` answers, so the next command can use the server, and `stop` returns once the port is free:
 
 ```sh
 npx --yes decoupled-drupal-mock-umami@alpha start --port 3005

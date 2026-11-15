@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process'
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -98,6 +98,18 @@ describe('the background server', () => {
     expect(await stop(options.pidFile)).toEqual(record)
     await gone
     expect(existsSync(options.pidFile)).toBe(false)
+  })
+
+  it('still knows a server that changes the command line ps shows for it', async () => {
+    const { port, pidFile } = await setUp()
+    const child = spawn(process.execPath, ['-e', 'process.stdin.once("data", () => { process.title = "renamed"; console.log("up") }); setInterval(() => {}, 1000)'], { stdio: ['pipe', 'pipe', 'ignore'] })
+    const record = { pid: child.pid!, port, host: '127.0.0.1', log: '', identity: identityOf(child.pid!)! }
+    writeFileSync(pidFile, JSON.stringify(record))
+    child.stdin.write('rename\n')
+    await new Promise((done) => child.stdout.once('data', done))
+    expect(execFileSync('ps', ['-o', 'args=', '-p', String(child.pid)], { encoding: 'utf8' }).trim()).toBe('renamed')
+    expect(await running(pidFile)).toEqual(record)
+    expect(await stop(pidFile)).toEqual(record)
   })
 
   it('never signals a pid a pid file could not have been given by start', async () => {
@@ -236,7 +248,7 @@ describe('the background server when things go wrong', () => {
     }
   }, 30000)
 
-  it('refuses a pid file or a log that is a link, and leaves what it points to alone', async () => {
+  it('refuses a pid file or a log that is a link or a pipe, and leaves what it points to alone', async () => {
     const { port, ...options } = await setUp()
     const dir = join(options.pidFile, '..')
     const target = join(dir, 'someone-elses')
@@ -248,7 +260,11 @@ describe('the background server when things go wrong', () => {
     const pidFile = join(dir, 'other.pid')
     const log = join(dir, 'other.log')
     writeFileSync(target, 'keep')
-    for (const link of [symlinkSync, linkSync]) {
+    const fifo = (_target: string, path: string): void => {
+      execFileSync('mkfifo', [path])
+    }
+    // A pipe with no reader would hold a blocking open for ever.
+    for (const link of [symlinkSync, linkSync, fifo]) {
       link(target, log)
       await expect(start({ entry: [cli, 'serve', umami], args: [], port, ...options, pidFile })).rejects.toThrow(`${log} is not a file of your own`)
       expect(readFileSync(target, 'utf8')).toBe('keep')
@@ -277,7 +293,10 @@ describe('the background server when things go wrong', () => {
   it('refuses a directory for the pid file that someone else could write to', () => {
     const saved = process.env.TMPDIR
     const shared = mkdtempSync(join(tmpdir(), 'ddm-shared-'))
-    mkdirSync(join(shared, `decoupled-drupal-mock-${process.getuid?.() ?? 'user'}`), { mode: 0o777 })
+    const own = join(shared, `decoupled-drupal-mock-${process.getuid?.() ?? 'user'}`)
+    mkdirSync(own)
+    // Set after creation, so the umask cannot take the write bits away.
+    chmodSync(own, 0o777)
     process.env.TMPDIR = shared
     try {
       expect(() => pidFileFor(8925)).toThrow('is not a directory that only you can write to')

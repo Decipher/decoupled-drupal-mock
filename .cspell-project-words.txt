@@ -57,6 +57,7 @@ mediterráneo
 metas
 metatag
 mid
+mkfifo
 msw
 nextjs
 nid

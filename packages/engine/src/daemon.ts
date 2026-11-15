@@ -21,8 +21,8 @@ export interface Instance {
   /** The log the server writes to, which `start` prints when the server does not start. */
   log: string
   /**
-   * When the process started and its command line, as `ps` saw them right after it started. A process the system
-   * later gives the same pid started at another time, so this is what says the pid is still the server.
+   * When the process started, as `ps` saw it right after the start. A process the system later gives the same pid
+   * started at another time, so this is what says the pid is still the server.
    */
   identity: string
   /** Set once the server listens. */
@@ -80,8 +80,8 @@ const ticksOf = (pid: number): string | undefined => {
 }
 
 /**
- * When a process started and its command line, as `ps` gives them, or undefined when it has gone or `ps` cannot say.
- * On Linux the start time in clock ticks comes first.
+ * When a process started, as `ps` gives it, or undefined when it has gone or `ps` cannot say. On Linux the start time in
+ * clock ticks comes first. A process cannot change when it started, where it can change the command line `ps` shows.
  *
  * @param pid - The process.
  */
@@ -89,7 +89,7 @@ export const identityOf = (pid: number): string | undefined => {
   let said: string
   try {
     const env = { ...process.env, LC_ALL: 'C' }
-    said = execFileSync('ps', ['-ww', '-o', 'lstart=', '-o', 'args=', '-p', String(pid)], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    said = execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'ignore'] }).trim()
   } catch {
     return undefined
   }
@@ -254,10 +254,11 @@ const openLog = (log: string): number => {
   const refused = new Error(`${log} is not a file of your own, so the mock will not write its log there.`)
   let fd: number
   try {
-    fd = openSync(log, constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW, 0o600)
+    // O_NONBLOCK, so a pipe with no reader is refused at once rather than holding the start until one comes.
+    fd = openSync(log, constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600)
   } catch (error) {
-    // The log's name is a link.
-    if ((error as NodeJS.ErrnoException).code === 'ELOOP') throw refused
+    // The log's name is a link, or a pipe nothing reads.
+    if (['ELOOP', 'ENXIO'].includes((error as NodeJS.ErrnoException).code ?? '')) throw refused
     throw error
   }
   const stat = fstatSync(fd)
