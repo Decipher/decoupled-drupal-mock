@@ -5,40 +5,32 @@ writes it again and fails when the two differ, so a change to the recordings mer
 
 ## Drupal
 
-- Core 11.4.6 to 11.4.11
-- Removed graphql, graphql_compose, typed_data
-- Updated simple_oauth 6.1.1 to 6.1.4
+No change.
 
 ## Index
 
-- en: removed `graphql_server--graphql_server`
-- es: removed `graphql_server--graphql_server`
+No change.
 
 ## Resources
 
-| Type | en | es |
-| --- | --- | --- |
-| `graphql_server--graphql_server` | gone, was 1 | gone, was 1 |
-| `user--user` | 13 to 13: 1 added, 1 removed, 2 changed (`display_name`, `name`, `mail`, `roles`) | 13 to 13: 1 added, 1 removed, 2 changed (`display_name`, `name`, `mail`, `roles`) |
-| `user_role--user_role` | 5 to 5: 1 changed (`dependencies`, `permissions`) | 5 to 5: 1 changed (`dependencies`, `permissions`) |
-
-Each entity is named by its internal id, so one that kept its name under another id reads as a change.
-
-- `user--user`, en: added 10 (editor). removed 13 (reader). changed 11 (author) from 11 (editor), 12 (reader) from 12 (author)
-- `user_role--user_role`, en: changed anonymous (Anonymous user) from anonymous (Anonymous user)
+No change.
 
 ## Recorded routes
 
-- 7 of 389 answer with the same status and a different body: `GET /en/jsonapi/decoupled/settings`, `GET /en/jsonapi/views/who_s_new/block_1`, `GET /en/jsonapi/views/who_s_new/default`, `GET /es/jsonapi/decoupled/settings`, `GET /es/jsonapi/views/who_s_new/block_1`, `GET /es/jsonapi/views/who_s_new/default`, `GET /jsonapi`
+- 4 of 389 answer with the same status and a different body: `GET /en/jsonapi/views/who_s_new/block_1`, `GET /en/jsonapi/views/who_s_new/default`, `GET /es/jsonapi/views/who_s_new/block_1`, `GET /es/jsonapi/views/who_s_new/default`
 
 ## Visitor access
 
-- en: what a visitor may read changed for `graphql_server--graphql_server`
-- es: what a visitor may read changed for `graphql_server--graphql_server`
+- en: what a visitor may read changed for `user--user`
+- es: what a visitor may read changed for `user--user`
+
+## Filter paths
+
+- Recorded for 35 types, where the dump had no record
 
 ## Oracle reads
 
-- 5 of 146 answer with the same status and a different body: `GET /en/jsonapi/decoupled/settings`, `GET /es/jsonapi`, `GET /es/jsonapi/decoupled/settings`, `GET /jsonapi`, `GET en/jsonapi`
+- 16 added: `GET /en/jsonapi/block/block?filter%5Bnope.x%5D=x`, `GET /en/jsonapi/node/article?filter%5Baaa%5D=y&filter%5Buid.mail%5D=x`, `GET /en/jsonapi/node/article?filter%5Bfield_tags.entity%3Ataxonomy_term.name%5D=Dairy`, `GET /en/jsonapi/node/article?filter%5Bpath.alias%5D=x`, `GET /en/jsonapi/node/article?filter%5Bpath.nope%5D=x`, `GET /en/jsonapi/node/article?filter%5Btitle.value%5D=x`, `GET /en/jsonapi/node/article?filter%5Buid%5D=x`, `GET /en/jsonapi/node/article?filter%5Buid.id.x%5D=x` and 8 more
 
 ## Oracle writes, by status
 

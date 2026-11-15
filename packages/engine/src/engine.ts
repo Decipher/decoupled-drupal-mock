@@ -11,6 +11,9 @@ import { hasOwn, own as member } from './own.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
 import { clone } from './clone.js'
 import { withoutTrailingSlashes } from './slashes.js'
+import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND } from './format.js'
+import { checkPath } from './paths.js'
+import type { PathError, Schema } from './paths.js'
 
 export interface DrupalOptions {
   /** The origin the server answers for, written into every link. Default `https://drupal.invalid`. */
@@ -43,7 +46,7 @@ const JSONAPI_DEFAULT = { version: '1.0', meta: { links: { self: { href: 'http:/
 /** Drupal's page size, and its cap. */
 const PAGE_LIMIT = 50
 
-const INFO: Record<number, string> = { 400: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.1', 403: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.4', 404: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.5', 405: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.6' }
+const INFO: Record<number, string> = { 400: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.1', 403: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.4', 404: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.5', 405: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.6', 500: 'https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.5.1' }
 
 /** Whether a PATCH leaves a value as it was. */
 const unchanged = (before: unknown, after: unknown): boolean => JSON.stringify(before) === JSON.stringify(after)
@@ -93,7 +96,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if ([...types].some((current) => hiddenFrom(langcode, { type: current }, all)?.includes(field))) return { field, path: named.join('.') }
       const next = new Set<string>()
       for (const current of types) {
-        for (const resource of dump.resources[langcode]?.[current] || []) {
+        // The language's resources, or the default language's where it has none of a type, as a read falls back.
+        for (const resource of resourcesOf(langcode, current) || []) {
           const data = resource.relationships?.[field]?.data
           for (const identifier of Array.isArray(data) ? data : data ? [data] : []) next.add(identifier.type)
         }
@@ -103,6 +107,29 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       named.push(...new Set([...next].map((target) => `entity:${target.split('--')[0]}`)))
     }
     return undefined
+  }
+
+  /**
+   * Whether a filter path crosses a relationship into a type no module lets a visitor filter. JSON:API's query guard
+   * puts that type's access condition on the join, so the condition reads nothing there. A relationship's own `meta`
+   * stays on the resource filtered.
+   */
+  const crossesUnfilterable = (langcode: string, type: string, path: string[]): boolean => {
+    let types = new Set([type])
+    for (const [index, field] of path.entries()) {
+      const next = new Set<string>()
+      for (const current of types) {
+        // The language's resources, or the default language's where it has none of a type, as a read falls back.
+        for (const resource of resourcesOf(langcode, current) || []) {
+          const data = resource.relationships?.[field]?.data
+          for (const identifier of Array.isArray(data) ? data : data ? [data] : []) next.add(identifier.type)
+        }
+      }
+      if (!next.size || path[index + 1] === 'meta') return false
+      if ([...next].some((target) => accessOf(langcode, target)?.unfilterable)) return true
+      types = next
+    }
+    return false
   }
 
   const visible = (langcode: string, resource: Resource): boolean => {
@@ -243,6 +270,24 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   /** A filter's reader, over the stored values: a field the visitor may not read was refused before any is read. */
   const read = (langcode: string) => createReader((identifier) => find(langcode, identifier))
 
+  /** The dump as the filter path check reads it. */
+  const pathSchema = (langcode: string, all: boolean): Schema => ({
+    filters: (type) => dump.filters?.[type],
+    fields: (type) => (resourcesOf(langcode, type)?.length ? fieldsOf(langcode, type) : undefined),
+    targets: (type, field) => {
+      const resources = resourcesOf(langcode, type) || []
+      if (!resources.some((resource) => resource.relationships && hasOwn(resource.relationships, field))) return undefined
+      const targets = new Set<string>()
+      for (const resource of resources) {
+        const data = resource.relationships?.[field]?.data
+        for (const identifier of Array.isArray(data) ? data : data ? [data] : []) targets.add(identifier.type)
+      }
+      return targets
+    },
+    // A signed-in reader is refused only another person's account fields, unless they administer users.
+    refuses: (type) => !all || (type === 'user--user' && !viewer.administersUsers),
+  })
+
   /** The field names a type has, from its resources: a filter on another is Drupal's 400. */
   const fieldsOf = (langcode: string, type: string): Set<string> => {
     const names = new Set(['id', 'type'])
@@ -359,6 +404,14 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       }
       return { status: hit.status, headers: hit.headers, body }
     }
+    // Canvas Headless answers a path it does not know as it answered the path no site has, when the build recorded that,
+    // and a requestUri that is not site-relative as it answered the one the build sent. The rule is Canvas's own.
+    if (lookup === 'GET' && path === '/canvas/content-api') {
+      const requestUri = query.requestUri
+      const valid = typeof requestUri === 'string' && requestUri.startsWith('/') && !requestUri.startsWith('//') && !requestUri.includes('\\') && !requestUri.includes('#')
+      const answer = recorded(lookup, path, `requestUri=${encodeURIComponent(valid ? CANVAS_NOT_FOUND : CANVAS_BAD_REQUEST)}`)
+      if (answer) return { status: answer.status, headers: answer.headers, body: relink(answer.body) }
+    }
     // Decoupled Router answers for the paths the build recorded, and as itself for the rest.
     if (path === '/router/translate-path') {
       const asked = String((query.path as string | undefined) ?? '')
@@ -444,19 +497,41 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if (err instanceof FilterError) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', err.message, via, { parameter: 'filter' }) }
       throw err
     }
-    // A type with no resource to read its fields from takes any filter, as nothing can be known of its fields. A
-    // field the visitor may not read is not one the visitor may filter by: Drupal's filter access refuses it.
-    const fieldNames = fieldsOf(langcode, type)
-    for (const condition of Object.values(filter.conditions)) {
-      const [head] = condition.path.split('.')
-      // Drupal names the request in the sorted form here, as it names a collection's self link.
-      const refused = refusedFilter(langcode, type, condition.path, all)
-      if (refused) return { status: 403, headers, body: error(JSONAPI, 403, 'Forbidden', `The current user is not authorized to filter by the \`${refused.field}\` field, given in the path \`${refused.path}\`.`, self) }
-      if (head && fieldNames.size > 2 && !fieldNames.has(head)) return { status: 400, headers, body: error(JSONAPI, 400, 'Bad Request', `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.`, self) }
-    }
-    const reader = read(langcode)
-    let matched = collection.filter((resource) => passes(resource, filter, reader))
     const sort = typeof query.sort === 'string' ? query.sort.split(',').map((item) => item.trim()).filter(Boolean) : []
+    // Drupal names the request in the sorted form here, as it names a collection's self link.
+    const refuse = (problem: PathError) => ({ status: problem.status, headers, body: error(JSONAPI, problem.status, STATUS_TEXT[problem.status]!, problem.detail, self) })
+    if (dump.filters) {
+      // Drupal resolves the filter's paths in the order the query names them, then the sort's.
+      const schema = pathSchema(langcode, all)
+      const paths = [...Object.values(filter.conditions).map((condition) => condition.path), ...sort.map((item) => item.replace(/^-/, ''))]
+      for (const path of paths) {
+        const problem = checkPath(schema, type, path)
+        if (problem) return refuse(problem)
+      }
+    } else {
+      // A dump built before the filter probes: a field the visitor may not read is taken as one it may not filter by,
+      // and only a path's first field is checked. A type with no resource to read its fields from takes any filter.
+      const fieldNames = fieldsOf(langcode, type)
+      for (const condition of Object.values(filter.conditions)) {
+        const [head] = condition.path.split('.')
+        const refused = refusedFilter(langcode, type, condition.path, all)
+        if (refused) return refuse({ status: 403, detail: `The current user is not authorized to filter by the \`${refused.field}\` field, given in the path \`${refused.path}\`.` })
+        if (head && fieldNames.size > 2 && !fieldNames.has(head)) return refuse({ status: 400, detail: `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.` })
+      }
+    }
+    const readAny = read(langcode)
+    // Whether a path crosses into a type a visitor may not filter depends on the type and the path only, so it is
+    // worked out once per request rather than once per resource.
+    const crossing = new Map<string, boolean>()
+    const crosses = (type: string, path: string[]): boolean => {
+      const key = `${type} ${path.join('.')}`
+      if (!crossing.has(key)) crossing.set(key, crossesUnfilterable(langcode, type, path))
+      return crossing.get(key)!
+    }
+    const reader: typeof readAny = all ? readAny : (resource, path) => crosses(resource.type, path) ? [] : readAny(resource, path)
+    // JSON:API's query guard answers a visitor's filter on a type no module lets a visitor filter with an empty list.
+    const guarded = !all && Object.keys(filter.conditions).length > 0 && !!accessOf(langcode, type)?.unfilterable
+    let matched = guarded ? [] : collection.filter((resource) => passes(resource, filter, reader))
     if (sort.length) {
       const keys = sort.map((item) => ({ path: item.replace(/^-/, '').split('.'), direction: item.startsWith('-') ? -1 : 1 }))
       // Drupal's entity query groups a node's translations: an ascending sort reads the lowest value of any of them, a

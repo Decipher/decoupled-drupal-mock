@@ -58,11 +58,32 @@ export interface Dump {
    */
   /** The accounts and consumers the mock signs in, from the build's configuration. */
   identities?: { accounts: Array<{ name: string, password?: string, roles?: string[] }>, consumers: Array<{ clientId: string, secret?: string, confidential?: boolean, grants: Array<'client_credentials' | 'password' | 'authorization_code' | 'refresh_token'>, scopes?: Record<string, string>, user?: string, pkce?: boolean, redirectUris?: string[] }>, passwordGrant?: boolean }
+  /** What Drupal answered the build's filter probes, per resource type: a dump built before them has none. */
+  filters?: Record<string, TypeFilters>
   access?: Record<string, Record<string, {
     visible?: string[]
     hidden?: string[]
     forbidden?: true
     /** Resources Drupal reports as omitted to every user, so no view holds their data: they take a place in a collection and are reported, never served. */
     phantom?: string[]
+    /**
+     * A type no module lets a visitor filter, so JSON:API answers any filtered collection of it with nothing. A content
+     * entity type is filterable only where a module implements `hook_jsonapi_ENTITY_TYPE_filter_access()`.
+     */
+    unfilterable?: true
   }>>
+}
+
+/** What the build learned of a type's filter paths by asking Drupal, as `filters.json.gz` holds it. */
+export interface TypeFilters {
+  /** A configuration entity type: Drupal checks only that a path's first field exists. */
+  config?: true
+  /** The fields a visitor may not filter or sort by. */
+  refused?: string[]
+  /** The fields Drupal says do not exist, although resources carry them. */
+  missing?: string[]
+  /** Each field a path may not end at, with what it must end with instead, in Drupal's order. */
+  specifiers?: Record<string, string[]>
+  /** Drupal's 500 for a field, or a field and one of its specifiers, keyed `field` or `field.specifier`. */
+  failures?: Record<string, string>
 }

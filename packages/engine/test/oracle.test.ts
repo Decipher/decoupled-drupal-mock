@@ -99,13 +99,16 @@ describe.skipIf(!available)('the dump\'s format', () => {
     return copy
   }
 
+  // Whichever build the suite reads, named as its manifest names it.
+  const preset = available ? (JSON.parse(readFileSync(join(dir!, 'manifest.json'), 'utf8')) as { preset: string }).preset : ''
+
   it('loads format 1, and a manifest from before formats were named', () => {
-    expect(loadDump(withFormat(1)).manifest.preset).toBe('umami')
-    expect(loadDump(withFormat(undefined)).manifest.preset).toBe('umami')
+    expect(loadDump(withFormat(1)).manifest.preset).toBe(preset)
+    expect(loadDump(withFormat(undefined)).manifest.preset).toBe(preset)
   })
 
   it('refuses a format this engine does not read, naming it', () => {
-    expect(() => loadDump(withFormat(2))).toThrow('umami is a dump of format 2, and this engine reads format 1.')
+    expect(() => loadDump(withFormat(2))).toThrow(`${preset} is a dump of format 2, and this engine reads format 1.`)
   })
 })
 
