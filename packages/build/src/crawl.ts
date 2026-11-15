@@ -184,6 +184,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   let canvas: boolean | undefined
   /** The preview token the content API's drafts are read with, from `canvasPreview`'s account. */
   let previewToken: string | undefined
+  /** How to sign out each session the preview account opened, once the crawl has read every draft. */
+  const previewSessions: Array<() => Promise<void>> = []
   /**
    * Signs the preview account in with its password, mints a preview assertion for the front page and redeems it, as the
    * Canvas editor and a frontend's server do. The assertion's decoded claims are recorded, so the engine mints its own
@@ -196,22 +198,41 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     const login = await fetch(`${base}/user/login?_format=json`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: account, pass: password }) })
     const cookie = (login.headers.get('set-cookie') || '').split(';')[0]!
     if (login.status !== 200 || !cookie) throw new Error(`${account} could not sign in to preview: /user/login answered ${login.status}.`)
-    const csrf = await (await fetch(`${base}/session/token`, { headers: { cookie } })).text()
-    const minted = await fetch(`${base}/canvas-headless/assertion?path=%2F`, { method: 'POST', headers: { cookie, 'x-csrf-token': csrf, accept: 'application/json' } })
-    if (minted.status !== 200) throw new Error(`/canvas-headless/assertion answered ${minted.status} to ${account}: does the account have "access canvas headless preview"?`)
-    const assertion = (await minted.json() as { assertion: string }).assertion
-    const [header, claims] = assertion.split('.').slice(0, 2).map((part) => JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as Record<string, unknown>)
-    // Where the standalone renewal sends the editor: the frontend's draft route, which the site's settings name.
-    const renewed = await fetch(`${base}/canvas-headless/renew?path=%2F`, { headers: { cookie }, redirect: 'manual' })
-    const draftUrl = (renewed.headers.get('location') || '').split('?')[0]
-    if (renewed.status !== 302 || !draftUrl) throw new Error(`/canvas-headless/renew answered ${renewed.status}: is a frontend set in canvas_headless.settings?`)
-    recorded['POST /canvas-headless/assertion#claims'] = { status: 200, headers: { 'content-type': 'application/json' }, body: { header, claims, draftUrl } }
-    const form = new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion, client_id: 'canvas_headless' })
-    const redeemed = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: form })
-    const answer = await redeemed.json() as { access_token?: string, error_description?: string }
-    if (!answer.access_token) throw new Error(`The preview assertion could not be redeemed: ${answer.error_description || redeemed.status}.`)
-    await fetch(`${base}/user/logout?_format=json&token=${encodeURIComponent(csrf)}`, { method: 'POST', headers: { cookie } })
-    return answer.access_token
+    // Drupal's logout takes the token login gives for it. The session's CSRF token is refused, and the session stays open.
+    const logoutToken = (await login.json() as { logout_token?: string }).logout_token
+    if (!logoutToken) throw new Error(`/user/login gave ${account} no logout_token to sign out with.`)
+    const signOut = async (): Promise<number> => (await fetch(`${base}/user/logout?_format=json&token=${encodeURIComponent(logoutToken)}`, { method: 'POST', headers: { cookie }, redirect: 'manual' })).status
+    const redeem = async (): Promise<string> => {
+      const csrf = await (await fetch(`${base}/session/token`, { headers: { cookie } })).text()
+      const minted = await fetch(`${base}/canvas-headless/assertion?path=%2F`, { method: 'POST', headers: { cookie, 'x-csrf-token': csrf, accept: 'application/json' } })
+      if (minted.status !== 200) throw new Error(`/canvas-headless/assertion answered ${minted.status} to ${account}: does the account have "access canvas headless preview"?`)
+      const assertion = (await minted.json() as { assertion: string }).assertion
+      const [header, claims] = assertion.split('.').slice(0, 2).map((part) => JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as Record<string, unknown>)
+      // Where the standalone renewal sends the editor: the frontend's draft route, which the site's settings name.
+      const renewed = await fetch(`${base}/canvas-headless/renew?path=%2F`, { headers: { cookie }, redirect: 'manual' })
+      const draftUrl = (renewed.headers.get('location') || '').split('?')[0]
+      if (renewed.status !== 302 || !draftUrl) throw new Error(`/canvas-headless/renew answered ${renewed.status}: is a frontend set in canvas_headless.settings?`)
+      recorded['POST /canvas-headless/assertion#claims'] = { status: 200, headers: { 'content-type': 'application/json' }, body: { header, claims, draftUrl } }
+      const form = new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion, client_id: 'canvas_headless' })
+      const redeemed = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: form })
+      const answer = await redeemed.json() as { access_token?: string, error_description?: string }
+      if (!answer.access_token) throw new Error(`The preview assertion could not be redeemed: ${answer.error_description || redeemed.status}.`)
+      return answer.access_token
+    }
+    let issued: string
+    try {
+      issued = await redeem()
+    } catch (err) {
+      // A session that gave no token is closed at once, and the failure is the one reported.
+      await signOut()
+      throw err
+    }
+    // Signing out revokes the preview token, so the session stays open until the crawl is done with it.
+    previewSessions.push(async () => {
+      const status = await signOut()
+      if (status >= 400) throw new Error(`/user/logout answered ${status} to ${account}: the session would stay open.`)
+    })
+    return issued
   }
   /**
    * Canvas Headless's routes, as a visitor reads them: the content API for each path, the entity endpoint for each Canvas
@@ -581,6 +602,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     write('identities.json', { ...options.identities, ...(passwordGrant === undefined ? {} : { passwordGrant }) })
   }
 
+  for (const signOut of previewSessions) await signOut()
   const manifest: Manifest = {
     preset: options.preset,
     format: DUMP_FORMAT,

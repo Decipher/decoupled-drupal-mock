@@ -362,8 +362,17 @@ describe('a site with Canvas Headless', () => {
     const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
     const claims = { iss: 'site', aud: '/oauth/token', sub: '2', use: 'activation', path: '/', renewUrl: 'https://drupal.test/canvas-headless/renew' }
     const asked: string[] = []
+    const signedOut: string[] = []
+    let revoked = false
     const { out } = await build((path, admin, headers = {}) => {
-      if (path === '/user/login?_format=json') return { body: { csrf_token: 'c' }, headers: { 'set-cookie': 'SESSabc=1; path=/' } }
+      if (path === '/user/login?_format=json') return { body: { csrf_token: 'c', logout_token: 'lt' }, headers: { 'set-cookie': 'SESSabc=1; path=/' } }
+      // Drupal's logout takes the token login gave for it, not the session's CSRF token.
+      if (path.startsWith('/user/logout')) {
+        signedOut.push(`${String(headers.cookie)} ${new URLSearchParams(path.split('?')[1]).get('token')}`)
+        // Signing out revokes the preview token, as Simple OAuth does.
+        revoked = path.includes('token=lt')
+        return path.includes('token=lt') ? { status: 204, body: '', raw: true } : { status: 403, body: { message: '\'csrf_token\' URL query argument is invalid.' } }
+      }
       if (path === '/session/token') return { body: 'csrf', raw: true }
       if (path.startsWith('/canvas-headless/assertion')) {
         asked.push(`${String(headers.cookie)} ${String(headers['x-csrf-token'])}`)
@@ -372,10 +381,12 @@ describe('a site with Canvas Headless', () => {
       if (path.startsWith('/canvas-headless/renew')) return { status: 302, body: '', raw: true, headers: { location: 'http://127.0.0.1:3000/api/draft?assertion=a.b.c' } }
       if (path.startsWith('/user/logout')) return { status: 204, body: '', raw: true }
       if (path.startsWith('/canvas/content-api') && headers.authorization === 'Bearer decoupled.drupal.mock') return { status: 401, body: { title: 'Unauthorized' } }
+      if (path.startsWith('/canvas/content-api') && headers.authorization === 'Bearer t' && revoked) return { status: 401, body: { title: 'Unauthorized' } }
       if (path.startsWith('/canvas/content-api?requestUri=%2Fcanvas') && headers.authorization === 'Bearer t') return { body: { content: 'draft' } }
       return canvasSite(path, admin)
     }, { identities: { accounts: [{ name: 'editor', password: 'editor' }], consumers: [] }, canvasPreview: { account: 'editor' } })
     expect(asked).toEqual(['SESSabc=1 csrf'])
+    expect(signedOut).toEqual(['SESSabc=1 lt'])
     const routes = read(out, 'recorded/routes.json.gz') as Record<string, { status: number, body: unknown }>
     expect(routes['GET /canvas/content-api?requestUri=%2Fcanvas#preview']?.body).toEqual({ content: 'draft' })
     expect(routes['GET /canvas/content-api?requestUri=%2Fcanvas']?.body).toEqual({ content: '/canvas/content-api?requestUri=%2Fcanvas' })
@@ -389,7 +400,7 @@ describe('a site with Canvas Headless', () => {
     const preview = (refuse: (token: string) => boolean) => {
       let issued = 0
       const site = (path: string, admin?: boolean, headers: Record<string, string | string[] | undefined> = {}): Answer | undefined => {
-        if (path === '/user/login?_format=json') return { body: {}, headers: { 'set-cookie': 'SESSabc=1; path=/' } }
+        if (path === '/user/login?_format=json') return { body: { logout_token: 'lt' }, headers: { 'set-cookie': 'SESSabc=1; path=/' } }
         if (path === '/session/token') return { body: 'csrf', raw: true }
         if (path.startsWith('/canvas-headless/assertion')) return { body: { assertion: `${part({ typ: 'p' })}.${part({ sub: '2' })}.sig` } }
         if (path.startsWith('/canvas-headless/renew')) return { status: 302, body: '', raw: true, headers: { location: 'http://127.0.0.1:3000/api/draft' } }
@@ -412,6 +423,27 @@ describe('a site with Canvas Headless', () => {
     expect(Object.entries(routes).filter(([key, entry]) => key.endsWith('#preview') && entry.status === 401)).toEqual([])
     const refusing = preview(() => true)
     await expect(build(refusing.site, options, undefined, refusing.token)).rejects.toThrow('refused a preview token issued a moment before')
+  })
+
+  it('signs the preview account out when the redemption fails, and stops when Drupal refuses the sign-out', async () => {
+    const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
+    const signedOut: string[] = []
+    const site = (logout: number) => (path: string, admin?: boolean): Answer | undefined => {
+      if (path === '/user/login?_format=json') return { body: { logout_token: 'lt' }, headers: { 'set-cookie': 'SESSabc=1; path=/' } }
+      if (path === '/session/token') return { body: 'csrf', raw: true }
+      if (path.startsWith('/canvas-headless/assertion')) return { body: { assertion: `${part({ typ: 'p' })}.${part({ sub: '2' })}.sig` } }
+      if (path.startsWith('/canvas-headless/renew')) return { status: 302, body: '', raw: true, headers: { location: 'http://127.0.0.1:3000/api/draft' } }
+      if (path.startsWith('/user/logout')) {
+        signedOut.push(path)
+        return { status: logout, body: '', raw: true }
+      }
+      return canvasSite(path, admin)
+    }
+    const options = { identities: { accounts: [{ name: 'editor', password: 'editor' }], consumers: [] }, canvasPreview: { account: 'editor' } }
+    const refused = (form: URLSearchParams) => form.get('grant_type')?.endsWith('jwt-bearer') ? { body: { error_description: 'Token signature mismatch' } } : undefined
+    await expect(build(site(204), options, undefined, refused)).rejects.toThrow('The preview assertion could not be redeemed: Token signature mismatch.')
+    expect(signedOut).toEqual(['/user/logout?_format=json&token=lt'])
+    await expect(build(site(403), options)).rejects.toThrow('/user/logout answered 403')
   })
 
   it('stops when the preview account has no password to sign in with', async () => {
