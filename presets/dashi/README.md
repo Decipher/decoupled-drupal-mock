@@ -91,10 +91,10 @@ export DECOUPLED_DRUPAL_MOCK_CLIENT_SECRET=$(openssl rand -hex 24)
 presets/dashi/site.sh ../dashi-site 8907
 DECOUPLED_DRUPAL_MOCK_BASE_URL=http://127.0.0.1:8907 DECOUPLED_DRUPAL_MOCK_SITE=$PWD/../dashi-site yarn crawl presets/dashi/build.json
 git fetch origin
-yarn rebuild:summary origin/1.0.x --write
+yarn rebuild:summary origin/1.0.x
 ```
 
-The last step writes `REBUILD.md`, as for the Umami preset. Canvas Headless is experimental and its API may change without a deprecation path, so expect a rebuild with each Canvas release.
+The last step prints what the rebuild changed, as for the Umami preset. Canvas Headless is experimental and its API may change without a deprecation path, so expect a rebuild with each Canvas release.
 
 ## Published files and evidence
 

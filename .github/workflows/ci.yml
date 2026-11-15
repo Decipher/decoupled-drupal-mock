@@ -10,6 +10,10 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # Writing the rebuild comment is the one write this job makes.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,9 +27,15 @@ jobs:
       - run: yarn lint
       - if: github.event_name == 'pull_request'
         run: yarn commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}
-      # The gzipped recordings merge only beside a page that says what changed, which the job summary shows too.
+      # The recordings are gzipped, so the review reads what a rebuild changed here: in the job summary, and in one
+      # comment each run updates. A fork's pull request has no token that may comment, so it gets the job summary only.
       - if: github.event_name == 'pull_request'
-        run: yarn rebuild:summary ${{ github.event.pull_request.base.sha }}
+        run: yarn rebuild:summary ${{ github.event.pull_request.base.sha }} --out rebuild-summary.md
+      - if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: node scripts/rebuild-comment.mjs rebuild-summary.md
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
       - run: '[ -d packages ] && yarn typecheck || echo "nothing to typecheck"'
       - run: '[ -d packages ] && yarn test:coverage || echo "nothing to test"'
       # A fork's pull request has no token, so it runs the floor above and uploads nothing.
