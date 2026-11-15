@@ -1,0 +1,74 @@
+{
+  "site": {
+    "cms": "2.2.9",
+    "template": "haven",
+    "version": "1.1.1",
+    "name": "Haven"
+  },
+  "baseUrl": "${DECOUPLED_DRUPAL_MOCK_BASE_URL}",
+  "out": "presets/haven/dump",
+  "oracleOut": "presets/haven/oracle",
+  "preset": "haven",
+  "languages": {
+    "en": ""
+  },
+  "defaultLanguage": "en",
+  "drupal": {
+    "profile": "haven"
+  },
+  "composerDir": "${DECOUPLED_DRUPAL_MOCK_SITE}",
+  "drush": {
+    "bin": "${DECOUPLED_DRUPAL_MOCK_SITE}/vendor/bin/drush",
+    "cwd": "${DECOUPLED_DRUPAL_MOCK_SITE}"
+  },
+  "auth": {
+    "tokenUrl": "${DECOUPLED_DRUPAL_MOCK_BASE_URL}/oauth/token",
+    "clientId": "build",
+    "clientSecret": "${DECOUPLED_DRUPAL_MOCK_CLIENT_SECRET}",
+    "scope": "build"
+  },
+  "oracleFile": "presets/haven/oracle.txt",
+  "skipTypes": [
+    "staged_config_update--staged_config_update",
+    "staged_language_config_override--staged_language_config_override"
+  ],
+  "canvasPreview": {
+    "account": "editor"
+  },
+  "identities": {
+    "accounts": [
+      {
+        "name": "editor",
+        "password": "editor",
+        "roles": ["content_editor"]
+      },
+      {
+        "name": "reader",
+        "password": "reader",
+        "roles": []
+      }
+    ],
+    "consumers": [
+      {
+        "clientId": "decoupled-drupal-mock",
+        "secret": "decoupled-drupal-mock",
+        "confidential": true,
+        "grants": ["client_credentials", "refresh_token"],
+        "scopes": {
+          "editor": "content_editor"
+        },
+        "user": "editor"
+      },
+      {
+        "clientId": "decoupled-drupal-mock-reader",
+        "secret": "decoupled-drupal-mock-reader",
+        "confidential": true,
+        "grants": ["client_credentials"],
+        "scopes": {
+          "reader": "authenticated"
+        },
+        "user": "reader"
+      }
+    ]
+  }
+}

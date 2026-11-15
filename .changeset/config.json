@@ -2,7 +2,14 @@
   "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
-  "fixed": [["decoupled-drupal-mock", "decoupled-drupal-mock-umami", "decoupled-drupal-mock-dashi"]],
+  "fixed": [
+    [
+      "decoupled-drupal-mock",
+      "decoupled-drupal-mock-umami",
+      "decoupled-drupal-mock-dashi",
+      "decoupled-drupal-mock-haven"
+    ]
+  ],
   "linked": [],
   "access": "public",
   "baseBranch": "1.0.x",
