@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -29,7 +29,7 @@ const setUp = async () => {
 }
 
 describe('the background server', () => {
-  it('returns once /jsonapi answers, refuses a second start, and stops until the port is free', async () => {
+  it('returns once the server answers, refuses a second start, and stops until the port is free', async () => {
     const { port, ...options } = await setUp()
     const { line, instance } = await start({ entry: [cli, 'serve', umami], args: ['--port', String(port)], port, ...options })
     expect(line).toBe(`umami from Drupal ${(JSON.parse(readFileSync(join(umami, 'manifest.json'), 'utf8')) as { drupal: { core: string } }).drupal.core}, listening on http://127.0.0.1:${port}`)
@@ -80,7 +80,7 @@ describe('the background server', () => {
     expect(existsSync(pidFile)).toBe(false)
   })
 
-  it('waits past the listening line until /jsonapi answers, and stops a server that never does', async () => {
+  it('waits past the listening line until the server answers, and stops a server that never does', async () => {
     const { port, ...options } = await setUp()
     const says = `console.log("umami from Drupal 11, listening on http://127.0.0.1:${port}"); setInterval(() => {}, 1000)`
     await expect(start({ entry: ['-e', says], args: [], port, ...options, readyTimeout: 0.5 })).rejects.toThrow(/did not answer within 0\.5 seconds\.\numami from Drupal 11/)
@@ -245,6 +245,75 @@ describe('the background server when things go wrong', () => {
       const servers = [...(signalled ? [] : [stopped!.pid]), ...(existsSync(marker) ? [Number(readFileSync(marker, 'utf8'))] : [])]
       await new Promise((done) => setTimeout(done, 200))
       for (const pid of servers) expect(() => process.kill(pid, 0)).toThrow()
+    }
+  }, 30000)
+
+  it('takes any answer as ready, whatever path the site serves JSON:API at', async () => {
+    const { port, ...options } = await setUp()
+    // A server with no /jsonapi, as a site with another jsonapi.base_path has.
+    const server = `require('node:http').createServer((_, response) => { response.statusCode = 404; response.end() }).listen(${port}, '127.0.0.1', () => console.log('umami from Drupal 11, listening on http://127.0.0.1:${port}'))`
+    const { instance } = await start({ entry: ['-e', server], args: [], port, ...options })
+    expect(instance.url).toBe(`http://127.0.0.1:${port}`)
+    expect(await stop(options.pidFile)).toEqual(instance)
+  })
+
+  it('keeps a record another start claimed while a stale one was being cleared', async () => {
+    const { port, pidFile } = await setUp()
+    const daemon = join(root, 'packages', 'engine', 'dist', 'daemon.js')
+    const stale = JSON.stringify({ pid: 2 ** 22 + 1, port, host: '127.0.0.1', log: '', identity: 'gone' })
+    writeFileSync(pidFile, stale)
+    // Held here, so the other process reads the stale record and then waits to clear it.
+    const lock = `${pidFile}.lock`
+    mkdirSync(lock)
+    const clearing = spawn(process.execPath, ['--input-type=module', '-e', `const { running } = await import(${JSON.stringify(daemon)}); await running(${JSON.stringify(pidFile)})`], { stdio: 'ignore' })
+    const cleared = new Promise((done) => clearing.on('exit', done))
+    await new Promise((done) => setTimeout(done, 500))
+    // The other process waits for the lock rather than clearing the record at once.
+    expect(readFileSync(pidFile, 'utf8')).toBe(stale)
+    // Meanwhile another start has cleared it and claimed the file.
+    const claimed = JSON.stringify({ pid: process.pid, port, host: '127.0.0.1', log: '', identity: identityOf(process.pid), launcher: true })
+    writeFileSync(pidFile, claimed)
+    rmSync(lock, { recursive: true })
+    expect(await cleared).toBe(0)
+    expect(readFileSync(pidFile, 'utf8')).toBe(claimed)
+    rmSync(pidFile)
+  })
+
+  it('takes over a lock left by a process that died holding it', async () => {
+    const { pidFile } = await setUp()
+    writeFileSync(pidFile, JSON.stringify({ pid: 2 ** 22 + 1, port: 1, host: '127.0.0.1', log: '', identity: 'gone' }))
+    const lock = `${pidFile}.lock`
+    mkdirSync(lock)
+    const then = new Date(Date.now() - 10000)
+    utimesSync(lock, then, then)
+    const started = Date.now()
+    expect(await running(pidFile)).toBeUndefined()
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(existsSync(pidFile)).toBe(false)
+    expect(existsSync(lock)).toBe(false)
+  })
+
+  it('never sends SIGKILL to a start that is slow to hand over, so its server does not outlive it', async () => {
+    const { port, pidFile } = await setUp()
+    const daemon = join(root, 'packages', 'engine', 'dist', 'daemon.js')
+    const marker = join(pidFile, '..', 'server.pid')
+    // A ps that takes seven seconds to say what any process but its caller is, so start stalls while it records
+    // its server, past the five seconds after which stop sends SIGKILL to a server.
+    const bin = mkdtempSync(join(tmpdir(), 'ddm-slow-ps-'))
+    const ps = execFileSync('sh', ['-c', 'command -v ps'], { encoding: 'utf8' }).trim()
+    writeFileSync(join(bin, 'ps'), `#!/bin/sh\nfor a; do last=$a; done\n[ "$last" != "$PPID" ] && sleep 7\nexec ${ps} "$@"\n`, { mode: 0o755 })
+    const server = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid)); setInterval(() => {}, 1000)`
+    const script = `const { start } = await import(${JSON.stringify(daemon)}); await start({ entry: ['-e', ${JSON.stringify(server)}], args: [], port: ${port}, host: '127.0.0.1', pidFile: ${JSON.stringify(pidFile)}, readyTimeout: 60 })`
+    const launcher = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: 'ignore', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+    const ended = new Promise((done) => launcher.on('exit', (_code, signal) => done(signal)))
+    while (!existsSync(pidFile)) await new Promise((done) => setTimeout(done, 5))
+    expect(await stop(pidFile)).toMatchObject({ pid: launcher.pid, launcher: true })
+    expect(await ended).toBe('SIGTERM')
+    expect(existsSync(pidFile)).toBe(false)
+    if (existsSync(marker)) {
+      const pid = Number(readFileSync(marker, 'utf8'))
+      await new Promise((done) => setTimeout(done, 200))
+      expect(() => process.kill(pid, 0)).toThrow()
     }
   }, 30000)
 

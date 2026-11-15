@@ -1,6 +1,6 @@
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { closeSync, constants, fstatSync, ftruncateSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, constants, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -25,6 +25,8 @@ export interface Instance {
    * started at another time, so this is what says the pid is still the server.
    */
   identity: string
+  /** Set on the claim start writes before the server runs, which names start itself until the server's record replaces it. */
+  launcher?: true
   /** Set once the server listens. */
   url?: string
   /** Set once the server listens. */
@@ -133,56 +135,86 @@ const isInstance = (value: unknown): value is Instance => {
   return typeof record === 'object' && record !== null && Number.isInteger(record.pid) && record.pid! > 0 && Number.isInteger(record.port) && typeof record.host === 'string' && typeof record.identity === 'string'
 }
 
-/** A file of this process's own beside the pid file, created rather than opened, so no link is followed. */
-const scratch = (pidFile: string, text: string): string => {
-  const file = `${pidFile}.${process.pid}.${randomUUID()}`
-  writeFileSync(file, text, { flag: 'wx', mode: 0o600 })
-  return file
+/** Waits without giving up the thread, for the few places that must stay synchronous. */
+const pause = (ms: number): void => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+/**
+ * Runs work that changes the pid file while no other start, status or stop changes it. The lock is a directory,
+ * which only one process can create. It is held for a few synchronous file operations, so one older than five
+ * seconds belongs to a process that died holding it, and is moved aside in one step and taken.
+ */
+const locked = <T>(pidFile: string, work: () => T): T => {
+  const lock = `${pidFile}.lock`
+  for (;;) {
+    try {
+      mkdirSync(lock, { mode: 0o700 })
+      break
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
+    let age: number
+    try {
+      age = Date.now() - lstatSync(lock).mtimeMs
+    } catch {
+      continue
+    }
+    if (age > 5000) {
+      const aside = `${lock}.${process.pid}.${randomUUID()}`
+      try {
+        renameSync(lock, aside)
+        rmSync(aside, { recursive: true, force: true })
+      } catch {
+        // Another process took the stale lock first.
+      }
+      continue
+    }
+    pause(10)
+  }
+  try {
+    return work()
+  } finally {
+    rmSync(lock, { recursive: true, force: true })
+  }
 }
 
 /** Replaces the record in one step, so a reader sees the old record or the new one and never part of either. */
 const replace = (pidFile: string, text: string): void => {
-  renameSync(scratch(pidFile, text), pidFile)
-}
-
-/**
- * Creates the record only if there is none, in one step. A link cannot replace a file, and the record is whole
- * before the link makes it visible.
- *
- * @returns Whether this call created it.
- */
-const claim = (pidFile: string, text: string): boolean => {
-  const file = scratch(pidFile, text)
+  // Created rather than opened, so no link is followed.
+  const file = `${pidFile}.${process.pid}.${randomUUID()}`
+  writeFileSync(file, text, { flag: 'wx', mode: 0o600 })
   try {
-    linkSync(file, pidFile)
-    return true
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false
-    throw error
+    renameSync(file, pidFile)
   } finally {
     rmSync(file, { force: true })
   }
 }
 
 /**
- * Removes the record only if it still says what it said when it was read. It is moved aside first, which is one step,
- * and put back if another process wrote it in between.
+ * Creates the record only if there is none.
+ *
+ * @returns Whether this call created it.
  */
+const claim = (pidFile: string, text: string): boolean => locked(pidFile, () => {
+  if (read(pidFile) !== undefined) return false
+  replace(pidFile, text)
+  return true
+})
+
+/** Replaces the record this process owns, as long as it still holds what this process last wrote. */
+const update = (pidFile: string, was: string, text: string): void => {
+  locked(pidFile, () => {
+    if (read(pidFile) !== was) throw new Error(`${pidFile} was changed by another process while the mock started.`)
+    replace(pidFile, text)
+  })
+}
+
+/** Removes the record only if it still says what it said when it was read. */
 const forget = (pidFile: string, text: string): void => {
-  const aside = `${pidFile}.${process.pid}.${randomUUID()}`
-  try {
-    renameSync(pidFile, aside)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
-    throw error
-  }
-  try {
-    if (readFileSync(aside, 'utf8') !== text) linkSync(aside, pidFile)
-  } catch {
-    // Another start has claimed the file meanwhile, and its record is the one to keep.
-  } finally {
-    rmSync(aside, { force: true })
-  }
+  locked(pidFile, () => {
+    if (read(pidFile) === text) rmSync(pidFile, { force: true })
+  })
 }
 
 /** The pid file's text, or undefined when there is none. A file that is not the user's own is refused, not read. */
@@ -272,7 +304,7 @@ const openLog = (log: string): number => {
 }
 
 /**
- * Starts the server in the background and returns once `/jsonapi` answers, with the line `serve` prints. A server that
+ * Starts the server in the background and returns once it answers HTTP, with the line `serve` prints. A server that
  * exits, or does not answer in time, is stopped, and the error carries its log.
  *
  * @param options - What to run and where.
@@ -286,7 +318,7 @@ export const start = async (options: StartOptions): Promise<{ line: string, inst
   if (own === undefined) throw new Error('ps cannot say when this process started, so start cannot record which process the server is.')
   // Claimed before anything runs, so two starts at once cannot both run a server. Until the server's own pid replaces
   // it, the record names this process, which is the one to stop.
-  let text = JSON.stringify({ pid: process.pid, port, host, log, identity: own })
+  let text = JSON.stringify({ pid: process.pid, port, host, log, identity: own, launcher: true })
   if (!claim(pidFile, text)) throw new Error(`A mock is already starting on port ${port}: stop it first.`)
   let child: ChildProcess | undefined
   let exited: number | null | undefined
@@ -336,7 +368,7 @@ export const start = async (options: StartOptions): Promise<{ line: string, inst
     const instance: Instance = { pid: child.pid, port, host, log, identity: identity! }
     // Written before the server answers, so a start that is itself stopped leaves something for stop to find.
     try {
-      replace(pidFile, JSON.stringify(instance))
+      update(pidFile, text, JSON.stringify(instance))
       text = JSON.stringify(instance)
     } catch (error) {
       fail((error as Error).message)
@@ -348,13 +380,15 @@ export const start = async (options: StartOptions): Promise<{ line: string, inst
       if (line) {
         instance.url = line.slice(line.lastIndexOf(' ') + 1)
         instance.preset = line.slice(0, line.indexOf(' from Drupal '))
-        // Listening is not yet answering, and the issue a caller has is with the second.
-        while (await answers(`${instance.url}/jsonapi`) === undefined) {
+        // Listening is not yet answering, and the issue a caller has is with the second. serve loads the dump before it
+        // listens, so any answer at all says it is ready, whatever path the site's JSON:API is at.
+        while (await answers(`${instance.url}/`) === undefined) {
           if (exited !== undefined) fail(`The mock exited with status ${exited}.`)
           if (Date.now() > deadline) fail(`The mock did not answer within ${readyTimeout} seconds.`)
           await sleep(100)
         }
-        replace(pidFile, JSON.stringify(instance))
+        update(pidFile, text, JSON.stringify(instance))
+        text = JSON.stringify(instance)
         return { line: line.trim(), instance }
       }
       if (exited !== undefined) fail(`The mock exited with status ${exited} before it listened.`)
@@ -388,15 +422,19 @@ export const stop = async (pidFile: string): Promise<Instance | undefined> => {
     }
   }
   let there = signal('SIGTERM')
-  for (let waited = 0; there && waited < 10000; waited += 50) {
+  // A start that is signalled ends the server it started before it ends. It may first be finishing a step it cannot
+  // leave, so it gets longer, and never SIGKILL, which would leave that server running without a record.
+  const limit = instance.launcher ? 30000 : 10000
+  for (let waited = 0; there && waited < limit; waited += 50) {
     await sleep(50)
     there = whose(instance) !== 'gone'
-    if (there && waited === 5000) {
+    if (there && waited === 5000 && !instance.launcher) {
       const state = whose(instance)
       if (state === 'unknown') throw new Error(`ps cannot say whether pid ${instance.pid} is still the mock, so it was sent SIGTERM and not SIGKILL. Check it, then remove ${pidFile}.`)
       there = state === 'ours' && signal('SIGKILL')
     }
   }
+  if (there && instance.launcher) throw new Error(`start, pid ${instance.pid}, has not ended the server it is starting yet: run stop again.`)
   for (let waited = 0; await taken(instance.port, instance.host); waited += 50) {
     if (waited >= 5000) throw new Error(`Port ${instance.port} is still in use after stopping pid ${instance.pid}.`)
     await sleep(50)
