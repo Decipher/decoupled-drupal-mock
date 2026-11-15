@@ -1,10 +1,10 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, onTestFinished } from 'vitest'
-import { pidFileFor, running, start, stop } from '../src/daemon'
+import { identityOf, pidFileFor, running, start, stop } from '../src/daemon'
 
 const root = join(__dirname, '..', '..', '..')
 // The built command, as a preset package runs it: the background server is a process of its own.
@@ -64,11 +64,20 @@ describe('the background server', () => {
     writeFileSync(pidFile, 'not json')
     expect(await running(pidFile)).toBeUndefined()
     expect(existsSync(pidFile)).toBe(false)
-    // This process is alive, but the server that listened has left the port, so the pid is no longer the mock's.
-    writeFileSync(pidFile, JSON.stringify({ pid: process.pid, port, host: '127.0.0.1', log: '', url: `http://127.0.0.1:${port}` }))
-    expect(await running(pidFile)).toBeUndefined()
+    // This process is alive, but it started at another time than the server did, so the pid is no longer the mock's.
+    const reused = { pid: process.pid, port, host: '127.0.0.1', log: '', identity: `Thu Jan  1 00:00:00 1970 ${identityOf(process.pid)!.slice(25)}` }
+    for (const record of [reused, { ...reused, url: `http://127.0.0.1:${port}` }]) {
+      writeFileSync(pidFile, JSON.stringify(record))
+      expect(await running(pidFile)).toBeUndefined()
+      expect(existsSync(pidFile)).toBe(false)
+      writeFileSync(pidFile, JSON.stringify(record))
+      expect(await stop(pidFile)).toBeUndefined()
+    }
+    // A record with nothing to tell the pid's process by is never trusted with a signal.
+    const { identity: _, ...unidentified } = reused
+    writeFileSync(pidFile, JSON.stringify(unidentified))
+    expect(await stop(pidFile)).toBeUndefined()
     expect(existsSync(pidFile)).toBe(false)
-    expect(await running(pidFile)).toBeUndefined()
   })
 
   it('waits past the listening line until /jsonapi answers, and stops a server that never does', async () => {
@@ -82,7 +91,7 @@ describe('the background server', () => {
     const { port, ...options } = await setUp()
     const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })
     const gone = new Promise((done) => child.on('exit', done))
-    const record = { pid: child.pid!, port, host: '127.0.0.1', log: '' }
+    const record = { pid: child.pid!, port, host: '127.0.0.1', log: '', identity: identityOf(child.pid!)! }
     writeFileSync(options.pidFile, JSON.stringify(record))
     expect(await running(options.pidFile)).toEqual(record)
     await expect(start({ entry: [cli, 'serve', umami], args: ['--port', String(port)], port, ...options })).rejects.toThrow(`already running on port ${port}, pid ${child.pid}`)
@@ -139,7 +148,7 @@ describe('the background server when things go wrong', () => {
     const child = spawn(process.execPath, ['-e', 'process.on("SIGTERM", () => {}); console.log("up"); setInterval(() => {}, 1000)'], { stdio: ['ignore', 'pipe', 'ignore'] })
     await new Promise((done) => child.stdout.once('data', done))
     const gone = new Promise((done) => child.on('exit', (_code, signal) => done(signal)))
-    writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port, host: '127.0.0.1', log: '' }))
+    writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port, host: '127.0.0.1', log: '', identity: identityOf(child.pid!) }))
     expect(await stop(pidFile)).toMatchObject({ pid: child.pid })
     expect(await gone).toBe('SIGKILL')
     writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port, host: '127.0.0.1', log: '' }))
@@ -154,9 +163,68 @@ describe('the background server when things go wrong', () => {
     })
     await new Promise((done) => holder.stdout.once('data', done))
     const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })
-    writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port, host: '127.0.0.1', log: '' }))
+    writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port, host: '127.0.0.1', log: '', identity: identityOf(child.pid!) }))
     await expect(stop(pidFile)).rejects.toThrow(`Port ${port} is still in use after stopping pid ${child.pid}.`)
   }, 15000)
+
+  it('leaves a process alone, and keeps its record, when ps cannot say what the process is', async () => {
+    const { port, pidFile } = await setUp()
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })
+    onTestFinished(() => {
+      child.kill('SIGKILL')
+    })
+    writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port, host: '127.0.0.1', log: '', identity: identityOf(child.pid!) }))
+    const saved = process.env.PATH
+    process.env.PATH = mkdtempSync(join(tmpdir(), 'ddm-no-ps-'))
+    try {
+      await expect(running(pidFile)).rejects.toThrow(`ps cannot say whether pid ${child.pid} is still the mock`)
+      await expect(stop(pidFile)).rejects.toThrow('ps cannot say')
+      await expect(start({ entry: [cli, 'serve', umami], args: [], port, pidFile, host: '127.0.0.1', readyTimeout: 1 })).rejects.toThrow('ps cannot say')
+    } finally {
+      process.env.PATH = saved
+    }
+    expect(existsSync(pidFile)).toBe(true)
+    expect(child.exitCode).toBeNull()
+    expect(child.signalCode).toBeNull()
+  })
+
+  it('refuses a pid file or a log that is a link, and leaves what it points to alone', async () => {
+    const { port, ...options } = await setUp()
+    const dir = join(options.pidFile, '..')
+    const target = join(dir, 'someone-elses')
+    writeFileSync(target, JSON.stringify({ pid: process.pid, port, host: '127.0.0.1', log: '', identity: identityOf(process.pid) }))
+    symlinkSync(target, options.pidFile)
+    await expect(stop(options.pidFile)).rejects.toThrow('is not a file of your own')
+    await expect(start({ entry: [cli, 'serve', umami], args: [], port, ...options })).rejects.toThrow('is not a file of your own')
+    rmSync(options.pidFile)
+    const pidFile = join(dir, 'other.pid')
+    const log = join(dir, 'other.log')
+    writeFileSync(target, 'keep')
+    for (const link of [symlinkSync, linkSync]) {
+      link(target, log)
+      await expect(start({ entry: [cli, 'serve', umami], args: [], port, ...options, pidFile })).rejects.toThrow(`${log} is not a file of your own`)
+      expect(readFileSync(target, 'utf8')).toBe('keep')
+      expect(existsSync(pidFile)).toBe(false)
+      rmSync(log)
+    }
+  })
+
+  it('lets one of several start commands at once run a server, each its own process, and keeps its record', async () => {
+    const { port, pidFile } = await setUp()
+    const starts = await Promise.all(Array.from({ length: 4 }, () => new Promise<{ status: number | null, output: string }>((done) => {
+      const child = spawn(process.execPath, [cli, 'start', umami, '--port', String(port), '--pid-file', pidFile, '--ready-timeout', '20'], { stdio: ['ignore', 'pipe', 'pipe'] })
+      let output = ''
+      child.stdout.on('data', (data: Buffer) => (output += data))
+      child.stderr.on('data', (data: Buffer) => (output += data))
+      child.on('exit', (status) => done({ status, output }))
+    })))
+    expect(starts.filter(({ status }) => status === 0)).toHaveLength(1)
+    for (const { output } of starts.filter(({ status }) => status !== 0)) expect(output).toMatch(new RegExp(`already (starting|running) on port ${port}`))
+    const instance = await running(pidFile)
+    expect(instance).toMatchObject({ port, url: `http://127.0.0.1:${port}` })
+    expect((await fetch(`http://127.0.0.1:${port}/jsonapi`)).status).toBe(200)
+    expect(await stop(pidFile)).toEqual(instance)
+  }, 60000)
 
   it('refuses a directory for the pid file that someone else could write to', () => {
     const saved = process.env.TMPDIR

@@ -4,7 +4,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { daemonCommand, running, stop } from '../src/daemon'
+import { daemonCommand, identityOf, running, stop } from '../src/daemon'
 import { presetCommand } from '../src/serve-command'
 
 const root = join(__dirname, '..', '..', '..')
@@ -81,7 +81,7 @@ describe('the start, status and stop commands', () => {
     onTestFinished(() => {
       child.kill('SIGKILL')
     })
-    writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port: Number(port), host: '127.0.0.1', log: '' }))
+    writeFileSync(pidFile, JSON.stringify({ pid: child.pid, port: Number(port), host: '127.0.0.1', log: '', identity: identityOf(child.pid!) }))
     expect(await run(() => daemonCommand('status', [], options))).toEqual({ status: 0, output: `A mock is starting on port ${port}, pid ${child.pid}.` })
   })
 
@@ -109,22 +109,37 @@ describe('the start, status and stop commands', () => {
 
   it('leave a process alone whose pid the system gave to something else', async () => {
     const { port, pidFile } = await setUp()
-    // Something else holds the port under the recorded pid, with a command line that is not the server's.
+    // Something else holds the port under the recorded pid, and started at another time than the server did.
     const child = spawn(process.execPath, ['-e', `require('node:net').createServer().listen(${port}, '127.0.0.1', () => console.log('up'))`], { stdio: ['ignore', 'pipe', 'ignore'] })
     onTestFinished(() => {
       child.kill('SIGKILL')
     })
     await new Promise((done) => child.stdout.once('data', done))
-    const record = { pid: child.pid, port: Number(port), host: '127.0.0.1', log: '', url: `http://127.0.0.1:${port}`, command: 'node packages/engine/dist/cli.js serve umami' }
+    const record = { pid: child.pid, port: Number(port), host: '127.0.0.1', log: '', url: `http://127.0.0.1:${port}`, identity: 'Thu Jan  1 00:00:00 1970 node packages/engine/dist/cli.js serve umami' }
     writeFileSync(pidFile, JSON.stringify(record))
     expect(await running(pidFile)).toBeUndefined()
     expect(await stop(pidFile)).toBeUndefined()
     expect(child.exitCode).toBeNull()
     expect(child.signalCode).toBeNull()
-    // With no command line recorded, as where ps cannot say, the pid and the port are all there is to go on.
-    const { command: _, ...unrecorded } = record
+    // A record with nothing to tell the process by is forgotten, and nothing is signalled.
+    const { identity: _, ...unrecorded } = record
     writeFileSync(pidFile, JSON.stringify(unrecorded))
-    expect(await running(pidFile)).toEqual(unrecorded)
+    expect(await stop(pidFile)).toBeUndefined()
+    expect(child.signalCode).toBeNull()
+    // Where ps cannot say what the process is, the commands say so and leave the record for a person to check.
+    writeFileSync(pidFile, JSON.stringify({ ...record, identity: identityOf(child.pid!) }))
+    const saved = process.env.PATH
+    process.env.PATH = mkdtempSync(join(tmpdir(), 'ddm-no-ps-'))
+    try {
+      for (const command of ['status', 'stop'] as const) {
+        printed = []
+        expect(await run(() => daemonCommand(command, [], ['--port', port, '--pid-file', pidFile]))).toEqual({ status: 1, output: `ps cannot say whether pid ${child.pid} is still the mock, so it is left alone. Check it, then remove ${pidFile}.` })
+      }
+    } finally {
+      process.env.PATH = saved
+    }
+    expect(existsSync(pidFile)).toBe(true)
+    expect(child.signalCode).toBeNull()
   })
 })
 

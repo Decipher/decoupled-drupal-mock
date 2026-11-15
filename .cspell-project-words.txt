@@ -50,6 +50,7 @@ linkset
 linksets
 listhen
 lndo
+lstart
 lychee
 markdownlint
 mediterráneo
