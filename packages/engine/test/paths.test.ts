@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createDrupal } from '../src'
 import { createReader } from '../src/filter'
+import { checkPath } from '../src/paths'
 import type { Document, Resource, TypeFilters } from '../src'
 import { dump } from './dump'
 
@@ -19,6 +20,7 @@ const filters: Record<string, TypeFilters> = {
 }
 const drupal = createDrupal({ ...dump, filters }, { baseUrl: 'https://drupal.test' })
 const admin = { authorization: `Bearer ${drupal.tokenFor('admin').access}` }
+const member = { authorization: `Bearer ${drupal.tokenFor('umami').access}` }
 const ask = async (path: string, headers: Record<string, string> = {}): Promise<{ status: number, detail?: string | undefined, titles?: unknown[] }> => {
   const response = await drupal.fetch(`https://drupal.test/jsonapi/${path}`, { headers })
   const body = await response.json() as Document
@@ -38,6 +40,14 @@ describe('a filter path, as JSON:API\'s field resolver walks it', () => {
     // Access comes first: a property below a refused field is refused, not missing.
     expect(await ask('user/user?filter[mail.x]=x')).toEqual(refused('mail', 'mail'))
     expect((await ask('user/user?filter[mail]=x', admin)).status).toBe(200)
+  })
+
+  it('refuses a signed-in user who does not administer users the account fields it refuses a visitor', async () => {
+    expect(await ask('user/user?filter[mail]=x', member)).toEqual(refused('mail', 'mail'))
+    expect(await ask('node/page?filter[uid.mail]=x', member)).toEqual(refused('mail', 'uid.entity:user.mail'))
+    expect((await ask('user/user?filter[name]=x', member)).status).toBe(200)
+    // Signing in opens every other type, as it does for reading.
+    expect((await ask('node/page?filter[field_secret.id]=x', member)).status).toBe(200)
   })
 
   it('reads through `entity` and `entity:type`, resolving the field on the types the relationship reaches', async () => {
@@ -126,5 +136,24 @@ describe('reading a filter path through a relationship', () => {
     expect(read(resources[1]!, ['parent', 'entity', 'name'])).toEqual(['root'])
     expect(read(resources[1]!, ['parent', 'entity:taxonomy_term', 'name'])).toEqual(['root'])
     expect(read(resources[1]!, ['parent', 'entity:user', 'name'])).toEqual([])
+  })
+})
+
+describe('a path through a relationship that reaches several types', () => {
+  // Images and videos both relate to nodes, of a bundle that only one of them reaches has `field_summary`.
+  const fields: Record<string, string[]> = { 'node--a': ['field_media'], 'media--image': ['field_related'], 'media--video': ['field_related'], 'node--b': ['title'], 'node--c': ['title', 'field_summary'] }
+  const targets: Record<string, Record<string, string[]>> = { 'node--a': { field_media: ['media--image', 'media--video'] }, 'media--image': { field_related: ['node--b'] }, 'media--video': { field_related: ['node--c'] } }
+  const schema = (order: (types: string[]) => string[]) => ({
+    filters: () => ({}),
+    fields: (type: string) => new Set(fields[type]),
+    targets: (type: string, field: string) => (targets[type]?.[field] ? new Set(order(targets[type][field])) : undefined),
+    refuses: () => true,
+  })
+
+  it('finds a field on any of the types reached, in whatever order the data names them', () => {
+    for (const order of [(types: string[]) => types, (types: string[]) => [...types].reverse()]) {
+      expect(checkPath(schema(order), 'node--a', 'field_media.field_related.field_summary')).toBeUndefined()
+      expect(checkPath(schema(order), 'node--a', 'field_media.field_related.nope')).toMatchObject({ status: 400 })
+    }
   })
 })

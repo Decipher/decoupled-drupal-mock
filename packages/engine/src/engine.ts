@@ -96,7 +96,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if ([...types].some((current) => hiddenFrom(langcode, { type: current }, all)?.includes(field))) return { field, path: named.join('.') }
       const next = new Set<string>()
       for (const current of types) {
-        for (const resource of dump.resources[langcode]?.[current] || []) {
+        // The language's resources, or the default language's where it has none of a type, as a read falls back.
+        for (const resource of resourcesOf(langcode, current) || []) {
           const data = resource.relationships?.[field]?.data
           for (const identifier of Array.isArray(data) ? data : data ? [data] : []) next.add(identifier.type)
         }
@@ -118,7 +119,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     for (const [index, field] of path.entries()) {
       const next = new Set<string>()
       for (const current of types) {
-        for (const resource of dump.resources[langcode]?.[current] || []) {
+        // The language's resources, or the default language's where it has none of a type, as a read falls back.
+        for (const resource of resourcesOf(langcode, current) || []) {
           const data = resource.relationships?.[field]?.data
           for (const identifier of Array.isArray(data) ? data : data ? [data] : []) next.add(identifier.type)
         }
@@ -282,7 +284,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       }
       return targets
     },
-    all,
+    // A signed-in reader is refused only another person's account fields, unless they administer users.
+    refuses: (type) => !all || (type === 'user--user' && !viewer.administersUsers),
   })
 
   /** The field names a type has, from its resources: a filter on another is Drupal's 400. */
@@ -517,7 +520,15 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       }
     }
     const readAny = read(langcode)
-    const reader: typeof readAny = all ? readAny : (resource, path) => crossesUnfilterable(langcode, resource.type, path) ? [] : readAny(resource, path)
+    // Whether a path crosses into a type a visitor may not filter depends on the type and the path only, so it is
+    // worked out once per request rather than once per resource.
+    const crossing = new Map<string, boolean>()
+    const crosses = (type: string, path: string[]): boolean => {
+      const key = `${type} ${path.join('.')}`
+      if (!crossing.has(key)) crossing.set(key, crossesUnfilterable(langcode, type, path))
+      return crossing.get(key)!
+    }
+    const reader: typeof readAny = all ? readAny : (resource, path) => crosses(resource.type, path) ? [] : readAny(resource, path)
     // JSON:API's query guard answers a visitor's filter on a type no module lets a visitor filter with an empty list.
     const guarded = !all && Object.keys(filter.conditions).length > 0 && !!accessOf(langcode, type)?.unfilterable
     let matched = guarded ? [] : collection.filter((resource) => passes(resource, filter, reader))

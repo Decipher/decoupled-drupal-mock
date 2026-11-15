@@ -175,6 +175,9 @@ describe('a type no module lets a visitor filter', () => {
     const en = dump.access?.en
     const users = createDrupal({ ...dump, access: { ...dump.access, en: { ...en, 'user--user': { ...en?.['user--user'], unfilterable: true }, 'file--file': { ...en?.['file--file'], unfilterable: true } } } }, { baseUrl: 'https://drupal.test' })
     expect(await list(users, '/jsonapi/node/page?filter[uid.id]=u-1')).toEqual([])
+    // A language with no page of its own lists the default language's pages, and the guard reads those.
+    expect((await list(drupal, '/es/jsonapi/node/page?filter[uid.id]=u-1')).length).toBeGreaterThan(0)
+    expect(await list(users, '/es/jsonapi/node/page?filter[uid.id]=u-1')).toEqual([])
     expect((await list(drupal, '/jsonapi/node/page?filter[uid.id]=u-1')).length).toBeGreaterThan(0)
     expect(await list(users, '/jsonapi/media/image?filter[field_media_image.id]=f-1')).toEqual([])
     expect((await list(users, '/jsonapi/media/image?filter[field_media_image.meta.alt]=A%20quiche')).length).toBe(1)

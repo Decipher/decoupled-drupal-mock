@@ -7,8 +7,8 @@ export interface Schema {
   fields: (type: string) => Set<string> | undefined
   /** The types a relationship reaches, none when it holds no data, or nothing when the field is not a relationship. */
   targets: (type: string, field: string) => Set<string> | undefined
-  /** Whether the reader may filter by a field the build found refused to a visitor. */
-  all: boolean
+  /** Whether Drupal refuses this reader the fields it refused a visitor on a type. */
+  refuses: (type: string) => boolean
 }
 
 /** Drupal's answer to a path it will not filter or sort by. */
@@ -52,11 +52,13 @@ export const checkPath = (schema: Schema, type: string, path: string): PathError
     named.push(field)
     if (known(types, field) === false) return missing(field, path)
     const filters = filtersOf(types)
-    if (!schema.all && filters.some((entry) => entry?.refused?.includes(field))) return { status: 403, detail: `The current user is not authorized to filter by the ${tick(field)} field, given in the path ${tick(named.join('.'))}.` }
+    if ([...types].some((current, at) => schema.refuses(current) && filters[at]?.refused?.includes(field))) return { status: 403, detail: `The current user is not authorized to filter by the ${tick(field)} field, given in the path ${tick(named.join('.'))}.` }
     const specifiers = filters.find((entry) => entry?.specifiers?.[field])?.specifiers?.[field]
     const failures = Object.assign({}, ...filters.map((entry) => entry?.failures || {})) as Record<string, string>
     const rest = segments.slice(index + 1)
-    const targets = [...types].map((current) => schema.targets(current, field)).find(Boolean)
+    // Every type the relationship reaches from any type so far, so the order of the data changes nothing.
+    const reached = [...types].map((current) => schema.targets(current, field)).filter((set): set is Set<string> => !!set)
+    const targets = reached.length ? new Set(reached.flatMap((set) => [...set])) : undefined
     if (!rest.length) {
       if (failures[field]) return failure(failures[field])
       if (specifiers) return nested(`The field ${tick(field)}, given in the path ${tick(path)} is incomplete, it must end with one of the following specifiers: ${specifiers.map(tick).join(', ')}.`)
