@@ -51,6 +51,12 @@ describe('the background server', () => {
     expect(existsSync(options.pidFile)).toBe(false)
   })
 
+  it('says which signal ended a server that a signal ended', async () => {
+    const { port, ...options } = await setUp()
+    await expect(start({ entry: ['-e', 'console.log("going"); process.kill(process.pid, "SIGTERM")'], args: [], port, ...options })).rejects.toThrow(/was ended by SIGTERM before it listened\.\ngoing/)
+    expect(existsSync(options.pidFile)).toBe(false)
+  })
+
   it('stops a server that does not listen in time, and fails with the log', async () => {
     const { port, ...options } = await setUp()
     const started = Date.now()

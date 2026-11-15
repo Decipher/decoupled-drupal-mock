@@ -322,7 +322,8 @@ export const start = async (options: StartOptions): Promise<{ line: string, inst
   let text = JSON.stringify({ pid: process.pid, port, host, log, identity: own, launcher: true })
   if (!claim(pidFile, text)) throw new Error(`A mock is already starting on port ${port}: stop it first.`)
   let child: ChildProcess | undefined
-  let exited: number | null | undefined
+  // How the server ended, once it has: its exit status, or the signal that ended it.
+  let exited: string | undefined
   const end = (): void => {
     if (child && exited === undefined) child.kill('SIGKILL')
     forget(pidFile, text)
@@ -354,10 +355,10 @@ export const start = async (options: StartOptions): Promise<{ line: string, inst
     child = spawn(process.execPath, [...entry, ...args], { detached: true, stdio: ['ignore', fd, fd] })
     closeSync(fd)
     child.on('error', () => {
-      exited ??= 1
+      exited ??= 'could not be run'
     })
     child.on('exit', (code, name) => {
-      exited = code ?? (name ? 1 : 0)
+      exited = name ? `was ended by ${name}` : `exited with status ${code ?? 0}`
     })
     if (child.pid === undefined) {
       forget(pidFile, text)
@@ -384,7 +385,7 @@ export const start = async (options: StartOptions): Promise<{ line: string, inst
         // Listening is not yet answering, and the issue a caller has is with the second. serve loads the dump before it
         // listens, so any answer at all says it is ready, whatever path the site's JSON:API is at.
         while (await answers(`${instance.url}/`) === undefined) {
-          if (exited !== undefined) fail(`The mock exited with status ${exited}.`)
+          if (exited !== undefined) fail(`The mock ${exited}.`)
           if (Date.now() > deadline) fail(`The mock did not answer within ${readyTimeout} seconds.`)
           await sleep(100)
         }
@@ -392,7 +393,7 @@ export const start = async (options: StartOptions): Promise<{ line: string, inst
         text = JSON.stringify(instance)
         return { line: line.trim(), instance }
       }
-      if (exited !== undefined) fail(`The mock exited with status ${exited} before it listened.`)
+      if (exited !== undefined) fail(`The mock ${exited} before it listened.`)
       if (Date.now() > deadline) fail(`The mock did not listen within ${readyTimeout} seconds.`)
       await sleep(100)
     }
