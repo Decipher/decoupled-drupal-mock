@@ -397,14 +397,21 @@ describe('a site with Canvas Headless', () => {
 
   it('signs in again when the preview token lapses mid-crawl, and stops when a fresh one is refused too', async () => {
     const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
-    const preview = (refuse: (token: string) => boolean) => {
+    const preview = (refuse: (token: string) => boolean, logout: (token: string) => number = () => 204) => {
       let issued = 0
+      let logins = 0
+      // Each sign-in's logout token, in the order the build signs out with them.
+      const signedOut: string[] = []
       const site = (path: string, admin?: boolean, headers: Record<string, string | string[] | undefined> = {}): Answer | undefined => {
-        if (path === '/user/login?_format=json') return { body: { logout_token: 'lt' }, headers: { 'set-cookie': 'SESSabc=1; path=/' } }
+        if (path === '/user/login?_format=json') return { body: { logout_token: `lt${++logins}` }, headers: { 'set-cookie': 'SESSabc=1; path=/' } }
         if (path === '/session/token') return { body: 'csrf', raw: true }
         if (path.startsWith('/canvas-headless/assertion')) return { body: { assertion: `${part({ typ: 'p' })}.${part({ sub: '2' })}.sig` } }
         if (path.startsWith('/canvas-headless/renew')) return { status: 302, body: '', raw: true, headers: { location: 'http://127.0.0.1:3000/api/draft' } }
-        if (path.startsWith('/user/logout')) return { status: 204, body: '', raw: true }
+        if (path.startsWith('/user/logout')) {
+          const used = new URLSearchParams(path.split('?')[1]).get('token')!
+          signedOut.push(used)
+          return { status: logout(used), body: '', raw: true }
+        }
         const token = String(headers.authorization || '').replace('Bearer ', '')
         if (path.startsWith('/canvas/content-api') && (token === 'decoupled.drupal.mock' || (token.startsWith('p') && refuse(token)))) return { status: 401, body: { title: 'Unauthorized' } }
         if (path.startsWith('/canvas/content-api?requestUri=%2Fcanvas') && token.startsWith('p')) return { body: { content: `draft by ${token}` } }
@@ -412,7 +419,7 @@ describe('a site with Canvas Headless', () => {
       }
       // Each preview sign-in redeems an assertion for a new token. The build's own token is the default.
       const token = (form: URLSearchParams) => form.get('grant_type')?.endsWith('jwt-bearer') ? { body: { access_token: `p${++issued}` } } : undefined
-      return { site, token }
+      return { site, token, signedOut }
     }
     const options = { identities: { accounts: [{ name: 'editor', password: 'editor' }], consumers: [] }, canvasPreview: { account: 'editor' } }
     // The first preview token lapses before the crawl reaches /canvas.
@@ -421,8 +428,15 @@ describe('a site with Canvas Headless', () => {
     const routes = read(out, 'recorded/routes.json.gz') as Record<string, { status: number, body: unknown }>
     expect(routes['GET /canvas/content-api?requestUri=%2Fcanvas#preview']?.body).toEqual({ content: 'draft by p2' })
     expect(Object.entries(routes).filter(([key, entry]) => key.endsWith('#preview') && entry.status === 401)).toEqual([])
+    expect(lapsing.signedOut).toEqual(['lt1', 'lt2'])
+    // A crawl that stops still signs out every session it opened.
     const refusing = preview(() => true)
     await expect(build(refusing.site, options, undefined, refusing.token)).rejects.toThrow('refused a preview token issued a moment before')
+    expect(refusing.signedOut).toEqual(['lt1', 'lt2'])
+    // One refused sign-out stops the build, after every other session has been signed out too.
+    const stuck = preview((token) => token === 'p1', (token) => (token === 'lt1' ? 403 : 204))
+    await expect(build(stuck.site, options, undefined, stuck.token)).rejects.toThrow('/user/logout answered 403 to editor')
+    expect(stuck.signedOut).toEqual(['lt1', 'lt2'])
   })
 
   it('signs the preview account out when the redemption fails, and stops when Drupal refuses the sign-out', async () => {

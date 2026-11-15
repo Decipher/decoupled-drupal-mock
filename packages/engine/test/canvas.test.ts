@@ -115,6 +115,9 @@ describe('Canvas Headless\'s draft preview', () => {
     expect((await redeem(forged)).body).toMatchObject({ hint: 'Token signature mismatch' })
     // The jti the mock minted, under a signature it did not.
     expect((await redeem(`${header}.${claims}.sig`)).body).toMatchObject({ hint: 'Token signature mismatch' })
+    // The jti and the signature the mock minted, over claims it did not sign: Drupal's key verifies the whole.
+    const altered = `${header}.${Buffer.from(JSON.stringify({ ...decode(claims!), path: '/elsewhere' })).toString('base64url')}.${assertion.split('.')[2]}`
+    expect((await redeem(altered)).body).toMatchObject({ error: 'invalid_grant', hint: 'Token signature mismatch' })
     expect((await redeem(assertion)).status).toBe(200)
     expect((await redeem('not-a-jwt')).body).toMatchObject({ hint: 'The assertion is malformed.' })
     // A jti that is not a string names no assertion the mock minted, and no key Drupal's would verify.

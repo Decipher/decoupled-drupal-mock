@@ -184,8 +184,17 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   let canvas: boolean | undefined
   /** The preview token the content API's drafts are read with, from `canvasPreview`'s account. */
   let previewToken: string | undefined
-  /** How to sign out each session the preview account opened, once the crawl has read every draft. */
-  const previewSessions: Array<() => Promise<void>> = []
+  /** How to sign out each session the preview account opened, once the crawl has read every draft. Each gives its failure. */
+  const previewSessions: Array<() => Promise<string | undefined>> = []
+  /** Signs out every session, each even when another fails, and gives the failures. */
+  const signOutPreview = async (): Promise<string[]> => {
+    const failures: string[] = []
+    for (const signOut of previewSessions.splice(0)) {
+      const failure = await signOut().catch((err: unknown) => `/user/logout failed: ${(err as Error).message}`)
+      if (failure) failures.push(failure)
+    }
+    return failures
+  }
   /**
    * Signs the preview account in with its password, mints a preview assertion for the front page and redeems it, as the
    * Canvas editor and a frontend's server do. The assertion's decoded claims are recorded, so the engine mints its own
@@ -230,7 +239,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     // Signing out revokes the preview token, so the session stays open until the crawl is done with it.
     previewSessions.push(async () => {
       const status = await signOut()
-      if (status >= 400) throw new Error(`/user/logout answered ${status} to ${account}: the session would stay open.`)
+      return status >= 400 ? `/user/logout answered ${status} to ${account}: the session would stay open.` : undefined
     })
     return issued
   }
@@ -316,293 +325,300 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   }
 
   const all: Record<string, Record<string, Resource[]>> = {}
-  for (const [langcode, prefix] of Object.entries(options.languages)) {
-    const lang = prefix ? `/${prefix}` : ''
-    log(`${langcode}: the index`)
-    const index = indexes[langcode]!
-    if (index.status !== 200) throw new Error(`${lang}/jsonapi answered ${index.status}.`)
-    // An installer or a login page also answers 200, and an empty dump would look like a build.
-    if (!(index.body as Document | undefined)?.links) throw new Error(`${lang}/jsonapi is not a JSON:API index: is Drupal installed, with JSON:API on?`)
-    const links = ((index.body as Document).links || {}) as Record<string, { href: string } | null>
-    // Following such a link would record one language as another.
-    if (lang) {
-      for (const [type, link] of Object.entries(links)) {
-        if (type === 'self' || !link?.href) continue
-        const path = pathOf(link.href)
-        if (!path.startsWith(`${lang}/`)) throw new Error(`${lang}/jsonapi links ${type} to ${path}, outside ${langcode}. Rebuild Drupal's caches and build again.`)
-      }
-    }
-    write(`index/${langcode}.json`, index.body)
-    all[langcode] = {}
-    const access: Record<string, { visible?: string[], hidden?: string[], forbidden?: true, phantom?: string[], unfilterable?: true }> = {}
-    /** What Drupal reported as omitted on the administrator's crawl: resources no user reads. */
-    const phantom: Record<string, string[]> = {}
-    /** The attribute and relationship names a set of resources carries. */
-    const fieldNames = (resources: Resource[]): Set<string> => new Set(resources.flatMap((resource) => [...Object.keys(resource.attributes || {}), ...Object.keys(resource.relationships || {})]))
-    /** Whether a visitor's filter that holds for every resource answers nothing: JSON:API's query guard, for a type no module lets a visitor filter. */
-    const unfilterable = async (href: string): Promise<boolean> => {
-      const filtered = await get(`${pathOf(href)}?${MATCH_ALL}`)
-      const data = (filtered.body as { data?: unknown[] } | undefined)?.data
-      return filtered.status === 200 && Array.isArray(data) && !data.length
-    }
-    /** Every resource of a type, page by page, as the given user reads it. */
-    const collect = async (href: string, headers: Record<string, string>): Promise<Resource[] | number> => {
-      const resources: Resource[] = []
-      let next: string | undefined = `${pathOf(href)}?page%5Blimit%5D=50`
-      let first = true
-      let byId = false
-      while (next) {
-        let page = await get(next, headers)
-        // A server's failure is tried again; one that stays, or a later page refused, would leave a type half read.
-        for (let attempt = 0; attempt < 2 && page.status >= 500; attempt++) page = await get(next, headers)
-        // Drupal Canvas replaces the config entity query with one that cannot take JSON:API's offset, so a type past one
-        // page is read in order of its id. Nothing readable so far means nothing the crawl could read of the rest.
-        if (page.status >= 500 && !first && !byId && /array_slice/.test(JSON.stringify(page.body))) {
-          if (!resources.length) return UNREADABLE
-          byId = true
-          resources.length = 0
-          next = `${pathOf(href)}?sort=id&page%5Blimit%5D=50`
-          continue
-        }
-        if (page.status >= 500 || (!first && page.status !== 200)) throw new Error(`GET ${next} answered ${page.status}: the build would hold part of ${href}.`)
-        if (page.status !== 200) return page.status
-        first = false
-        const document = page.body as Document
-        resources.push(...(document.data as Resource[]))
-        if (headers.authorization) {
-          const left = (document.meta?.omitted as { links?: Record<string, { href: string }> } | undefined)?.links || {}
-          for (const [key, item] of Object.entries(left)) if (key !== 'help' && item?.href) (phantom[href] = phantom[href] || []).push(item.href.split('/').pop()!)
-        }
-        const link = document.links?.next
-        next = link ? pathOf(link.href) : undefined
-        if (byId) {
-          const last = (document.data as Resource[]).at(-1)?.id
-          next = last === undefined ? undefined : `${pathOf(href)}?sort=id&page%5Blimit%5D=50&filter%5Bafter%5D%5Bcondition%5D%5Bpath%5D=id&filter%5Bafter%5D%5Bcondition%5D%5Boperator%5D=%3E&filter%5Bafter%5D%5Bcondition%5D%5Bvalue%5D=${encodeURIComponent(last)}`
+  // Every session the preview account opens is signed out however the crawl ends, as an open one keeps its token.
+  try {
+    for (const [langcode, prefix] of Object.entries(options.languages)) {
+      const lang = prefix ? `/${prefix}` : ''
+      log(`${langcode}: the index`)
+      const index = indexes[langcode]!
+      if (index.status !== 200) throw new Error(`${lang}/jsonapi answered ${index.status}.`)
+      // An installer or a login page also answers 200, and an empty dump would look like a build.
+      if (!(index.body as Document | undefined)?.links) throw new Error(`${lang}/jsonapi is not a JSON:API index: is Drupal installed, with JSON:API on?`)
+      const links = ((index.body as Document).links || {}) as Record<string, { href: string } | null>
+      // Following such a link would record one language as another.
+      if (lang) {
+        for (const [type, link] of Object.entries(links)) {
+          if (type === 'self' || !link?.href) continue
+          const path = pathOf(link.href)
+          if (!path.startsWith(`${lang}/`)) throw new Error(`${lang}/jsonapi links ${type} to ${path}, outside ${langcode}. Rebuild Drupal's caches and build again.`)
         }
       }
-      // Read by uuid, kept in the order Drupal lists a configuration type unsorted: by name, as config storage lists them.
-      if (byId) {
-        const name = (resource: Resource): string => String((resource.attributes as { drupal_internal__id?: unknown } | undefined)?.drupal_internal__id ?? '')
-        resources.sort((a, b) => (name(a) < name(b) ? -1 : name(a) > name(b) ? 1 : 0))
+      write(`index/${langcode}.json`, index.body)
+      all[langcode] = {}
+      const access: Record<string, { visible?: string[], hidden?: string[], forbidden?: true, phantom?: string[], unfilterable?: true }> = {}
+      /** What Drupal reported as omitted on the administrator's crawl: resources no user reads. */
+      const phantom: Record<string, string[]> = {}
+      /** The attribute and relationship names a set of resources carries. */
+      const fieldNames = (resources: Resource[]): Set<string> => new Set(resources.flatMap((resource) => [...Object.keys(resource.attributes || {}), ...Object.keys(resource.relationships || {})]))
+      /** Whether a visitor's filter that holds for every resource answers nothing: JSON:API's query guard, for a type no module lets a visitor filter. */
+      const unfilterable = async (href: string): Promise<boolean> => {
+        const filtered = await get(`${pathOf(href)}?${MATCH_ALL}`)
+        const data = (filtered.body as { data?: unknown[] } | undefined)?.data
+        return filtered.status === 200 && Array.isArray(data) && !data.length
       }
-      return resources
-    }
-    for (const [type, link] of Object.entries(links)) {
-      if (type === 'self' || !link || skipped(type) || options.skipTypes?.includes(type)) continue
-      const collected = await collect(link.href, authorized())
-      // A token Drupal refuses, most often one that expired mid-crawl, would leave out every type read after it.
-      if (collected === 401 && token) throw new Error(`GET ${link.href} answered 401 with the build's token: the build would leave ${type} out.`)
-      if (typeof collected === 'number') {
-        log(collected === UNREADABLE ? `  ${type}: nothing readable, and a second page the site cannot serve, left out` : `  ${type}: ${collected}, left out`)
-        continue
-      }
-      const full = options.exclude ? collected.filter((resource) => !options.exclude!(resource)) : collected
-      for (const resource of collected) if (!full.includes(resource)) excludedIds.add(`${resource.type}:${resource.id}`)
-      // A build without a token read the type as a visitor, so its filter guard is learned from that read.
-      if (!token && full.length && await unfilterable(link.href)) access[type] = { unfilterable: true }
-      if (token) {
-        // What a visitor may read of it.
-        const anonymous = await collect(link.href, {})
-        if (typeof anonymous === 'number') access[type] = { forbidden: true }
-        else {
-          const entry: { visible?: string[], hidden?: string[], unfilterable?: true } = {}
-          const seenByVisitor = anonymous.filter((resource) => !excluded(resource))
-          const ids = new Set(seenByVisitor.map((resource) => resource.id))
-          if (full.some((resource) => !ids.has(resource.id))) entry.visible = [...ids]
-          // A field the administrator reads and the visitor does not, such as revision_log.
-          const seen = fieldNames(seenByVisitor)
-          const hidden = [...fieldNames(full)].filter((name) => !seen.has(name))
-          if (hidden.length && seenByVisitor.length) entry.hidden = hidden
-          if (seenByVisitor.length && await unfilterable(link.href)) entry.unfilterable = true
-          if (Object.keys(entry).length) access[type] = entry
-        }
-        const ids = [...new Set(phantom[link.href] || [])]
-        if (ids.length) {
-          access[type] = { ...access[type], phantom: ids }
-          // With its data in the dump, a phantom filters and sorts as Drupal's does, and is never served.
-          for (const id of ids) {
-            const attributes = await options.phantomData?.(type.split('--')[0]!, id)
-            if (attributes) full.push({ type, id, attributes })
-            else log(`  ${type}: ${id} is omitted for every user and has no data; it matches only an unfiltered query`)
+      /** Every resource of a type, page by page, as the given user reads it. */
+      const collect = async (href: string, headers: Record<string, string>): Promise<Resource[] | number> => {
+        const resources: Resource[] = []
+        let next: string | undefined = `${pathOf(href)}?page%5Blimit%5D=50`
+        let first = true
+        let byId = false
+        while (next) {
+          let page = await get(next, headers)
+          // A server's failure is tried again; one that stays, or a later page refused, would leave a type half read.
+          for (let attempt = 0; attempt < 2 && page.status >= 500; attempt++) page = await get(next, headers)
+          // Drupal Canvas replaces the config entity query with one that cannot take JSON:API's offset, so a type past one
+          // page is read in order of its id. Nothing readable so far means nothing the crawl could read of the rest.
+          if (page.status >= 500 && !first && !byId && /array_slice/.test(JSON.stringify(page.body))) {
+            if (!resources.length) return UNREADABLE
+            byId = true
+            resources.length = 0
+            next = `${pathOf(href)}?sort=id&page%5Blimit%5D=50`
+            continue
+          }
+          if (page.status >= 500 || (!first && page.status !== 200)) throw new Error(`GET ${next} answered ${page.status}: the build would hold part of ${href}.`)
+          if (page.status !== 200) return page.status
+          first = false
+          const document = page.body as Document
+          resources.push(...(document.data as Resource[]))
+          if (headers.authorization) {
+            const left = (document.meta?.omitted as { links?: Record<string, { href: string }> } | undefined)?.links || {}
+            for (const [key, item] of Object.entries(left)) if (key !== 'help' && item?.href) (phantom[href] = phantom[href] || []).push(item.href.split('/').pop()!)
+          }
+          const link = document.links?.next
+          next = link ? pathOf(link.href) : undefined
+          if (byId) {
+            const last = (document.data as Resource[]).at(-1)?.id
+            next = last === undefined ? undefined : `${pathOf(href)}?sort=id&page%5Blimit%5D=50&filter%5Bafter%5D%5Bcondition%5D%5Bpath%5D=id&filter%5Bafter%5D%5Bcondition%5D%5Boperator%5D=%3E&filter%5Bafter%5D%5Bcondition%5D%5Bvalue%5D=${encodeURIComponent(last)}`
           }
         }
-      }
-      // A type a visitor may not list refuses every filter, which says nothing of its fields.
-      if (langcode === options.defaultLanguage && full.length) filters[type] = await probeFilters(link.href, fieldNames(full), !access[type]?.forbidden)
-      if (full.length) {
-        all[langcode]![type] = full
-        write(`resources/${langcode}/${type}.json.gz`, full)
-      }
-    }
-    if (Object.keys(access).length) write(`access/${langcode}.json.gz`, access)
-    if (langcode === options.defaultLanguage) write('filters.json.gz', filters)
-    log(`${langcode}: ${Object.keys(all[langcode]!).length} types, ${Object.values(all[langcode]!).reduce((n, list) => n + list.length, 0)} resources, ${Object.keys(access).length} types with limited access`)
-
-    // The default language also answers unprefixed, with the same index.
-    if (langcode === options.defaultLanguage && lang) await record('/jsonapi')
-
-    // Decoupled Router, for every resource's alias in this language, every node's and term's system path, and the front page.
-    const aliases = Object.values(all[langcode]!).flat().map((resource) => (resource.attributes as { path?: { alias?: string | null } } | undefined)?.path?.alias).filter((alias): alias is string => !!alias)
-    const nodes = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('node--')).flatMap(([, list]) => list.map((node) => `/node/${String((node.attributes as { drupal_internal__nid?: number } | undefined)?.drupal_internal__nid)}`))
-    const terms = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('taxonomy_term--')).flatMap(([, list]) => list.map((term) => `/taxonomy/term/${String((term.attributes as { drupal_internal__tid?: number } | undefined)?.drupal_internal__tid)}`))
-    // A Canvas page's own path, which Canvas answers with a redirect to its alias.
-    const canvasPages = (all[langcode]!['canvas_page--canvas_page'] || []).map((page) => `/page/${String((page.attributes as { drupal_internal__id?: number } | undefined)?.drupal_internal__id)}`)
-    const systemPaths = [...nodes, ...terms, ...canvasPages]
-    // The pages views give: every enabled page display with a path a client can ask for, such as /recipes.
-    const viewPages = (all[langcode]!['view--view'] || []).flatMap((view) => {
-      const attributes = view.attributes as { status?: boolean, display?: Record<string, { display_plugin?: string, display_options?: { path?: string } }> }
-      if (!attributes.status) return []
-      return Object.values(attributes.display || {}).map((display) => display.display_plugin === 'page' ? display.display_options?.path : undefined).filter((path): path is string => !!path && !path.includes('%') && !path.startsWith('admin/')).map((path) => `/${path}`)
-    })
-    const prefixed = [lang || '/', `${lang}/node`, ...aliases.map((alias) => `${lang}${alias}`), ...systemPaths.map((path) => `${lang}${path}`), ...viewPages.map((path) => `${lang}${path}`)]
-    // The default language answers unprefixed too, as a client asks for `/` or `/node/1`.
-    const unprefixed = langcode === options.defaultLanguage && lang ? ['/', '/node', ...aliases, ...systemPaths, ...viewPages] : []
-    const paths = [...new Set([...prefixed, ...unprefixed])]
-    log(`${langcode}: ${paths.length} router lookups`)
-    for (const path of paths) await record(`/router/translate-path?path=${encodeURIComponent(path)}`)
-
-    // Canvas Headless resolves a path itself, so its content API is recorded for every path the router was asked.
-    await recordCanvas(paths, all[langcode]!)
-
-    // Menus, as JSON:API Menu Items and as linksets.
-    for (const menu of all[langcode]!['menu--menu'] || []) {
-      const id = String((menu.attributes as { drupal_internal__id?: string }).drupal_internal__id)
-      await record(`${lang}/jsonapi/menu_items/${id}`)
-      await record(`${lang}/system/menu/${id}/linkset`)
-    }
-
-    // Views, every display of every view, through JSON:API Views.
-    for (const view of all[langcode]!['view--view'] || []) {
-      const attributes = view.attributes as { drupal_internal__id?: string, display?: Record<string, unknown> }
-      for (const display of Object.keys(attributes.display || {})) {
-        const entry = await record(`${lang}/jsonapi/views/${attributes.drupal_internal__id}/${display}`)
-        if (entry.status !== 200) delete recorded[`GET ${lang}/jsonapi/views/${attributes.drupal_internal__id}/${display}`]
-      }
-    }
-
-    await record(`${lang}/jsonapi/decoupled/settings`)
-  }
-  // The session token is the whole of its answer, so no key names it for the recordings' replacer: it is masked by its
-  // path, in the reads and in the writes alike.
-  const isSessionToken = (request: string): boolean => request.split('?')[0] === '/session/token'
-
-  // The oracle: real queries with Drupal's real answers, for the engine's tests.
-  if (options.oracle?.length) {
-    const entries: Array<{ request: string, status: number, headers: Record<string, string>, body: unknown }> = []
-    // `{type:n}` is the nth resource of that type in the default language's dump.
-    const resolve = (request: string): string => request.replace(/\{([a-z0-9_]+--[a-z0-9_]+):(\d+)\}/g, (_whole, type: string, n: string) => all[options.defaultLanguage]?.[type]?.[Number(n)]?.id || `missing-${type}-${n}`)
-    for (const request of options.oracle) {
-      const resolved = resolve(request)
-      const entry = await get(resolved)
-      entries.push({ request: resolved, ...entry, ...(isSessionToken(resolved) ? { body: '<token>' } : {}) })
-      // A type that refuses reads is recorded by its path, so the engine refuses it as Drupal does. A query refused
-      // for what it asks, such as a filter on a field, says nothing of the plain path, so that is asked too.
-      if (entry.status === 403 || entry.status === 405) {
-        const [pathname, search] = resolved.split('?') as [string, string?]
-        const plain = search ? await get(pathname) : entry
-        if (plain.status === 403 || plain.status === 405) recorded[`GET ${pathname}`] = recorded[`GET ${pathname}`] || plain
-      }
-    }
-    recordOracle('reads.json.gz', entries)
-    log(`${entries.length} oracle entries`)
-  }
-  write('recorded/routes.json.gz', recorded)
-
-  // The public files the content names, so a frontend against the server gets its images. Each is kept under
-  // `files/` at its path below Drupal's public files directory.
-  const publicFiles = new Set<string>()
-  for (const resources of Object.values(all)) {
-    for (const file of resources['file--file'] || []) {
-      const url = (file.attributes as { uri?: { url?: string } } | undefined)?.uri?.url
-      if (url && url.startsWith('/sites/default/files/')) publicFiles.add(url)
-    }
-  }
-  for (const url of publicFiles) {
-    let response: Response
-    try {
-      response = await fetch(`${base}${url}`)
-    } catch (error) {
-      log(`  file ${url}: ${(error as Error).message}, left out`)
-      continue
-    }
-    if (!response.ok) { log(`  file ${url}: ${response.status}, left out`); continue }
-    writeBytes(`files/${url.slice('/sites/default/files/'.length)}`, Buffer.from(await response.arrayBuffer()))
-  }
-  log(`${publicFiles.size} public files kept`)
-
-  // The scripts: each step as its account, every answer recorded, and what they created deleted afterwards.
-  if (options.writes?.length) {
-    const identities = options.identities
-    const tokenFor = async (name: string): Promise<string | undefined> => {
-      if (name === 'anonymous') return undefined
-      const consumer = identities?.consumers.find((candidate) => candidate.user === name && candidate.grants.includes('client_credentials'))
-      if (!consumer) throw new Error(`No consumer with the client credentials grant acts as "${name}".`)
-      const scope = Object.keys(consumer.scopes || {})[0]
-      const response = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'client_credentials', client_id: consumer.clientId, ...(consumer.secret ? { client_secret: consumer.secret } : {}), ...(scope ? { scope } : {}) }) })
-      const granted = await response.json() as { access_token?: string }
-      if (!granted.access_token) throw new Error(`No token for "${name}".`)
-      return granted.access_token
-    }
-    const recorded: RecordedWrite[] = []
-    const resourceId = (type: string, index: number) => all[options.defaultLanguage]?.[type]?.[index]?.id
-    /** What a script left in the Drupal, deleted before the next one reads it. A refusal stops the build: the site would keep it. */
-    const clean = async (created: string[]): Promise<void> => {
-      for (const path of created) {
-        const response = await fetch(`${base}${path}`, { method: 'DELETE', headers: { ...authorized() } })
-        log(`  cleaned up ${path}: ${response.status}`)
-        if (response.status !== 204 && response.status !== 404) throw new Error(`DELETE ${path} answered ${response.status}: the script's content is still in the Drupal.`)
-      }
-    }
-    for (const script of options.writes) {
-      const answers: Answer[] = []
-      const tokens = new Map<string, string | undefined>()
-      const created: string[] = []
-      try {
-        for (const step of script.steps) {
-          const as = step.as || script.as
-          if (!tokens.has(as)) tokens.set(as, await tokenFor(as))
-          const resolved = resolve(step, answers, resourceId)
-          const headers: Record<string, string> = { accept: 'application/vnd.api+json, application/json;q=0.9, */*;q=0.8' }
-          const bearer = resolved.bearer ?? tokens.get(as)
-          if (bearer) headers.authorization = `Bearer ${bearer}`
-          let body: string | undefined
-          if (resolved.form) { headers['content-type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(resolved.form).toString() }
-          else if (resolved.json !== undefined) { headers['content-type'] = 'application/json'; body = JSON.stringify(resolved.json) }
-          else if (resolved.body !== undefined) { headers['content-type'] = 'application/vnd.api+json'; body = JSON.stringify(resolved.body) }
-          const response = await fetch(`${base}${resolved.path}`, { method: resolved.method, headers, ...(body !== undefined ? { body } : {}), redirect: 'manual' })
-          const text = await response.text()
-          const type = response.headers.get('content-type') || ''
-          const answer: Answer = { status: response.status, headers: Object.fromEntries(KEPT_HEADERS.map((name) => [name, response.headers.get(name)]).filter(([, value]) => value).map(([name, value]) => [name, name === 'content-type' ? String(value).split(';')[0]!.trim() : String(value)])), body: type.includes('json') && text ? JSON.parse(text) : text }
-          answers.push(answer)
-          if (response.status === 201 && answer.headers.location) created.push(pathOf(answer.headers.location).split('?')[0]!)
+        // Read by uuid, kept in the order Drupal lists a configuration type unsorted: by name, as config storage lists them.
+        if (byId) {
+          const name = (resource: Resource): string => String((resource.attributes as { drupal_internal__id?: unknown } | undefined)?.drupal_internal__id ?? '')
+          resources.sort((a, b) => (name(a) < name(b) ? -1 : name(a) > name(b) ? 1 : 0))
         }
-      } finally {
-        await clean(created)
+        return resources
       }
-      // The script's later steps have read the real token already.
-      recorded.push({ ...script, answers: answers.map((answer, index) => (isSessionToken(script.steps[index]?.path || '') ? { ...answer, body: '<token>' } : answer)) })
-      log(`script "${script.name}": ${answers.map((answer) => answer.status).join(' ')}`)
-    }
-    recordOracle('writes.json.gz', recorded)
-  }
+      for (const [type, link] of Object.entries(links)) {
+        if (type === 'self' || !link || skipped(type) || options.skipTypes?.includes(type)) continue
+        const collected = await collect(link.href, authorized())
+        // A token Drupal refuses, most often one that expired mid-crawl, would leave out every type read after it.
+        if (collected === 401 && token) throw new Error(`GET ${link.href} answered 401 with the build's token: the build would leave ${type} out.`)
+        if (typeof collected === 'number') {
+          log(collected === UNREADABLE ? `  ${type}: nothing readable, and a second page the site cannot serve, left out` : `  ${type}: ${collected}, left out`)
+          continue
+        }
+        const full = options.exclude ? collected.filter((resource) => !options.exclude!(resource)) : collected
+        for (const resource of collected) if (!full.includes(resource)) excludedIds.add(`${resource.type}:${resource.id}`)
+        // A build without a token read the type as a visitor, so its filter guard is learned from that read.
+        if (!token && full.length && await unfilterable(link.href)) access[type] = { unfilterable: true }
+        if (token) {
+          // What a visitor may read of it.
+          const anonymous = await collect(link.href, {})
+          if (typeof anonymous === 'number') access[type] = { forbidden: true }
+          else {
+            const entry: { visible?: string[], hidden?: string[], unfilterable?: true } = {}
+            const seenByVisitor = anonymous.filter((resource) => !excluded(resource))
+            const ids = new Set(seenByVisitor.map((resource) => resource.id))
+            if (full.some((resource) => !ids.has(resource.id))) entry.visible = [...ids]
+            // A field the administrator reads and the visitor does not, such as revision_log.
+            const seen = fieldNames(seenByVisitor)
+            const hidden = [...fieldNames(full)].filter((name) => !seen.has(name))
+            if (hidden.length && seenByVisitor.length) entry.hidden = hidden
+            if (seenByVisitor.length && await unfilterable(link.href)) entry.unfilterable = true
+            if (Object.keys(entry).length) access[type] = entry
+          }
+          const ids = [...new Set(phantom[link.href] || [])]
+          if (ids.length) {
+            access[type] = { ...access[type], phantom: ids }
+            // With its data in the dump, a phantom filters and sorts as Drupal's does, and is never served.
+            for (const id of ids) {
+              const attributes = await options.phantomData?.(type.split('--')[0]!, id)
+              if (attributes) full.push({ type, id, attributes })
+              else log(`  ${type}: ${id} is omitted for every user and has no data; it matches only an unfiltered query`)
+            }
+          }
+        }
+        // A type a visitor may not list refuses every filter, which says nothing of its fields.
+        if (langcode === options.defaultLanguage && full.length) filters[type] = await probeFilters(link.href, fieldNames(full), !access[type]?.forbidden)
+        if (full.length) {
+          all[langcode]![type] = full
+          write(`resources/${langcode}/${type}.json.gz`, full)
+        }
+      }
+      if (Object.keys(access).length) write(`access/${langcode}.json.gz`, access)
+      if (langcode === options.defaultLanguage) write('filters.json.gz', filters)
+      log(`${langcode}: ${Object.keys(all[langcode]!).length} types, ${Object.values(all[langcode]!).reduce((n, list) => n + list.length, 0)} resources, ${Object.keys(access).length} types with limited access`)
 
-  if (options.identities) {
-    // Simple OAuth 6 ships the password grant as its own module: a grant the Drupal refuses as not installed is recorded as such.
-    // It checks the grant before the client, so a client that does not list the grant can still ask whether it is there.
-    const listing = options.identities.consumers.find((candidate) => candidate.grants.includes('password'))
-    const consumer = listing || options.identities.consumers[0]
-    const account = options.identities.accounts.find((candidate) => candidate.password !== undefined)
-    // With no client to ask, the build says nothing about the grant it did not check.
-    let passwordGrant = options.identities.passwordGrant
-    if (consumer) {
-      const response = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'password', client_id: consumer.clientId, ...(consumer.secret ? { client_secret: consumer.secret } : {}), username: account?.name || 'decoupled-drupal-mock', password: account?.password || 'decoupled-drupal-mock' }) })
-      passwordGrant = passwordGrantInstalled(response.status, await response.text(), !!listing)
-      log(`the password grant is ${passwordGrant ? 'installed' : 'not installed'}`)
-    }
-    write('identities.json', { ...options.identities, ...(passwordGrant === undefined ? {} : { passwordGrant }) })
-  }
+      // The default language also answers unprefixed, with the same index.
+      if (langcode === options.defaultLanguage && lang) await record('/jsonapi')
 
-  for (const signOut of previewSessions) await signOut()
+      // Decoupled Router, for every resource's alias in this language, every node's and term's system path, and the front page.
+      const aliases = Object.values(all[langcode]!).flat().map((resource) => (resource.attributes as { path?: { alias?: string | null } } | undefined)?.path?.alias).filter((alias): alias is string => !!alias)
+      const nodes = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('node--')).flatMap(([, list]) => list.map((node) => `/node/${String((node.attributes as { drupal_internal__nid?: number } | undefined)?.drupal_internal__nid)}`))
+      const terms = Object.entries(all[langcode]!).filter(([type]) => type.startsWith('taxonomy_term--')).flatMap(([, list]) => list.map((term) => `/taxonomy/term/${String((term.attributes as { drupal_internal__tid?: number } | undefined)?.drupal_internal__tid)}`))
+      // A Canvas page's own path, which Canvas answers with a redirect to its alias.
+      const canvasPages = (all[langcode]!['canvas_page--canvas_page'] || []).map((page) => `/page/${String((page.attributes as { drupal_internal__id?: number } | undefined)?.drupal_internal__id)}`)
+      const systemPaths = [...nodes, ...terms, ...canvasPages]
+      // The pages views give: every enabled page display with a path a client can ask for, such as /recipes.
+      const viewPages = (all[langcode]!['view--view'] || []).flatMap((view) => {
+        const attributes = view.attributes as { status?: boolean, display?: Record<string, { display_plugin?: string, display_options?: { path?: string } }> }
+        if (!attributes.status) return []
+        return Object.values(attributes.display || {}).map((display) => display.display_plugin === 'page' ? display.display_options?.path : undefined).filter((path): path is string => !!path && !path.includes('%') && !path.startsWith('admin/')).map((path) => `/${path}`)
+      })
+      const prefixed = [lang || '/', `${lang}/node`, ...aliases.map((alias) => `${lang}${alias}`), ...systemPaths.map((path) => `${lang}${path}`), ...viewPages.map((path) => `${lang}${path}`)]
+      // The default language answers unprefixed too, as a client asks for `/` or `/node/1`.
+      const unprefixed = langcode === options.defaultLanguage && lang ? ['/', '/node', ...aliases, ...systemPaths, ...viewPages] : []
+      const paths = [...new Set([...prefixed, ...unprefixed])]
+      log(`${langcode}: ${paths.length} router lookups`)
+      for (const path of paths) await record(`/router/translate-path?path=${encodeURIComponent(path)}`)
+
+      // Canvas Headless resolves a path itself, so its content API is recorded for every path the router was asked.
+      await recordCanvas(paths, all[langcode]!)
+
+      // Menus, as JSON:API Menu Items and as linksets.
+      for (const menu of all[langcode]!['menu--menu'] || []) {
+        const id = String((menu.attributes as { drupal_internal__id?: string }).drupal_internal__id)
+        await record(`${lang}/jsonapi/menu_items/${id}`)
+        await record(`${lang}/system/menu/${id}/linkset`)
+      }
+
+      // Views, every display of every view, through JSON:API Views.
+      for (const view of all[langcode]!['view--view'] || []) {
+        const attributes = view.attributes as { drupal_internal__id?: string, display?: Record<string, unknown> }
+        for (const display of Object.keys(attributes.display || {})) {
+          const entry = await record(`${lang}/jsonapi/views/${attributes.drupal_internal__id}/${display}`)
+          if (entry.status !== 200) delete recorded[`GET ${lang}/jsonapi/views/${attributes.drupal_internal__id}/${display}`]
+        }
+      }
+
+      await record(`${lang}/jsonapi/decoupled/settings`)
+    }
+    // The session token is the whole of its answer, so no key names it for the recordings' replacer: it is masked by its
+    // path, in the reads and in the writes alike.
+    const isSessionToken = (request: string): boolean => request.split('?')[0] === '/session/token'
+
+    // The oracle: real queries with Drupal's real answers, for the engine's tests.
+    if (options.oracle?.length) {
+      const entries: Array<{ request: string, status: number, headers: Record<string, string>, body: unknown }> = []
+      // `{type:n}` is the nth resource of that type in the default language's dump.
+      const resolve = (request: string): string => request.replace(/\{([a-z0-9_]+--[a-z0-9_]+):(\d+)\}/g, (_whole, type: string, n: string) => all[options.defaultLanguage]?.[type]?.[Number(n)]?.id || `missing-${type}-${n}`)
+      for (const request of options.oracle) {
+        const resolved = resolve(request)
+        const entry = await get(resolved)
+        entries.push({ request: resolved, ...entry, ...(isSessionToken(resolved) ? { body: '<token>' } : {}) })
+        // A type that refuses reads is recorded by its path, so the engine refuses it as Drupal does. A query refused
+        // for what it asks, such as a filter on a field, says nothing of the plain path, so that is asked too.
+        if (entry.status === 403 || entry.status === 405) {
+          const [pathname, search] = resolved.split('?') as [string, string?]
+          const plain = search ? await get(pathname) : entry
+          if (plain.status === 403 || plain.status === 405) recorded[`GET ${pathname}`] = recorded[`GET ${pathname}`] || plain
+        }
+      }
+      recordOracle('reads.json.gz', entries)
+      log(`${entries.length} oracle entries`)
+    }
+    write('recorded/routes.json.gz', recorded)
+
+    // The public files the content names, so a frontend against the server gets its images. Each is kept under
+    // `files/` at its path below Drupal's public files directory.
+    const publicFiles = new Set<string>()
+    for (const resources of Object.values(all)) {
+      for (const file of resources['file--file'] || []) {
+        const url = (file.attributes as { uri?: { url?: string } } | undefined)?.uri?.url
+        if (url && url.startsWith('/sites/default/files/')) publicFiles.add(url)
+      }
+    }
+    for (const url of publicFiles) {
+      let response: Response
+      try {
+        response = await fetch(`${base}${url}`)
+      } catch (error) {
+        log(`  file ${url}: ${(error as Error).message}, left out`)
+        continue
+      }
+      if (!response.ok) { log(`  file ${url}: ${response.status}, left out`); continue }
+      writeBytes(`files/${url.slice('/sites/default/files/'.length)}`, Buffer.from(await response.arrayBuffer()))
+    }
+    log(`${publicFiles.size} public files kept`)
+
+    // The scripts: each step as its account, every answer recorded, and what they created deleted afterwards.
+    if (options.writes?.length) {
+      const identities = options.identities
+      const tokenFor = async (name: string): Promise<string | undefined> => {
+        if (name === 'anonymous') return undefined
+        const consumer = identities?.consumers.find((candidate) => candidate.user === name && candidate.grants.includes('client_credentials'))
+        if (!consumer) throw new Error(`No consumer with the client credentials grant acts as "${name}".`)
+        const scope = Object.keys(consumer.scopes || {})[0]
+        const response = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'client_credentials', client_id: consumer.clientId, ...(consumer.secret ? { client_secret: consumer.secret } : {}), ...(scope ? { scope } : {}) }) })
+        const granted = await response.json() as { access_token?: string }
+        if (!granted.access_token) throw new Error(`No token for "${name}".`)
+        return granted.access_token
+      }
+      const recorded: RecordedWrite[] = []
+      const resourceId = (type: string, index: number) => all[options.defaultLanguage]?.[type]?.[index]?.id
+      /** What a script left in the Drupal, deleted before the next one reads it. A refusal stops the build: the site would keep it. */
+      const clean = async (created: string[]): Promise<void> => {
+        for (const path of created) {
+          const response = await fetch(`${base}${path}`, { method: 'DELETE', headers: { ...authorized() } })
+          log(`  cleaned up ${path}: ${response.status}`)
+          if (response.status !== 204 && response.status !== 404) throw new Error(`DELETE ${path} answered ${response.status}: the script's content is still in the Drupal.`)
+        }
+      }
+      for (const script of options.writes) {
+        const answers: Answer[] = []
+        const tokens = new Map<string, string | undefined>()
+        const created: string[] = []
+        try {
+          for (const step of script.steps) {
+            const as = step.as || script.as
+            if (!tokens.has(as)) tokens.set(as, await tokenFor(as))
+            const resolved = resolve(step, answers, resourceId)
+            const headers: Record<string, string> = { accept: 'application/vnd.api+json, application/json;q=0.9, */*;q=0.8' }
+            const bearer = resolved.bearer ?? tokens.get(as)
+            if (bearer) headers.authorization = `Bearer ${bearer}`
+            let body: string | undefined
+            if (resolved.form) { headers['content-type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(resolved.form).toString() }
+            else if (resolved.json !== undefined) { headers['content-type'] = 'application/json'; body = JSON.stringify(resolved.json) }
+            else if (resolved.body !== undefined) { headers['content-type'] = 'application/vnd.api+json'; body = JSON.stringify(resolved.body) }
+            const response = await fetch(`${base}${resolved.path}`, { method: resolved.method, headers, ...(body !== undefined ? { body } : {}), redirect: 'manual' })
+            const text = await response.text()
+            const type = response.headers.get('content-type') || ''
+            const answer: Answer = { status: response.status, headers: Object.fromEntries(KEPT_HEADERS.map((name) => [name, response.headers.get(name)]).filter(([, value]) => value).map(([name, value]) => [name, name === 'content-type' ? String(value).split(';')[0]!.trim() : String(value)])), body: type.includes('json') && text ? JSON.parse(text) : text }
+            answers.push(answer)
+            if (response.status === 201 && answer.headers.location) created.push(pathOf(answer.headers.location).split('?')[0]!)
+          }
+        } finally {
+          await clean(created)
+        }
+        // The script's later steps have read the real token already.
+        recorded.push({ ...script, answers: answers.map((answer, index) => (isSessionToken(script.steps[index]?.path || '') ? { ...answer, body: '<token>' } : answer)) })
+        log(`script "${script.name}": ${answers.map((answer) => answer.status).join(' ')}`)
+      }
+      recordOracle('writes.json.gz', recorded)
+    }
+
+    if (options.identities) {
+      // Simple OAuth 6 ships the password grant as its own module: a grant the Drupal refuses as not installed is recorded as such.
+      // It checks the grant before the client, so a client that does not list the grant can still ask whether it is there.
+      const listing = options.identities.consumers.find((candidate) => candidate.grants.includes('password'))
+      const consumer = listing || options.identities.consumers[0]
+      const account = options.identities.accounts.find((candidate) => candidate.password !== undefined)
+      // With no client to ask, the build says nothing about the grant it did not check.
+      let passwordGrant = options.identities.passwordGrant
+      if (consumer) {
+        const response = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'password', client_id: consumer.clientId, ...(consumer.secret ? { client_secret: consumer.secret } : {}), username: account?.name || 'decoupled-drupal-mock', password: account?.password || 'decoupled-drupal-mock' }) })
+        passwordGrant = passwordGrantInstalled(response.status, await response.text(), !!listing)
+        log(`the password grant is ${passwordGrant ? 'installed' : 'not installed'}`)
+      }
+      write('identities.json', { ...options.identities, ...(passwordGrant === undefined ? {} : { passwordGrant }) })
+    }
+
+  } catch (err) {
+    for (const failure of await signOutPreview()) log(failure)
+    throw err
+  }
+  const failures = await signOutPreview()
+  if (failures.length) throw new Error(failures.join(' '))
   const manifest: Manifest = {
     preset: options.preset,
     format: DUMP_FORMAT,
