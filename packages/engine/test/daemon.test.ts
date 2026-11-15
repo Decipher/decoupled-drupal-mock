@@ -296,25 +296,34 @@ describe('the background server when things go wrong', () => {
   it('never sends SIGKILL to a start that is slow to hand over, so its server does not outlive it', async () => {
     const { port, pidFile } = await setUp()
     const daemon = join(root, 'packages', 'engine', 'dist', 'daemon.js')
-    const marker = join(pidFile, '..', 'server.pid')
-    // A ps that takes seven seconds to say what any process but its caller is, so start stalls while it records
-    // its server, past the five seconds after which stop sends SIGKILL to a server.
+    const dir = join(pidFile, '..')
+    const marker = join(dir, 'server.pid')
+    const asked = join(dir, 'asked')
+    const release = join(dir, 'release')
+    // A ps that, asked about any process but its caller, says so and holds until the test lets it go. start asks it
+    // about the server it spawned, before it writes the server's record.
     const bin = mkdtempSync(join(tmpdir(), 'ddm-slow-ps-'))
     const ps = execFileSync('sh', ['-c', 'command -v ps'], { encoding: 'utf8' }).trim()
-    writeFileSync(join(bin, 'ps'), `#!/bin/sh\nfor a; do last=$a; done\n[ "$last" != "$PPID" ] && sleep 7\nexec ${ps} "$@"\n`, { mode: 0o755 })
+    writeFileSync(join(bin, 'ps'), `#!/bin/sh\nfor a; do last=$a; done\nif [ "$last" != "$PPID" ]; then\n  : > ${asked}\n  while [ ! -e ${release} ]; do sleep 0.05; done\nfi\nexec ${ps} "$@"\n`, { mode: 0o755 })
     const server = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid)); setInterval(() => {}, 1000)`
     const script = `const { start } = await import(${JSON.stringify(daemon)}); await start({ entry: ['-e', ${JSON.stringify(server)}], args: [], port: ${port}, host: '127.0.0.1', pidFile: ${JSON.stringify(pidFile)}, readyTimeout: 60 })`
     const launcher = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: 'ignore', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
     const ended = new Promise((done) => launcher.on('exit', (_code, signal) => done(signal)))
-    while (!existsSync(pidFile)) await new Promise((done) => setTimeout(done, 5))
-    expect(await stop(pidFile)).toMatchObject({ pid: launcher.pid, launcher: true })
+    // start is held in the lookup, and the server it spawned is running, with only start's claim on record.
+    while (!existsSync(asked) || !existsSync(marker)) await new Promise((done) => setTimeout(done, 5))
+    const spawned = Number(readFileSync(marker, 'utf8'))
+    expect(JSON.parse(readFileSync(pidFile, 'utf8'))).toMatchObject({ pid: launcher.pid, launcher: true })
+    const stopping = stop(pidFile)
+    // Past the five seconds after which stop sends a server SIGKILL.
+    await new Promise((done) => setTimeout(done, 6000))
+    expect(launcher.exitCode).toBeNull()
+    expect(launcher.signalCode).toBeNull()
+    writeFileSync(release, '')
+    expect(await stopping).toMatchObject({ pid: launcher.pid, launcher: true })
     expect(await ended).toBe('SIGTERM')
     expect(existsSync(pidFile)).toBe(false)
-    if (existsSync(marker)) {
-      const pid = Number(readFileSync(marker, 'utf8'))
-      await new Promise((done) => setTimeout(done, 200))
-      expect(() => process.kill(pid, 0)).toThrow()
-    }
+    await new Promise((done) => setTimeout(done, 200))
+    expect(() => process.kill(spawned, 0)).toThrow()
   }, 30000)
 
   it('refuses a pid file or a log that is a link or a pipe, and leaves what it points to alone', async () => {

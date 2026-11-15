@@ -423,20 +423,25 @@ export const stop = async (pidFile: string): Promise<Instance | undefined> => {
   }
   let there = signal('SIGTERM')
   // A start that is signalled ends the server it started before it ends. It may first be finishing a step it cannot
-  // leave, so it gets longer, and never SIGKILL, which would leave that server running without a record.
+  // leave, so it gets longer, and never SIGKILL, which would leave that server running without a record. The waits
+  // are timed by the clock, since each check of the pid takes time of its own.
+  const sent = Date.now()
   const limit = instance.launcher ? 30000 : 10000
-  for (let waited = 0; there && waited < limit; waited += 50) {
+  let killed = false
+  while (there && Date.now() - sent < limit) {
     await sleep(50)
     there = whose(instance) !== 'gone'
-    if (there && waited === 5000 && !instance.launcher) {
+    if (there && !killed && !instance.launcher && Date.now() - sent >= 5000) {
+      killed = true
       const state = whose(instance)
       if (state === 'unknown') throw new Error(`ps cannot say whether pid ${instance.pid} is still the mock, so it was sent SIGTERM and not SIGKILL. Check it, then remove ${pidFile}.`)
       there = state === 'ours' && signal('SIGKILL')
     }
   }
   if (there && instance.launcher) throw new Error(`start, pid ${instance.pid}, has not ended the server it is starting yet: run stop again.`)
-  for (let waited = 0; await taken(instance.port, instance.host); waited += 50) {
-    if (waited >= 5000) throw new Error(`Port ${instance.port} is still in use after stopping pid ${instance.pid}.`)
+  const freeing = Date.now()
+  while (await taken(instance.port, instance.host)) {
+    if (Date.now() - freeing >= 5000) throw new Error(`Port ${instance.port} is still in use after stopping pid ${instance.pid}.`)
     await sleep(50)
   }
   forget(pidFile, text)
