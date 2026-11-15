@@ -100,6 +100,25 @@ describe('the background server', () => {
     expect(existsSync(options.pidFile)).toBe(false)
   })
 
+  it('knows a server whatever time zone start, status and stop run in', async () => {
+    const { port, pidFile } = await setUp()
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })
+    onTestFinished(() => {
+      child.kill('SIGKILL')
+    })
+    const saved = process.env.TZ
+    try {
+      process.env.TZ = 'Australia/Sydney'
+      const record = { pid: child.pid!, port, host: '127.0.0.1', log: '', identity: identityOf(child.pid!)! }
+      writeFileSync(pidFile, JSON.stringify(record))
+      process.env.TZ = 'America/New_York'
+      expect(await running(pidFile)).toEqual(record)
+    } finally {
+      if (saved === undefined) delete process.env.TZ
+      else process.env.TZ = saved
+    }
+  })
+
   it('still knows a server that changes the command line ps shows for it', async () => {
     const { port, pidFile } = await setUp()
     const child = spawn(process.execPath, ['-e', 'process.stdin.once("data", () => { process.title = "renamed"; console.log("up") }); setInterval(() => {}, 1000)'], { stdio: ['pipe', 'pipe', 'ignore'] })
@@ -304,11 +323,24 @@ describe('the background server when things go wrong', () => {
     // about the server it spawned, before it writes the server's record.
     const bin = mkdtempSync(join(tmpdir(), 'ddm-slow-ps-'))
     const ps = execFileSync('sh', ['-c', 'command -v ps'], { encoding: 'utf8' }).trim()
-    writeFileSync(join(bin, 'ps'), `#!/bin/sh\nfor a; do last=$a; done\nif [ "$last" != "$PPID" ]; then\n  : > ${asked}\n  while [ ! -e ${release} ]; do sleep 0.05; done\nfi\nexec ${ps} "$@"\n`, { mode: 0o755 })
+    writeFileSync(join(bin, 'ps'), '#!/bin/sh\nfor a; do last=$a; done\nif [ "$last" != "$PPID" ]; then\n  : > "$DDM_ASKED"\n  while [ ! -e "$DDM_RELEASE" ]; do sleep 0.05; done\nfi\nexec "$DDM_PS" "$@"\n', { mode: 0o755 })
     const server = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, String(process.pid)); setInterval(() => {}, 1000)`
     const script = `const { start } = await import(${JSON.stringify(daemon)}); await start({ entry: ['-e', ${JSON.stringify(server)}], args: [], port: ${port}, host: '127.0.0.1', pidFile: ${JSON.stringify(pidFile)}, readyTimeout: 60 })`
-    const launcher = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: 'ignore', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, DDM_ASKED: asked, DDM_RELEASE: release, DDM_PS: ps }
+    const launcher = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: 'ignore', env })
     const ended = new Promise((done) => launcher.on('exit', (_code, signal) => done(signal)))
+    // If an assertion fails, the lookup is let go and nothing the test started is left running.
+    onTestFinished(() => {
+      writeFileSync(release, '')
+      launcher.kill('SIGKILL')
+      if (existsSync(marker)) {
+        try {
+          process.kill(Number(readFileSync(marker, 'utf8')), 'SIGKILL')
+        } catch {
+          // Already gone.
+        }
+      }
+    })
     // start is held in the lookup, and the server it spawned is running, with only start's claim on record.
     while (!existsSync(asked) || !existsSync(marker)) await new Promise((done) => setTimeout(done, 5))
     const spawned = Number(readFileSync(marker, 'utf8'))

@@ -90,7 +90,8 @@ const ticksOf = (pid: number): string | undefined => {
 export const identityOf = (pid: number): string | undefined => {
   let said: string
   try {
-    const env = { ...process.env, LC_ALL: 'C' }
+    // ps gives the time in the local time zone, so every caller asks in the same one.
+    const env = { ...process.env, LC_ALL: 'C', TZ: 'UTC' }
     said = execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'ignore'] }).trim()
   } catch {
     return undefined
