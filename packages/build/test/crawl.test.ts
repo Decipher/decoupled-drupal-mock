@@ -54,6 +54,39 @@ describe('the crawl', () => {
     expect((read(out, 'access/en.json.gz') as Record<string, { visible: string[] }>)['user--user']!.visible).toEqual(['a', 'c'])
   })
 
+  it('records what Drupal answers a filter on each field: refused to a visitor, incomplete, failing or missing', async () => {
+    const problem = (status: number, detail: string): Answer => ({ status, body: { errors: [{ status: String(status), detail }] } })
+    const incomplete = (field: string, specifiers: string[]) => problem(400, `Invalid nested filtering. The field \`${field}\`, given in the path \`${field}\` is incomplete, it must end with one of the following specifiers: ${specifiers.map((name) => `\`${name}\``).join(', ')}.`)
+    const account = { ...user('a', 'a', { mail: 'm', path: { alias: '/a' }, ghost: 1 }), relationships: { roles: { data: [] } } }
+    const empty: Answer = { body: { data: [] } }
+    // The answers by filter path. Only `mail` answers the build's token apart from a visitor.
+    const answers = new Map<string, Answer>([
+      ['id.decoupled_drupal_mock', problem(400, 'Invalid nested filtering. The property `decoupled_drupal_mock` does not exist.')],
+      ['name', empty],
+      ['mail', problem(403, 'The current user is not authorized to filter by the `mail` field, given in the path `mail`.')],
+      ['roles', incomplete('roles', ['id', 'meta.drupal_internal__target_id'])],
+      ['roles.id', empty],
+      ['roles.meta.drupal_internal__target_id', problem(500, 'Invalid specifier \'drupal_internal__target_id\'')],
+      ['path', incomplete('path', ['alias'])],
+      ['path.alias', problem(500, '\'path\' not found')],
+      ['ghost', problem(400, 'Invalid nested filtering. The field `ghost`, given in the path `ghost`, does not exist.')],
+    ])
+    const { out } = await build(site({ admin: [account], visitor: [account] }, (path, admin) => {
+      const field = /^\/jsonapi\/user\/user\?filter%5B(.+)%5D=x$/.exec(path)?.[1]
+      if (field === undefined) return undefined
+      const name = decodeURIComponent(field)
+      return admin && name === 'mail' ? empty : answers.get(name)
+    }))
+    expect(read(out, 'filters.json.gz')).toEqual({
+      'user--user': {
+        refused: ['mail'],
+        specifiers: { roles: ['id', 'meta.drupal_internal__target_id'], path: ['alias'] },
+        failures: { 'roles.meta.drupal_internal__target_id': 'Invalid specifier \'drupal_internal__target_id\'', 'path.alias': '\'path\' not found' },
+        missing: ['ghost'],
+      },
+    })
+  })
+
   it('reads a field as hidden when only an excluded resource shows it to the visitor', async () => {
     const { out } = await build(site({ admin: [user('a', 'a', { mail: 'm' }), user('x', 'x', { mail: 'n' })], visitor: [user('a', 'a'), user('x', 'x', { mail: 'n' })] }), { exclude: (resource) => resource.id === 'x' })
     expect((read(out, 'access/en.json.gz') as Record<string, { hidden: string[] }>)['user--user']!.hidden).toEqual(['mail'])

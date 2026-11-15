@@ -25,7 +25,7 @@ describe('the summary of a rebuild', () => {
   it('is empty of changes when only UUIDs and install times differ', () => {
     const from = build({ 'manifest.json': manifest('11.4.6', {}), 'index/en.json': { links: { 'node--page': {} } }, 'resources/en/node--page.json.gz': [page('3f0c2a8e-6b1d-4c7e-9a52-1d2e3f4a5b6c', 1, 'About', '2026-01-01')] })
     const to = build({ 'manifest.json': manifest('11.4.6', {}), 'index/en.json': { links: { 'node--page': {} } }, 'resources/en/node--page.json.gz': [page('8d9e0f1a-2b3c-4d5e-8f60-718293a4b5c6', 1, 'About', '2026-11-04')] })
-    expect(summarise(from, to)).toBe('## Drupal\n\nNo change.\n\n## Index\n\nNo change.\n\n## Resources\n\nNo change.\n\n## Recorded routes\n\nNo change.\n\n## Visitor access\n\nNo change.\n')
+    expect(summarise(from, to)).toBe('## Drupal\n\nNo change.\n\n## Index\n\nNo change.\n\n## Resources\n\nNo change.\n\n## Recorded routes\n\nNo change.\n\n## Visitor access\n\nNo change.\n\n## Filter paths\n\nNo change.\n')
   })
 
   it('names the versions, the index types and the entities that changed', () => {
@@ -55,6 +55,16 @@ describe('the summary of a rebuild', () => {
     expect(summary).toContain('| `user--user` | 2 to 2: 1 added, 1 removed, 1 changed (`name`) |')
     expect(summary).toContain('- `user--user`, en: added 12 (reader). removed 11 (author). changed 10 (author) from 10 (editor)')
     expect(summary).toContain('- en: what a visitor may read changed for `node--page`')
+  })
+
+  it('says when the filter probes are first recorded, and which types Drupal answers differently since', () => {
+    const base = { 'manifest.json': manifest('11', {}) }
+    const first = build({ ...base, 'filters.json.gz': { 'node--page': { refused: ['field_secret'] }, 'user--user': {} } })
+    expect(summarise(build(base), first)).toContain('- Recorded for 2 types, where the dump had no record')
+    expect(summarise(first, build(base))).toContain('- No record, where the dump had one')
+    const changed = build({ ...base, 'filters.json.gz': { 'node--page': { refused: [] }, 'user--user': {} } })
+    expect(summarise(first, changed)).toContain('- What Drupal answers a filter on changed for `node--page`')
+    expect(summarise(first, first)).toContain('## Filter paths\n\nNo change.')
   })
 
   it('gives the status changes by name, and the rest as counts, with themed pages set aside', () => {

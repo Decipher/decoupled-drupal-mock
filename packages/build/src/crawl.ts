@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import type { Answer, RecordedWrite, WriteScript } from 'decoupled-drupal-mock/recorded-writes'
-import type { Document, Dump, Manifest, Recorded, Resource } from 'decoupled-drupal-mock'
+import type { Document, Dump, Manifest, Recorded, Resource, TypeFilters } from 'decoupled-drupal-mock'
 import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND, DUMP_FORMAT, sortedSearch } from 'decoupled-drupal-mock'
 import { KEPT_HEADERS, resolve } from 'decoupled-drupal-mock/recorded-writes'
 
@@ -199,6 +199,40 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     for (const [type, id] of entities) await record(`/canvas/content-api/entity?type=${type}&id=${String(id)}`)
   }
 
+  /** What Drupal answers a filter on each field, per type. A path is the same in every language, so it is read once. */
+  const filters: Record<string, TypeFilters> = {}
+  /**
+   * Asks Drupal for a filter on each field of a type, as a visitor and as the build. It keeps what the resources cannot
+   * tell the engine: a field a visitor may not filter by, what a field must end with, and a path Drupal fails on. The
+   * engine checks the rest of a path as Drupal's field resolver does.
+   */
+  const probeFilters = async (href: string, fields: Set<string>, listable: boolean): Promise<TypeFilters> => {
+    const entry: TypeFilters = {}
+    const ask = async (path: string, headers: Record<string, string>): Promise<{ status: number, detail: string }> => {
+      const answer = await get(`${pathOf(href)}?filter%5B${encodeURIComponent(path)}%5D=x`, headers)
+      return { status: answer.status, detail: String((answer.body as Document | undefined)?.errors?.[0]?.detail ?? '') }
+    }
+    // Drupal reads `id` on a content entity as a single-property field. A configuration entity takes anything below it.
+    if ((await ask('id.decoupled_drupal_mock', authorized())).status === 200) entry.config = true
+    for (const field of fields) {
+      let answer = await ask(field, {})
+      if (answer.status === 403 && listable) (entry.refused ??= []).push(field)
+      if (answer.status === 403 && token) answer = await ask(field, authorized())
+      if (answer.status >= 500) (entry.failures ??= {})[field] = answer.detail
+      if (answer.status !== 400) continue
+      if (answer.detail.endsWith('does not exist.')) (entry.missing ??= []).push(field)
+      const listed = /it must end with one of the following specifiers: (.+)\.$/.exec(answer.detail)?.[1]
+      if (!listed) continue
+      const specifiers = [...listed.matchAll(/`([^`]+)`/g)].map((match) => match[1]!)
+      ;(entry.specifiers ??= {})[field] = specifiers
+      for (const specifier of specifiers) {
+        const specified = await ask(`${field}.${specifier}`, authorized())
+        if (specified.status >= 500) (entry.failures ??= {})[`${field}.${specifier}`] = specified.detail
+      }
+    }
+    return entry
+  }
+
   const all: Record<string, Record<string, Resource[]>> = {}
   for (const [langcode, prefix] of Object.entries(options.languages)) {
     const lang = prefix ? `/${prefix}` : ''
@@ -303,12 +337,15 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
           }
         }
       }
+      // A type a visitor may not list refuses every filter, which says nothing of its fields.
+      if (langcode === options.defaultLanguage && full.length) filters[type] = await probeFilters(link.href, fieldNames(full), !access[type]?.forbidden)
       if (full.length) {
         all[langcode]![type] = full
         write(`resources/${langcode}/${type}.json.gz`, full)
       }
     }
     if (Object.keys(access).length) write(`access/${langcode}.json.gz`, access)
+    if (langcode === options.defaultLanguage) write('filters.json.gz', filters)
     log(`${langcode}: ${Object.keys(all[langcode]!).length} types, ${Object.values(all[langcode]!).reduce((n, list) => n + list.length, 0)} resources, ${Object.keys(access).length} types with limited access`)
 
     // The default language also answers unprefixed, with the same index.

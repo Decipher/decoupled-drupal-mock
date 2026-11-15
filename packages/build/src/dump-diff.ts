@@ -183,6 +183,18 @@ export const summarise = (from: string, to: string, oracles: { from?: string | u
   }
   section('Visitor access', access)
 
+  // A dump built before the filter probes has no record, which the engine reads in the older way.
+  const filtersBefore = old<Record<string, unknown>>(from, 'filters.json.gz')
+  const filtersAfter = read<Record<string, unknown>>(to, 'filters.json.gz')
+  const filters: string[] = []
+  if (!filtersBefore && filtersAfter) filters.push(`- Recorded for ${Object.keys(filtersAfter).length} types, where the dump had no record`)
+  else if (filtersBefore && !filtersAfter) filters.push('- No record, where the dump had one')
+  else if (filtersBefore && filtersAfter) {
+    const types = [...new Set([...Object.keys(filtersBefore), ...Object.keys(filtersAfter)])].filter((type) => !same(filtersBefore[type], filtersAfter[type])).sort()
+    if (types.length) filters.push(`- What Drupal answers a filter on changed for ${some(code(types))}`)
+  }
+  section('Filter paths', filters)
+
   // Recordings on one side only are read against none on the other, so a new or dropped oracle still shows.
   if (oracles.from || oracles.to) {
     const reads = (dir: string | undefined, aligned: boolean): Array<[string, Recorded]> => (dir === undefined ? [] : (aligned ? old : read)<Array<{ request: string, status: number, body: unknown }>>(dir, 'reads.json.gz') || []).map((entry) => [`GET ${entry.request}`, { status: entry.status, headers: {}, body: entry.body }])

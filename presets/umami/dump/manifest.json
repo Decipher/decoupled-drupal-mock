@@ -15,7 +15,7 @@
       "simple_oauth": "6.1.4"
     }
   },
-  "built": "2026-11-04T20:49:22.235Z",
+  "built": "2026-11-15T03:36:30.709Z",
   "origin": "https://drupal.invalid",
   "languages": {
     "en": "en",
@@ -40,9 +40,9 @@
     "resources/en/field_config--field_config.json.gz": "55ec487f944048b3dba658535f38943a7869c1b97b2ff7dec1ac69e7c70e1c45",
     "resources/en/field_storage_config--field_storage_config.json.gz": "0c38cd2913fcb0fb490e4132e050a52ab28fe8137fe5d7aefd3ae0c50564aa45",
     "resources/en/file--file.json.gz": "7fc7392148250a4c79e19ecd9c471cace292440f0351ec490cba3362ddd822a4",
-    "resources/en/filter_format--filter_format.json.gz": "bafe195979f4b527dadee4627e24fd88d1a48dbe719750122783a4788e25d00f",
+    "resources/en/filter_format--filter_format.json.gz": "6ce0d658c0a6aed6bd809b010e4e9d727fb430081b220ed8d9195de7b9904354",
     "resources/en/image_style--image_style.json.gz": "cd6c3df685bce71dacde54b76236de7c3117897bc91ab16f8213c84576ec92cf",
-    "resources/en/language_content_settings--language_content_settings.json.gz": "bce60a1b9c7665459261bf644afb9658ee46164f789773d37344b1bd7484a32b",
+    "resources/en/language_content_settings--language_content_settings.json.gz": "b631de396b53f2a3479076cdc38c21f99ad73a59761e62a0ebfb5cff9f56fcb2",
     "resources/en/media--image.json.gz": "9d07a7b415ed802e1f914780ce14e9ea90e433556e855eb5fcaee6d556badf61",
     "resources/en/media_type--media_type.json.gz": "129d4799da2f31994759557a9f4a4291790d85ca594c14663ef9b0a3e25f85a5",
     "resources/en/menu--menu.json.gz": "7f45ea27e1ee72b23a8f52c90e5b4e17d08928fa08f6161d3876c32415ff7421",
@@ -55,11 +55,12 @@
     "resources/en/taxonomy_term--recipe_category.json.gz": "8625a04dcbd73eff0dcaeeaa9a5423c74956ef0346ffcc16f428ad4abc5406a9",
     "resources/en/taxonomy_term--tags.json.gz": "7602439a9ae8265d798d74922385a51697bd6d1a3321348a50e69a97214454b4",
     "resources/en/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "94d48995f864119e270bb9762bda4652a43c2756a89e12034ca6a9e5f23c096b",
-    "resources/en/user--user.json.gz": "8b41bf7f062ef124b1a84e84db8542d54f8927d4979ac3554cb74494ce4599af",
+    "resources/en/user--user.json.gz": "19b45bfb129d70a23c6c1d9cf6302f9f7cb8b2cfdc954db1af8da6e5802ceee4",
     "resources/en/user_role--user_role.json.gz": "23368f5095eeb7eef333d468fc5a3ba41ccbe48f40625cba373fe54b12e647ba",
     "resources/en/view--view.json.gz": "87600b7dad1d63463fddcd2e04be5a2821eb951a6a5d9fd71c1b52bd433fe0bb",
     "resources/en/workflow--workflow.json.gz": "f99609289ea594624f415bcafa779f5cdbad2b0b814cf65209f23639823caaf2",
-    "access/en.json.gz": "df2c10eede3b6790bc0b5308544b6f8ff6119aa49b92badd9f486872b5d0a251",
+    "access/en.json.gz": "cce066e79393d3ae20a74e82d1a7aed019dafe095650d369b2d2b8cf6e4e7457",
+    "filters.json.gz": "a74d457ceed713f05270f87f6b81e387484611bc616c79ef8d04bd0cdb6f14c0",
     "index/es.json": "b874f23e8c0ea46b1cd5ef7046559db9c8b39cc362fcc452078224d51833b424",
     "resources/es/base_field_override--base_field_override.json.gz": "603556f6ab62ee81f6ebfdcdda58b1a934cab46e07ab599ba5e9d732f42f51ab",
     "resources/es/block--block.json.gz": "36a72af095b3c72987bc13b763fd16c1fe388a420fad00f366a0e739abb816d0",
@@ -92,12 +93,12 @@
     "resources/es/taxonomy_term--recipe_category.json.gz": "f38dda0d0827d48f4648101fcd91ad653e57f712569cd51272497afa63166b0d",
     "resources/es/taxonomy_term--tags.json.gz": "9ea6f76ae06a1f7a435a01e2b0b1b8c7ebea59711b15c631533731e26292a796",
     "resources/es/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "d32e4496f41827c662f6e19b88370ba9778a4b283f636b5139b11af10d432665",
-    "resources/es/user--user.json.gz": "593c25270ccbe4da4a6d15cc2ee2930ac4048704aa6945cdc6018aef2c7a05ed",
+    "resources/es/user--user.json.gz": "e580af1f17d3d8f779c529a0e4d81d139e75f40126d84d99fc094d9ca5e29607",
     "resources/es/user_role--user_role.json.gz": "93a9923220525693e3e732157d52f54dd79f6fb5367665dafe87c74bfd3535ac",
     "resources/es/view--view.json.gz": "6b691c76a18404da4e21d449110ab9f9a7683046c3899515d87fe5fe1f468022",
     "resources/es/workflow--workflow.json.gz": "87d6c4bbcd1d8ca9f27eeded9ee74540610db0d64566b9438326fd374ee54c1a",
-    "access/es.json.gz": "df2c10eede3b6790bc0b5308544b6f8ff6119aa49b92badd9f486872b5d0a251",
-    "recorded/routes.json.gz": "b41f4c72d8cd2f38c4b2a803d094dc181cc14908066e06131226047ede15d9d2",
+    "access/es.json.gz": "cce066e79393d3ae20a74e82d1a7aed019dafe095650d369b2d2b8cf6e4e7457",
+    "recorded/routes.json.gz": "c41ac3d14fdfad31ff29bf6292db6f5de5c5edd12f1194f8ccad4032bfa4392e",
     "files/mediterranean-quiche-umami.jpg": "095b9d287d4c5d1cef61884d3a87a531980a8b97ca94e334a78e8063cbfba3b8",
     "files/vegan-chocolate-nut-brownies.jpg": "5463b279a7907aeb42a59c129da8be7fc5650af62f4fc664346c12124d6c8861",
     "files/veggie-pasta-bake-umami.jpg": "3c6c7188276deb374286b9a896ff868955bc0b5eb6fe5a92bb89f45818b7ba52",
@@ -122,7 +123,7 @@
     "identities.json": "10f18908c7bd768ed9d331c7632caba011e9356856308f9bde5e4f8034fe3fb8"
   },
   "oracle": {
-    "reads.json.gz": "96ae659332e257ff5ff13cc84f8c50742d38e9e7521be5986253392d9ef75713",
-    "writes.json.gz": "12f8edfef78ea863b356e63435076a78e5eac4e4cd8a897fd8cc12433648dc8c"
+    "reads.json.gz": "13ba7e512b2e4e793343cf6d051f439014b5046737d0ebec504f854e341baca9",
+    "writes.json.gz": "10824aef8e17c7cd7adce0cff2f342c17a447170dfb72fb619d45a6c522639f4"
   }
 }

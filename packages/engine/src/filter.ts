@@ -54,12 +54,17 @@ export const createReader = (related: (identifier: { type: string, id: string })
     const relationship = own(resource.relationships, head)
     if (relationship) {
       const identifiers = Array.isArray(relationship.data) ? relationship.data : relationship.data ? [relationship.data] : []
-      if (!rest.length) return identifiers.map((identifier) => identifier.id)
-      if (rest[0] === 'id') return identifiers.map((identifier) => identifier.id)
+      // `virtual` and `missing` stand in for a reference to no entity, which no uuid matches.
+      const real = identifiers.filter((identifier) => identifier.id !== 'virtual' && identifier.id !== 'missing')
+      if (!rest.length || rest[0] === 'id') return real.map((identifier) => identifier.id)
       if (rest[0] === 'meta') return identifiers.flatMap((identifier) => dig(identifier.meta, rest.slice(1)))
-      return identifiers.flatMap((identifier) => {
+      // `entity`, or `entity:user`, names the referenced entity, as a field name after the relationship does too.
+      const typed = /^entity(:(.+))?$/.exec(rest[0]!)
+      const reached = typed?.[2] ? real.filter((identifier) => identifier.type.split('--')[0] === typed[2]) : real
+      const below = typed ? rest.slice(1) : rest
+      return reached.flatMap((identifier) => {
         const target = related(identifier)
-        return target ? read(target, rest) : []
+        return target ? read(target, below) : []
       })
     }
     return []
