@@ -117,7 +117,7 @@ export class CanvasPreview {
     if (parts.length !== 3 || !header || !claims) return invalidGrant('The assertion is malformed.')
     if (header.typ !== this.template()!.header.typ) return invalidGrant('The assertion is not a preview assertion.')
     // An assertion the mock did not mint, or minted with another signature, is one Drupal's key would not verify.
-    const minted = this.minted.get(String(claims.jti))
+    const minted = typeof claims.jti === 'string' ? this.minted.get(claims.jti) : undefined
     if (!minted || minted.signature !== parts[2]) return invalidGrant('Token signature mismatch')
     if (this.now() > minted.expires + LEEWAY_SECONDS * 1000) return invalidGrant('The token is expired')
     if (claims.azp !== 'canvas_headless') return invalidGrant('The assertion was issued to a different client.')

@@ -117,6 +117,11 @@ describe('Canvas Headless\'s draft preview', () => {
     expect((await redeem(`${header}.${claims}.sig`)).body).toMatchObject({ hint: 'Token signature mismatch' })
     expect((await redeem(assertion)).status).toBe(200)
     expect((await redeem('not-a-jwt')).body).toMatchObject({ hint: 'The assertion is malformed.' })
+    // A jti that is not a string names no assertion the mock minted, and no key Drupal's would verify.
+    for (const jti of [{ toString: null }, null, 7]) {
+      const odd = `${header}.${Buffer.from(JSON.stringify({ ...decode(claims!), jti })).toString('base64url')}.sig`
+      expect((await redeem(odd)).body).toMatchObject({ error: 'invalid_grant', hint: 'Token signature mismatch' })
+    }
     expect((await redeem(`${Buffer.from('{"typ":"JWT"}').toString('base64url')}.${claims}.sig`)).body).toMatchObject({ hint: 'The assertion is not a preview assertion.' })
     expect((await redeem((await mint('path=/', credentials)).body!.assertion as string, { code_challenge: challenge, code_challenge_method: 'plain' })).body).toMatchObject({ error: 'invalid_request' })
     const late = (await mint('path=/', credentials)).body!.assertion as string
