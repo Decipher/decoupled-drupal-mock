@@ -1,6 +1,5 @@
 ---
 'decoupled-drupal-mock': minor
-'decoupled-drupal-mock-build': minor
 'decoupled-drupal-mock-umami': patch
 ---
 
