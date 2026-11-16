@@ -57,8 +57,9 @@ jobs:
       - run: yarn install --immutable
       - name: Version as the version pull request would
         run: |
+          # changeset status would compare with the release line, which this shallow checkout lacks. The changesets
+          # test has already read every pending changeset, and changeset version stops on one it cannot release.
           if [ "$(node scripts/release.mjs pending)" != 0 ]; then
-            yarn changeset status
             yarn release:version
           fi
           yarn install --immutable
