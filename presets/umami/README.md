@@ -62,7 +62,7 @@ git fetch origin
 yarn rebuild:summary origin/1.0.x
 ```
 
-The last step prints what the rebuild changed against the dump on the branch the pull request targets, as the recordings are gzipped and their diff can't be read. Name that branch if it isn't `1.0.x`, and read the summary before committing. On GitHub the pipeline posts the same summary as a comment on the pull request. On GitLab it saves it as a file the merge request links to. Then move the overlays in `examples/overlays/` onto the new dump, as [Overlays](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/docs/overlays.md) describes, or record them again as [their README](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/examples/overlays/README.md) describes.
+The last step prints what the rebuild changed against the dump on the branch the pull request targets, as the recordings are gzipped and their diff can't be read. Name that branch if it isn't `1.0.x`, and read the summary before committing. On GitHub the pipeline puts the same summary in the job summary, and posts it as a comment on a pull request that isn't from a fork. On GitLab it saves it as a file the merge request links to. Then move the overlays in `examples/overlays/` onto the new dump, as [Overlays](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/docs/overlays.md) describes, or record them again as [their README](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/examples/overlays/README.md) describes.
 
 ## Published files and evidence
 

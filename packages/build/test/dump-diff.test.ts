@@ -194,8 +194,8 @@ describe('the summary of each preset\'s rebuild', () => {
     expect(withoutGit(() => rebuildSummaries({ base, root, log: () => {} })).summary).toContain('- Core 11.4.10 to 11.4.11')
   })
 
-  it('fails when a rebuild leaves recordings with no manifest, rather than skipping the preset', async () => {
-    const { rebuildSummaries } = await import('../src/rebuild-summary')
+  it('fails when a rebuild leaves recordings with no manifest, and says so in the summary rather than skipping the preset', async () => {
+    const { rebuildSummaries, NOT_A_BUILD, NO_REBUILD } = await import('../src/rebuild-summary')
     const { root, git } = repository()
     preset(root, '11.4.11')
     git('add', '.')
@@ -204,8 +204,13 @@ describe('the summary of each preset\'s rebuild', () => {
     rmSync(join(root, 'presets', 'p', 'dump', 'manifest.json'))
     writeFileSync(join(root, 'presets', 'p', 'dump', 'index.json'), '{}')
     const errors: string[] = []
-    expect(withoutGit(() => rebuildSummaries({ base, root, error: (line) => errors.push(line) })).ok).toBe(false)
-    expect(errors).toEqual(['p: the recordings changed, but presets/p/dump/manifest.json is missing, so they are not a build. Rebuild the preset.'])
+    const failure = 'p: the recordings changed, but presets/p/dump/manifest.json is missing, so they are not a build. Rebuild the preset.'
+    const { ok, summary } = withoutGit(() => rebuildSummaries({ base, root, error: (line) => errors.push(line) }))
+    expect(ok).toBe(false)
+    expect(errors).toEqual([failure])
+    // The file and the job summary a failed run leaves must not read as a change that rebuilt nothing.
+    expect(summary).toBe(`${NOT_A_BUILD}- ${failure}\n`)
+    expect(summary).not.toContain(NO_REBUILD)
   })
 
   it('refuses a base that is not a commit, so git never reads it as an option', async () => {
@@ -234,6 +239,12 @@ describe('the rebuild summary command\'s arguments', () => {
     expect(rebuildArgs(['abc123'])).toEqual({ base: 'abc123' })
     expect(rebuildArgs(['abc123', '--out', 'summary.md'])).toEqual({ base: 'abc123', out: 'summary.md' })
     expect(rebuildArgs(['--out', 'summary.md', 'abc123'])).toEqual({ base: 'abc123', out: 'summary.md' })
+  })
+
+  it('refuses --out with no file after it, which would otherwise write nothing and pass', async () => {
+    const { rebuildArgs } = await import('../src/rebuild-summary')
+    expect(() => rebuildArgs(['abc123', '--out'])).toThrow('--out names the file to write the summary to')
+    expect(() => rebuildArgs(['--out', '--verbose'])).toThrow('--out names the file')
   })
 
   it('takes the pipeline\'s base when none is named, and 1.0.x outside one', async () => {

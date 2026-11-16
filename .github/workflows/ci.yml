@@ -10,6 +10,10 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # One run at a time per pull request, queued rather than cancelled, so two runs never both post the rebuild comment.
+    concurrency:
+      group: check-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: false
     # Writing the rebuild comment is the one write this job makes.
     permissions:
       contents: read

@@ -8,6 +8,9 @@ import { summarise } from './dump-diff.ts'
 /** What a pull request whose recordings are all as its base has them says, in place of a summary. */
 export const NO_REBUILD = 'This change leaves every preset\'s recordings as the base has them.\n'
 
+/** How a summary starts when a preset's recordings changed and are not a build, so it never reads as a clean one. */
+export const NOT_A_BUILD = '## The rebuild summary is incomplete\n\nSome recordings changed and are not a build, so this change cannot merge as it is:\n\n'
+
 /**
  * The summary of one preset's rebuild, under the preset's name, with the summary's sections a level below it.
  *
@@ -26,7 +29,8 @@ export const rebuildSection = (preset: string, summary: string): string => `## T
  * @param options.root - The repository's root.
  * @param options.log - Where progress goes.
  * @param options.error - Where recordings that are not a build go.
- * @returns Whether every preset whose recordings changed is a build, and the summary of them all.
+ * @returns Whether every preset whose recordings changed is a build, and the summary of them all. When one is not, the
+ * summary says so first.
  */
 export const rebuildSummaries = ({ base, root, log = console.log, error = console.error }: { base: string, root: string, log?: (line: string) => void, error?: (line: string) => void }): { ok: boolean, summary: string } => {
   const git = (...args: string[]): string => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
@@ -37,7 +41,7 @@ export const rebuildSummaries = ({ base, root, log = console.log, error = consol
   } catch {
     throw new Error(`${base} is not a commit in this repository.`)
   }
-  let ok = true
+  const failures: string[] = []
   const sections: string[] = []
   const presets = readdirSync(join(root, 'presets'), { withFileTypes: true }).filter((entry) => entry.isDirectory())
   for (const preset of presets.map((entry) => entry.name).sort()) {
@@ -57,8 +61,8 @@ export const rebuildSummaries = ({ base, root, log = console.log, error = consol
     // Recordings that changed must still be a build, or there is nothing to summarise.
     const manifest = join(dir, 'dump', 'manifest.json')
     if (!existsSync(join(root, manifest))) {
-      ok = false
-      error(`${preset}: the recordings changed, but ${manifest} is missing, so they are not a build. Rebuild the preset.`)
+      failures.push(`${preset}: the recordings changed, but ${manifest} is missing, so they are not a build. Rebuild the preset.`)
+      error(failures.at(-1)!)
       continue
     }
     const before = mkdtempSync(join(tmpdir(), `${preset}-before-`))
@@ -82,7 +86,11 @@ export const rebuildSummaries = ({ base, root, log = console.log, error = consol
       rmSync(before, { recursive: true, force: true })
     }
   }
-  return { ok, summary: sections.length ? sections.join('\n') : NO_REBUILD }
+  if (failures.length) {
+    const failed = `${NOT_A_BUILD}${failures.map((line) => `- ${line}\n`).join('')}`
+    return { ok: false, summary: sections.length ? `${failed}\n${sections.join('\n')}` : failed }
+  }
+  return { ok: true, summary: sections.length ? sections.join('\n') : NO_REBUILD }
 }
 
 /**
@@ -95,6 +103,8 @@ export const rebuildSummaries = ({ base, root, log = console.log, error = consol
 export const rebuildArgs = (args: string[], env: Record<string, string | undefined> = {}): { base: string, out?: string } => {
   const at = args.indexOf('--out')
   const out = at >= 0 ? args[at + 1] : undefined
+  // A missing file name would otherwise write nothing and still pass.
+  if (at >= 0 && (!out || out.startsWith('--'))) throw new Error('--out names the file to write the summary to: --out rebuild-summary.md')
   const named = args.find((arg, index) => !arg.startsWith('--') && (at < 0 || index !== at + 1))
   const base = named || env.CI_MERGE_REQUEST_DIFF_BASE_SHA || env.GITHUB_BASE_SHA || 'origin/1.0.x'
   return out === undefined ? { base } : { base, out }
