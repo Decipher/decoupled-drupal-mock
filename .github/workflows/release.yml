@@ -10,9 +10,10 @@ name: Release
 # publishing rights, and ends by packing tarballs. The publishing job holds the OIDC permission and runs nothing from
 # the repository. It downloads the tarballs and hands them to npm.
 #
-# Publishing uses npm trusted publishing (OIDC), so there is no token. It stays off until the repository variable
-# NPM_PUBLISH is `true`, and the release environment can hold it for a reviewer. Until then the packed tarballs are the
-# dry run.
+# Publishing uses npm trusted publishing (OIDC), so there is no token. It stays off until NPM_PUBLISH is `true` as a
+# repository variable: the release job's `if` is read before the job enters its environment, so a variable set only on
+# the release environment does not count there. The release environment can then hold the job for a reviewer. Until
+# then the packed tarballs are the dry run.
 
 on:
   push:
@@ -128,7 +129,10 @@ jobs:
             node scripts/release.mjs packages | jq -r '.[] | "- `\(.name)@\(.version)`, under the `\(.tag)` dist-tag"'
             for name in $(node scripts/release.mjs packages | jq -r '.[].name'); do
               notes=$(node scripts/release.mjs notes "$name")
-              [ -n "$notes" ] && printf '\n## %s\n\n%s\n' "$name" "$notes"
+              # An if, since a bare test that fails would be the loop's status, and end the step.
+              if [ -n "$notes" ]; then
+                printf '\n## %s\n\n%s\n' "$name" "$notes"
+              fi
             done
           } > body.md
           number=$(gh pr list --head "$branch" --base "$BASE" --state open --json number --jq '.[0].number // empty')
@@ -228,6 +232,12 @@ jobs:
             # than publishing on a guess.
             if found=$(npm view "$release" version 2> npm-view.log) && [ -n "$found" ]; then
               state='already on npm'
+              # Trusted publishing signs in only to publish, so a dist-tag a rerun finds wrong can only be reported.
+              tagged=$(npm view "$name" "dist-tags.$tag" 2> /dev/null || true)
+              if [ "$tagged" != "$version" ]; then
+                state="already on npm, but $tag names ${tagged:-nothing}: run npm dist-tag add $release $tag"
+                echo "::warning::$release is published, but the $tag dist-tag names ${tagged:-nothing}."
+              fi
             elif grep -q 'code E404' npm-view.log; then
               npm publish "./release-package/$name.tgz" --access public --tag "$tag"
               state="published under $tag"

@@ -8,10 +8,20 @@ const root = join(import.meta.dirname, '..')
 
 describe('the packages a release publishes', () => {
   it('are the engine and every preset, the engine first, and nothing private', () => {
-    const names = publicPackages(root).map(({ name }) => name)
-    expect(names[0]).toBe('decoupled-drupal-mock')
-    expect(names).toEqual(expect.arrayContaining(['decoupled-drupal-mock-umami', 'decoupled-drupal-mock-dashi', 'decoupled-drupal-mock-haven']))
-    expect(names).not.toContain('decoupled-drupal-mock-build')
+    expect(publicPackages(root).map(({ name }) => name)).toEqual(['decoupled-drupal-mock', 'decoupled-drupal-mock-dashi', 'decoupled-drupal-mock-haven', 'decoupled-drupal-mock-umami'])
+  })
+
+  it('put a package another depends on first, whatever its directory or name', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ddm-order-'))
+    const write = (path, manifest) => {
+      mkdirSync(join(dir, path), { recursive: true })
+      writeFileSync(join(dir, path, 'package.json'), JSON.stringify({ version: '1.0.0', ...manifest }))
+    }
+    write('packages/zz-engine', { name: 'zz' })
+    write('packages/aa-helper', { name: 'aa', peerDependencies: { zz: '^1.0.0' } })
+    write('presets/mm', { name: 'mm', dependencies: { aa: '^1.0.0' } })
+    write('packages/private', { name: 'private', private: true })
+    expect(publicPackages(dir).map(({ name }) => name)).toEqual(['zz', 'aa', 'mm'])
   })
 
   it('share one version, since the changesets config releases them together', () => {

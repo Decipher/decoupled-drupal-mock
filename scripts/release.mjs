@@ -7,17 +7,32 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * The packages a release publishes, the engine first, since each preset names it as a peer.
+ * The packages a release publishes. A package that another names as a dependency or a peer comes before it, so the
+ * engine goes before every preset, whatever the directories are called. Packages otherwise keep their name order.
  *
  * @param root - The repository's root.
  * @returns Each package's name, directory, version and npm dist-tag.
  */
-export const publicPackages = (root) => ['packages', 'presets']
-  .flatMap((group) => readdirSync(join(root, group)).sort().map((name) => join(group, name)))
-  .filter((dir) => existsSync(join(root, dir, 'package.json')))
-  .map((dir) => ({ dir, manifest: JSON.parse(readFileSync(join(root, dir, 'package.json'), 'utf8')) }))
-  .filter(({ manifest }) => manifest.private !== true)
-  .map(({ dir, manifest }) => ({ name: manifest.name, dir, version: manifest.version, tag: distTag(manifest.version) }))
+export const publicPackages = (root) => {
+  const found = ['packages', 'presets']
+    .flatMap((group) => readdirSync(join(root, group)).map((name) => join(group, name)))
+    .filter((dir) => existsSync(join(root, dir, 'package.json')))
+    .map((dir) => ({ dir, manifest: JSON.parse(readFileSync(join(root, dir, 'package.json'), 'utf8')) }))
+    .filter(({ manifest }) => manifest.private !== true)
+    .sort((a, b) => a.manifest.name.localeCompare(b.manifest.name))
+  const names = new Set(found.map(({ manifest }) => manifest.name))
+  const needs = new Map(found.map(({ manifest }) => [manifest.name, Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies }).filter((name) => names.has(name))]))
+  const ordered = []
+  const visit = (name, path = []) => {
+    if (ordered.includes(name)) return
+    if (path.includes(name)) throw new Error(`The packages depend on each other in a loop: ${[...path, name].join(' -> ')}.`)
+    for (const need of needs.get(name)) visit(need, [...path, name])
+    ordered.push(name)
+  }
+  for (const { manifest } of found) visit(manifest.name)
+  return ordered.map((name) => found.find(({ manifest }) => manifest.name === name))
+    .map(({ dir, manifest }) => ({ name: manifest.name, dir, version: manifest.version, tag: distTag(manifest.version) }))
+}
 
 /**
  * The npm dist-tag a version goes out under. npm 11 refuses to publish a prerelease without one, and a prerelease
