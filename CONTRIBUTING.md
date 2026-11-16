@@ -60,7 +60,14 @@ Add a changeset with `yarn changeset`. The engine and the Umami preset are versi
 
 ## Releases
 
-The maintainer cuts releases from `1.0.x`: `yarn changeset version` writes the versions and changelogs, and `yarn changeset publish` publishes both packages.
+Releases come from `1.0.x`, through the Release workflow in `.github/workflows/release.yml`:
+
+1. A merged change with a changeset opens or updates the "version packages" pull request. It holds the new versions, the changelogs and the lock file, and lists what merging it releases.
+2. Merging that pull request is the release decision. The push that follows packs every package npm does not have at its version yet and publishes it under its dist-tag, which is `alpha` while the line is in alpha. Each published version gets a tag and a GitHub Release.
+
+Publishing uses npm trusted publishing, so no token is stored. It runs only once the repository variable `NPM_PUBLISH` is `true`, and the `release` environment can hold it for a reviewer. Until then each run packs and checks the tarballs as a dry run. A pull request that changes how a release is made gets the same rehearsal.
+
+A package npm has never seen needs its first version published by hand before npm lets it trust the workflow. After that, set up the trusted publisher on npmjs.com for each package: this repository, the `release.yml` workflow and the `release` environment. npm drops a trusted publisher that has not published within two days of being set up, so set them up shortly before the release that will use them.
 
 ## Licence
 

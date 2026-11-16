@@ -15,6 +15,7 @@
     "overlay": "node --experimental-strip-types packages/build/src/overlay-cli.ts",
     "dump:diff": "node --experimental-strip-types packages/build/src/dump-diff-cli.ts",
     "rebuild:summary": "node --experimental-strip-types packages/build/src/rebuild-summary.ts",
+    "release:version": "changeset version && yarn install --mode=update-lockfile",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "yarn lint:js && yarn lint:cspell && yarn lint:md && yarn lint:format && yarn lint:private && yarn lint:knip",

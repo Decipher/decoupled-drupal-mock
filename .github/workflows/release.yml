@@ -1,0 +1,237 @@
+name: Release
+
+# Publishes the engine and the presets to npm.
+#
+# While changesets are pending, a "version packages" pull request stays open against the release line. Merging it is
+# the release decision. The push that follows finds versions npm does not have, publishes them, and creates a tag and
+# a GitHub Release for each.
+#
+# Building and publishing are separate jobs. A job that runs repository code, install scripts included, holds no
+# publishing rights, and ends by packing tarballs. The publishing job holds the OIDC permission and runs nothing from
+# the repository. It downloads the tarballs and hands them to npm.
+#
+# Publishing uses npm trusted publishing (OIDC), so there is no token. It stays off until the repository variable
+# NPM_PUBLISH is `true`, and the release environment can hold it for a reviewer. Until then the packed tarballs are the
+# dry run.
+
+on:
+  push:
+    branches: ['*.x']
+    paths:
+      - '.changeset/**'
+      - 'packages/*/package.json'
+      - 'presets/*/package.json'
+  # The rehearsal, for a pull request that changes how a release is made.
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .changeset/config.json
+      - scripts/release.mjs
+      - package.json
+      - 'packages/*/package.json'
+      - 'presets/*/package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a publish half way through.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Versions the packages in a throwaway checkout and packs them, as a release would, so a changeset or a manifest that
+  # would stop a release fails the pull request instead. It publishes nothing.
+  rehearse:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Version as the version pull request would
+        run: |
+          if [ "$(node scripts/release.mjs pending)" != 0 ]; then
+            yarn changeset status
+            yarn release:version
+          fi
+          yarn install --immutable
+          node scripts/release.mjs packages | jq -r '.[] | "- \(.name)@\(.version), under \(.tag)"' >> "$GITHUB_STEP_SUMMARY"
+      - name: Pack each package and check what it holds
+        run: |
+          yarn workspace decoupled-drupal-mock build
+          mkdir release-package
+          for name in $(node scripts/release.mjs packages | jq -r '.[].name'); do
+            yarn workspace "$name" pack --out "$PWD/release-package/$name.tgz"
+            node scripts/release.mjs check "release-package/$name.tgz" "$name"
+          done
+
+  # Opens or updates the version pull request. It holds a token that can write to the repository, so it installs
+  # without scripts and runs nothing but the changesets tooling and git.
+  version:
+    if: github.repository == 'Decipher/decoupled-drupal-mock' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      pending: ${{ steps.pending.outputs.count != '0' }}
+    steps:
+      # GitHub runs no checks on a pull request the workflow's own token opens. An app token gets them run. Without the
+      # app the pull request still opens, and its checks need a manual run.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app
+        if: vars.RELEASE_APP_ID != ''
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable --mode=skip-build
+      - name: Count pending changesets
+        id: pending
+        run: echo "count=$(node scripts/release.mjs pending)" >> "$GITHUB_OUTPUT"
+      # The title becomes the squash commit's subject, so it is a conventional commit.
+      - name: Open or update the version pull request
+        if: steps.pending.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          BASE: ${{ github.ref_name }}
+        run: |
+          branch="changeset-release/$BASE"
+          title='chore(release): version packages'
+          yarn release:version
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -C "$branch"
+          git add -A
+          git commit --no-verify --quiet -m "$title"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$branch"
+          {
+            echo 'Merging this pull request releases these versions to npm:'
+            echo
+            node scripts/release.mjs packages | jq -r '.[] | "- `\(.name)@\(.version)`, under the `\(.tag)` dist-tag"'
+            for name in $(node scripts/release.mjs packages | jq -r '.[].name'); do
+              notes=$(node scripts/release.mjs notes "$name")
+              [ -n "$notes" ] && printf '\n## %s\n\n%s\n' "$name" "$notes"
+            done
+          } > body.md
+          number=$(gh pr list --head "$branch" --base "$BASE" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "$title" --body-file body.md
+          else
+            gh pr create --head "$branch" --base "$BASE" --title "$title" --body-file body.md
+          fi
+          echo "The version pull request is open. Merging it is what releases." >> "$GITHUB_STEP_SUMMARY"
+
+  # Finds the versions not fully released, and packs them with their release notes. It runs repository code, so it
+  # holds no write or publishing rights.
+  pack:
+    needs: version
+    if: needs.version.outputs.pending == 'false'
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.unreleased.outputs.packages }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Find the versions not released yet
+        id: unreleased
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          packages=$(node scripts/release.mjs unreleased)
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+          echo "$packages" | jq -r 'if length == 0 then "Every version is released." else .[] | "- \(.name)@\(.version) is not fully released." end' >> "$GITHUB_STEP_SUMMARY"
+      # The tarballs and the release notes travel together, so the publishing job needs nothing from the repository.
+      - name: Pack the tarballs and the release notes
+        if: steps.unreleased.outputs.packages != '[]'
+        env:
+          PACKAGES: ${{ steps.unreleased.outputs.packages }}
+        run: |
+          yarn workspace decoupled-drupal-mock build
+          mkdir release-package
+          for name in $(echo "$PACKAGES" | jq -r '.[].name'); do
+            yarn workspace "$name" pack --out "$PWD/release-package/$name.tgz"
+            node scripts/release.mjs check "release-package/$name.tgz" "$name"
+            node scripts/release.mjs notes "$name" > "release-package/$name.md"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.unreleased.outputs.packages != '[]'
+        with:
+          name: release-package
+          path: release-package
+          retention-days: 30
+          if-no-files-found: error
+
+  # No checkout and no install: nothing from the repository runs with the OIDC permission. The engine goes first,
+  # since each preset names it as a peer. A rerun skips a version an earlier attempt published, and still creates a
+  # missing GitHub Release.
+  release:
+    needs: pack
+    if: needs.pack.outputs.packages != '[]' && vars.NPM_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    # Pauses for a required reviewer before anything reaches npm.
+    environment: release
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      # An exact version, and no install scripts: this job can publish. Trusted publishing needs npm 11.5.1 or later.
+      - name: Update npm
+        run: npm install --global --ignore-scripts npm@11.19.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-package
+          path: release-package
+      # The leading ./ matters: npm reads a bare "dir/file.tgz" as the GitHub shorthand "user/repo".
+      - name: Publish, tag and create each GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PACKAGES: ${{ needs.pack.outputs.packages }}
+        run: |
+          echo "$PACKAGES" | jq -c '.[]' | while read -r pkg; do
+            name=$(echo "$pkg" | jq -r .name)
+            version=$(echo "$pkg" | jq -r .version)
+            tag=$(echo "$pkg" | jq -r .tag)
+            release="$name@$version"
+            if [ "$(echo "$pkg" | jq -r .published)" = true ]; then
+              state='already on npm'
+            else
+              npm publish "./release-package/$name.tgz" --access public --tag "$tag"
+              state="published under $tag"
+            fi
+            if ! gh release view "$release" > /dev/null 2>&1; then
+              flags=()
+              [ "$tag" = latest ] || flags+=(--prerelease)
+              gh release create "$release" --target "$GITHUB_SHA" --title "$release" --notes-file "release-package/$name.md" "${flags[@]}"
+            fi
+            echo "- $release ($state)" >> "$GITHUB_STEP_SUMMARY"
+          done
