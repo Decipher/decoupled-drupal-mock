@@ -17,24 +17,52 @@ const packages = new Map(
 /** Whether a name matches one of the config's ignore patterns, where `*` stands for any run of characters. */
 const ignored = (name) => config.ignore.some((pattern) => new RegExp(`^${pattern.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`).test(name))
 
-/** The packages each pending changeset names, as `changeset version` reads them from its front matter. */
+/**
+ * The packages a changeset names, as `changeset version` reads them from its front matter. Changesets reads CRLF line
+ * endings too, and `changeset add --empty` writes front matter that names nothing, which releases nothing.
+ *
+ * @param text - The changeset's text.
+ * @returns The names, or undefined when the front matter is missing or holds a line that names no package.
+ */
+const namesIn = (text) => {
+  const front = text.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n?---(?:\n|$)/)
+  if (!front) return undefined
+  const lines = front[1].split('\n').filter((line) => line.trim() !== '')
+  const names = lines.map((line) => line.match(/^\s*['"]?([^'":\s]+)['"]?\s*:\s*['"]?(major|minor|patch)['"]?\s*$/)?.[1])
+  return names.includes(undefined) ? undefined : names
+}
+
+/** The packages each pending changeset names. */
 const pending = readdirSync(join(root, '.changeset'))
   .filter((file) => file.endsWith('.md') && file !== 'README.md')
-  .map((file) => {
-    const front = readFileSync(join(root, '.changeset', file), 'utf8').match(/^---\n([\s\S]*?)\n---/)
-    const names = (front ? front[1].split('\n') : []).map((line) => line.match(/^['"]?([^'":]+)['"]?\s*:/)?.[1]).filter(Boolean)
-    return { file, names }
+  .map((file) => ({ file, names: namesIn(readFileSync(join(root, '.changeset', file), 'utf8')) }))
+
+describe('a changeset\'s front matter', () => {
+  it('names the packages with their bumps, whatever the line endings', () => {
+    expect(namesIn("---\n'a': minor\n\"b\": patch\n---\n\nText.\n")).toEqual(['a', 'b'])
+    expect(namesIn("---\r\n'a': minor\r\nb: major\r\n---\r\n\r\nText.\r\n")).toEqual(['a', 'b'])
   })
 
+  it('may name nothing, as changeset add --empty writes it', () => {
+    expect(namesIn('---\n---\n')).toEqual([])
+    expect(namesIn('---\r\n---\r\n\r\nNothing to release.\r\n')).toEqual([])
+  })
+
+  it('is unreadable when it is missing or holds a line that names no package', () => {
+    expect(namesIn('Just text.\n')).toBeUndefined()
+    expect(namesIn("---\n'a': sideways\n---\n")).toBeUndefined()
+  })
+})
+
 describe('the pending changesets', () => {
-  it('each name at least one package', () => {
-    for (const { file, names } of pending) expect(names, file).not.toEqual([])
+  it('each have front matter that changeset version can read', () => {
+    for (const { file, names } of pending) expect(names, file).toBeDefined()
   })
 
   // changeset version refuses a changeset that names an ignored package beside a released one, so a release cannot
   // be versioned until it is fixed.
   it.each(pending)('$file names only packages a release publishes', ({ names }) => {
-    for (const name of names) {
+    for (const name of names ?? []) {
       expect(packages.has(name), `${name} is not a workspace package`).toBe(true)
       expect(ignored(name), `${name} is ignored in .changeset/config.json`).toBe(false)
       expect(packages.get(name), `${name} is private`).toBe(false)
