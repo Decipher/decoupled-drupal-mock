@@ -35,7 +35,11 @@ jobs:
       # comment each run updates. A fork's pull request has no token that may comment, so it gets the job summary only.
       - if: github.event_name == 'pull_request'
         run: yarn rebuild:summary ${{ github.event.pull_request.base.sha }} --out rebuild-summary.md
-      - if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      # Also after the summary step fails, so the comment says the summary is incomplete rather than keep an earlier
+      # one. That step's failure still fails the job.
+      - if: >-
+          !cancelled() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository && hashFiles('rebuild-summary.md') != ''
         run: node scripts/rebuild-comment.mjs rebuild-summary.md
         env:
           GITHUB_TOKEN: ${{ github.token }}

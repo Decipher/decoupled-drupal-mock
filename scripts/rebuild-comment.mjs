@@ -16,10 +16,11 @@ export const MARKER = '<!-- decoupled-drupal-mock:rebuild-summary -->'
  * @param options.repository - The repository, as `owner/name`.
  * @param options.pr - The pull request's number.
  * @param options.token - A token that may write comments on it.
+ * @param [options.author] - Who posts the comment: the workflow's token posts as github-actions[bot].
  * @param [options.request] - How to call GitHub's API.
  * @returns What it did.
  */
-export const postRebuildComment = async ({ summary, rebuilt, repository, pr, token, request = fetch }) => {
+export const postRebuildComment = async ({ summary, rebuilt, repository, pr, token, author = 'github-actions[bot]', request = fetch }) => {
   const api = `https://api.github.com/repos/${repository}/issues`
   const headers = { accept: 'application/vnd.github+json', authorization: `Bearer ${token}`, 'x-github-api-version': '2022-11-28' }
   const call = async (url, init = {}) => {
@@ -30,7 +31,8 @@ export const postRebuildComment = async ({ summary, rebuilt, repository, pr, tok
   let existing
   for (let page = 1; !existing; page++) {
     const comments = await call(`${api}/${pr}/comments?per_page=100&page=${page}`)
-    existing = comments.find((comment) => typeof comment.body === 'string' && comment.body.startsWith(MARKER))
+    // Anyone can paste the marker into a comment of their own, so only one this script's author posted is updated.
+    existing = comments.find((comment) => comment.user?.login === author && typeof comment.body === 'string' && comment.body.startsWith(MARKER))
     if (comments.length < 100) break
   }
   // A pull request that never changed a recording gets no comment. One that stopped changing them says so.
