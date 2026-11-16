@@ -1,6 +1,8 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { distTag, missingFromTarball, publicPackages, releaseNotes, unreleased } from './release.mjs'
+import { distTag, missingFromTarball, pendingChangesets, publicPackages, releaseNotes, unreleased } from './release.mjs'
 
 const root = join(import.meta.dirname, '..')
 
@@ -14,6 +16,24 @@ describe('the packages a release publishes', () => {
 
   it('share one version, since the changesets config releases them together', () => {
     expect(new Set(publicPackages(root).map(({ version }) => version)).size).toBe(1)
+  })
+})
+
+describe('what waits for the version pull request', () => {
+  const repository = (files) => {
+    const dir = mkdtempSync(join(tmpdir(), 'ddm-release-'))
+    mkdirSync(join(dir, '.changeset'))
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, '.changeset', name), text)
+    return dir
+  }
+
+  it('is each changeset, and not the README or the config', () => {
+    expect(pendingChangesets(repository({ 'README.md': '', 'config.json': '{}', 'a.md': '---\n---\n', 'b.md': '---\n---\n' }))).toBe(2)
+  })
+
+  it('includes leaving prerelease mode, which versions the packages with no changeset of its own', () => {
+    expect(pendingChangesets(repository({ 'pre.json': '{"mode":"exit","tag":"alpha"}' }))).toBe(1)
+    expect(pendingChangesets(repository({ 'pre.json': '{"mode":"pre","tag":"alpha"}' }))).toBe(0)
   })
 })
 

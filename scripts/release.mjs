@@ -32,11 +32,17 @@ export const distTag = (version) => {
 }
 
 /**
- * How many changesets wait for the version pull request.
+ * How much waits for the version pull request: each pending changeset, and leaving prerelease mode, which versions
+ * the packages to their stable release with no changeset of its own.
  *
  * @param root - The repository's root.
  */
-export const pendingChangesets = (root) => readdirSync(join(root, '.changeset')).filter((file) => file.endsWith('.md') && file !== 'README.md').length
+export const pendingChangesets = (root) => {
+  const changesets = readdirSync(join(root, '.changeset')).filter((file) => file.endsWith('.md') && file !== 'README.md').length
+  const pre = join(root, '.changeset', 'pre.json')
+  const exiting = existsSync(pre) && JSON.parse(readFileSync(pre, 'utf8')).mode === 'exit'
+  return changesets + (exiting ? 1 : 0)
+}
 
 /**
  * A version's section of a changelog, without its heading.

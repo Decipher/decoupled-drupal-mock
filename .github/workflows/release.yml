@@ -187,8 +187,9 @@ jobs:
           if-no-files-found: error
 
   # No checkout and no install: nothing from the repository runs with the OIDC permission. The engine goes first,
-  # since each preset names it as a peer. A rerun skips a version an earlier attempt published, and still creates a
-  # missing GitHub Release.
+  # since each preset names it as a peer. npm is asked again before each publish, since a rerun of this job keeps the
+  # pack job's answers from before the first attempt. So a rerun skips a version an earlier attempt published, and
+  # still creates a missing GitHub Release.
   release:
     needs: pack
     if: needs.pack.outputs.packages != '[]' && vars.NPM_PUBLISH == 'true'
@@ -223,11 +224,17 @@ jobs:
             version=$(echo "$pkg" | jq -r .version)
             tag=$(echo "$pkg" | jq -r .tag)
             release="$name@$version"
-            if [ "$(echo "$pkg" | jq -r .published)" = true ]; then
+            # npm answers E404 for a version or a package it does not have. Any other failure stops the job, rather
+            # than publishing on a guess.
+            if found=$(npm view "$release" version 2> npm-view.log) && [ -n "$found" ]; then
               state='already on npm'
-            else
+            elif grep -q 'code E404' npm-view.log; then
               npm publish "./release-package/$name.tgz" --access public --tag "$tag"
               state="published under $tag"
+            else
+              cat npm-view.log
+              echo "npm could not say whether $release is published." >&2
+              exit 1
             fi
             if ! gh release view "$release" > /dev/null 2>&1; then
               flags=()
