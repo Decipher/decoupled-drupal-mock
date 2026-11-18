@@ -16,7 +16,6 @@
   "updateInternalDependencies": "patch",
   "ignore": ["decoupled-drupal-mock-build", "example-*"],
   "snapshot": {
-    "useCalculatedVersion": true,
     "prereleaseTemplate": "{tag}.{datetime}"
   }
 }

@@ -3,7 +3,7 @@ name: Release
 # Publishes the engine and the presets to npm.
 #
 # dev: a push to a release line while changesets are pending publishes a snapshot of every package they release under
-# the `dev` dist-tag, such as 1.0.0-dev.20261118084548. Nothing is committed and no git tag is made. Install one with
+# the `dev` dist-tag, such as 0.0.0-dev.20261118084548. Nothing is committed and no git tag is made. Install one with
 # `decoupled-drupal-mock@dev`. A manual run cuts one too, and does nothing else.
 #
 # release: while changesets are pending, a "version packages" pull request stays open against the release line.
@@ -135,11 +135,12 @@ jobs:
   dev:
     needs: snapshot
     # workflow_dispatch takes no branch filter and can target a tag, so a tag named like a release line would otherwise
-    # pass the suffix test.
+    # pass the suffix test. Anyone who can push can make a branch named like one, so only a protected branch publishes.
     if: >-
       github.event_name != 'pull_request' &&
       startsWith(github.ref, 'refs/heads/') &&
       endsWith(github.ref, '.x') &&
+      github.ref_protected &&
       vars.NPM_PUBLISH == 'true' &&
       needs.snapshot.outputs.packages != '[]'
     runs-on: ubuntu-latest
@@ -158,28 +159,41 @@ jobs:
           name: dev-package
           path: dev-package
       # The engine goes first, since each preset names its exact snapshot as a peer. The leading ./ matters: npm reads
-      # a bare "dir/file.tgz" as the GitHub shorthand "user/repo".
+      # a bare "dir/file.tgz" as the GitHub shorthand "user/repo". A rerun keeps the same snapshot versions, so it skips
+      # one an earlier attempt published. npm answers E404 for a version it does not have, and any other failure of
+      # the lookup stops the job.
       - name: Publish under the dev tag
         shell: bash
         env:
           PACKAGES: ${{ needs.snapshot.outputs.packages }}
         run: |
-          for name in $(echo "$PACKAGES" | jq -r '.[].name'); do
-            npm publish "./dev-package/$name.tgz" --access public --tag dev
+          echo "$PACKAGES" | jq -c '.[]' | while read -r pkg; do
+            name=$(echo "$pkg" | jq -r .name)
+            release="$name@$(echo "$pkg" | jq -r .version)"
+            if found=$(npm view "$release" version 2> npm-view.log) && [ -n "$found" ]; then
+              state='already on npm'
+            elif grep -q 'code E404' npm-view.log; then
+              npm publish "./dev-package/$name.tgz" --access public --tag dev
+              state='published under dev'
+            else
+              cat npm-view.log
+              echo "npm could not say whether $release is published." >&2
+              exit 1
+            fi
+            echo "- $release ($state)" >> "$GITHUB_STEP_SUMMARY"
           done
-          echo "$PACKAGES" | jq -r '.[] | "- \(.name)@\(.version), under dev"' >> "$GITHUB_STEP_SUMMARY"
 
   # Opens or updates the version pull request. It holds a token that can write to the repository, so it installs
-  # without scripts and runs nothing but the changesets tooling. Only a push to a release line gets here, so a manual
-  # run, which can name any branch or tag, never releases.
+  # without scripts and runs nothing but the changesets tooling. Only a push to a protected release line gets here, so
+  # a manual run, which can name any branch or tag, never releases, and neither does a branch anyone could push.
   version:
-    if: github.repository == 'Decipher/decoupled-drupal-mock' && github.event_name == 'push'
+    if: github.repository == 'Decipher/decoupled-drupal-mock' && github.event_name == 'push' && github.ref_protected
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     outputs:
-      pending: ${{ steps.changesets.outputs.has-changesets }}
+      pending: ${{ steps.pending.outputs.count != '0' }}
     steps:
       # GitHub runs no checks on a pull request the workflow's own token opens. An app token gets them run. Without the
       # app the pull request still opens, and its checks need a manual run.
@@ -202,30 +216,39 @@ jobs:
           node-version: 24
       - run: corepack enable
       - run: yarn install --immutable --mode=skip-build
+      # Counted before the action versions anything. The action's own has-changesets also counts an empty changeset,
+      # which releases nothing and opens no pull request, and would then hold every release back.
+      - name: Count what waits for the version pull request
+        id: pending
+        run: echo "count=$(node scripts/release.mjs pending)" >> "$GITHUB_OUTPUT"
       # v2, the line that takes @changesets/cli 3. It commits through the API, so the version commit is signed. Once
       # prerelease mode is ending it counts the changesets that mode used, so leaving it opens the pull request too.
       # The title becomes the squash commit's subject, so it is a conventional commit. In prerelease mode the action
       # adds the mode's tag to it, such as " (alpha)".
       - uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         id: changesets
+        if: steps.pending.outputs.count != '0'
         with:
           github-token: ${{ steps.app.outputs.token || github.token }}
           version-script: yarn release:version
           pr-title: 'chore(release): version packages'
           commit-message: 'chore(release): version packages'
-      # The action's description lists each changelog. This one also says which dist-tag each version takes. The
-      # working tree is the version commit here.
+      # The action's description lists each changelog. This one also says which dist-tag each version is expected to
+      # take, asked of npm as the release job will ask it. The working tree is the version commit here.
       - name: Say what merging the version pull request releases
         if: steps.changesets.outputs.pr-number != ''
+        # Explicit, so pipefail applies: a failed npm lookup must not leave a description with no versions in it.
+        shell: bash
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ steps.changesets.outputs.pr-number }}
         run: |
           {
-            echo 'Merging this pull request releases these versions to npm:'
+            echo 'Merging this pull request releases these versions to npm. Each dist-tag is what npm would give it now,'
+            echo 'and the release job asks npm again before it publishes.'
             echo
-            node scripts/release.mjs packages | jq -r '.[] | "- `\(.name)@\(.version)`, under the `\(.tag)` dist-tag"'
+            node scripts/release.mjs unreleased | jq -r '.[] | "- `\(.name)@\(.version)`, under the `\(.tag)` dist-tag"'
             for name in $(node scripts/release.mjs packages | jq -r '.[].name'); do
               notes=$(node scripts/release.mjs notes "$name")
               # An if, since a bare test that fails would be the loop's status, and end the step.
@@ -238,7 +261,7 @@ jobs:
       # A pending changeset means its work is not finished, so nothing publishes. Say so, rather than leave a quiet run
       # that reads as a failure.
       - name: Say why nothing will publish
-        if: steps.changesets.outputs.has-changesets == 'true'
+        if: steps.pending.outputs.count != '0'
         run: |
           {
             echo "### No publish this run"
@@ -336,8 +359,14 @@ jobs:
             # than publishing on a guess.
             if found=$(npm view "$release" version 2> npm-view.log) && [ -n "$found" ]; then
               state='already on npm'
-              # Trusted publishing signs in only to publish, so a dist-tag a rerun finds wrong can only be reported.
-              tagged=$(npm view "$name" "dist-tags.$tag" 2> /dev/null || true)
+              # Trusted publishing signs in only to publish, so a dist-tag a rerun finds wrong can only be reported. The
+              # tags are asked of the exact version, since a bare name resolves through latest, which may not exist.
+              if ! tags=$(npm view "$release" dist-tags --json 2> npm-view.log); then
+                cat npm-view.log
+                echo "npm could not list the dist-tags of $release." >&2
+                exit 1
+              fi
+              tagged=$(echo "$tags" | jq -r --arg tag "$tag" '.[$tag] // empty')
               if [ "$tagged" != "$version" ]; then
                 state="already on npm, but $tag names ${tagged:-nothing}: run npm dist-tag add $release $tag"
                 echo "::warning::$release is published, but the $tag dist-tag names ${tagged:-nothing}."

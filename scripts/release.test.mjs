@@ -37,8 +37,18 @@ describe('what waits for the version pull request', () => {
     return dir
   }
 
-  it('is each changeset, and not the README or the config', () => {
-    expect(pendingChangesets(repository({ 'README.md': '', 'config.json': '{}', 'a.md': '---\n---\n', 'b.md': '---\n---\n' }))).toBe(2)
+  it('is each changeset that releases something, and not the README or the config', () => {
+    const a = "---\n'decoupled-drupal-mock': patch\n---\n\nA fix.\n"
+    const b = '---\r\ndecoupled-drupal-mock-umami: minor\r\n---\r\n'
+    expect(pendingChangesets(repository({ 'README.md': '', 'config.json': '{}', 'a.md': a, 'b.md': b }))).toBe(2)
+  })
+
+  it('leaves out an empty changeset, which releases nothing and opens no version pull request', () => {
+    expect(pendingChangesets(repository({ 'empty.md': '---\n---\n', 'blank.md': '---\n\n---\n\nNotes only.\n' }))).toBe(0)
+  })
+
+  it('counts a changeset without front matter, so the version step stops on it', () => {
+    expect(pendingChangesets(repository({ 'broken.md': 'No front matter.\n' }))).toBe(1)
   })
 
   it('includes leaving prerelease mode, which versions the packages with no changeset of its own', () => {

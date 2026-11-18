@@ -56,13 +56,27 @@ export const distTag = (version, latest = null) => {
 }
 
 /**
- * How much waits for the version pull request: each pending changeset, and leaving prerelease mode, which versions
- * the packages to their stable release with no changeset of its own.
+ * Whether a changeset releases anything. An empty one, as `changeset add --empty` writes, releases nothing, and the
+ * version step skips it. One without front matter counts, so the version step stops on it rather than a release
+ * going out past it.
+ *
+ * @param text - The changeset's text.
+ */
+export const releasesSomething = (text) => {
+  const front = text.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n?---(?:\n|$)/)
+  return !front || front[1].split('\n').some((line) => line.trim() !== '')
+}
+
+/**
+ * How much waits for the version pull request: each pending changeset that releases something, and leaving
+ * prerelease mode, which versions the packages to their stable release with no changeset of its own.
  *
  * @param root - The repository's root.
  */
 export const pendingChangesets = (root) => {
-  const changesets = readdirSync(join(root, '.changeset')).filter((file) => file.endsWith('.md') && file !== 'README.md').length
+  const changesets = readdirSync(join(root, '.changeset'))
+    .filter((file) => file.endsWith('.md') && file !== 'README.md')
+    .filter((file) => releasesSomething(readFileSync(join(root, '.changeset', file), 'utf8'))).length
   const pre = join(root, '.changeset', 'pre.json')
   const exiting = existsSync(pre) && JSON.parse(readFileSync(pre, 'utf8')).mode === 'exit'
   return changesets + (exiting ? 1 : 0)
@@ -139,15 +153,21 @@ if (process.argv[1]?.endsWith('release.mjs')) {
   if (command === 'pending') console.log(pendingChangesets(root))
   else if (command === 'packages') console.log(JSON.stringify(publicPackages(root)))
   else if (command === 'unreleased') {
+    // npm answers E404 for a version or a package it does not have. Any other failure stops here, rather than
+    // publishing on a guess: a lost answer about `latest` would send an older line's release out as `latest`.
     const view = (...args) => {
       try {
-        return execFileSync('npm', ['view', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
-      } catch {
-        return ''
+        return execFileSync('npm', ['view', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+      } catch (error) {
+        if (String(error.stderr).includes('E404')) return ''
+        throw new Error(`npm could not answer npm view ${args.join(' ')}: ${String(error.stderr).trim()}`)
       }
     }
     const onNpm = (spec) => view(spec, 'version') !== ''
-    const latest = (name) => view(name, 'dist-tags.latest') || null
+    const latest = (name) => {
+      const tags = view(name, 'dist-tags', '--json')
+      return tags ? JSON.parse(tags).latest ?? null : null
+    }
     console.log(JSON.stringify(unreleased(publicPackages(root), { onNpm, latest, hasRelease: (tag) => quiet('gh', ['release', 'view', tag]) })))
   } else if (command === 'notes') {
     const pkg = find(rest[0])
