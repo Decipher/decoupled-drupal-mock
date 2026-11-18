@@ -14,5 +14,9 @@
   "access": "public",
   "baseBranch": "1.0.x",
   "updateInternalDependencies": "patch",
-  "ignore": ["decoupled-drupal-mock-build", "example-*"]
+  "ignore": ["decoupled-drupal-mock-build", "example-*"],
+  "snapshot": {
+    "useCalculatedVersion": true,
+    "prereleaseTemplate": "{tag}.{datetime}"
+  }
 }

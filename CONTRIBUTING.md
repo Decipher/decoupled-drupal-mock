@@ -62,12 +62,13 @@ Add a changeset with `yarn changeset`. The engine and the Umami preset are versi
 
 Releases come from `1.0.x`, through the Release workflow in `.github/workflows/release.yml`:
 
-1. A merged change with a changeset opens or updates the "version packages" pull request. It holds the new versions with their changelogs, and the lock file that matches them. Its description lists what merging it releases.
-2. Merging that pull request is the release decision. The push that follows packs every package npm does not have at its version yet and publishes it under its dist-tag, which is `alpha` while the line is in alpha. Each published version gets a tag and a GitHub Release.
+1. A merged change with a changeset publishes a dev snapshot of every package it releases, such as `1.0.0-dev.20261118084548`, under the `dev` dist-tag. Install one with `decoupled-drupal-mock@dev`. Nothing is committed and no git tag is made. A manual run of the workflow cuts a snapshot too, and does nothing else.
+2. The same push opens or updates the "version packages" pull request. It holds the new versions with their changelogs, and the lock file that matches them. Its description lists what merging it releases, and under which dist-tag.
+3. Merging that pull request is the release decision. The push that follows packs every package npm does not have at its version yet and publishes it under its dist-tag. That is `alpha` while the line is in alpha, `latest` for a stable release, and `latest-<major>` for a stable release from an older line, so `latest` never moves back. Each published version gets a tag and a GitHub Release.
 
-Publishing uses npm trusted publishing, so no token is stored. It runs only once the repository variable `NPM_PUBLISH` is `true`, and the `release` environment can hold it for a reviewer. Until then each run packs and checks the tarballs as a dry run. A pull request that changes how a release is made gets the same rehearsal.
+Publishing uses npm trusted publishing, so no token is stored. It runs only once the repository variable `NPM_PUBLISH` is `true`, and the `release` environment can hold a release for a reviewer. Until then each run packs and checks the tarballs as a dry run. A pull request that changes how a release is made gets the same rehearsal, for a snapshot and for a release.
 
-A package npm has never seen needs its first version published by hand before npm lets it trust the workflow. After that, set up the trusted publisher on npmjs.com for each package. It names this repository and the `release.yml` workflow, with `release` as its environment. npm drops a trusted publisher that has not published within two days of being set up, so set them up shortly before the release that will use them.
+A package npm has never seen needs its first version published by hand before npm lets it trust the workflow. After that, set up the trusted publisher on npmjs.com for each package. It names this repository and the `release.yml` workflow, and leaves the environment empty: npm holds one environment per package, and the dev snapshots publish without one. npm drops a trusted publisher that has not published within two days of being set up, so set them up shortly before the release that will use them.
 
 ## Licence
 

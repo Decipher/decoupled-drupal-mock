@@ -54,6 +54,15 @@ describe('a version\'s dist-tag', () => {
     expect(distTag('1.0.0-rc.0')).toBe('rc')
     expect(distTag('1.0.0')).toBe('latest')
     expect(distTag('1.2.3+build.7')).toBe('latest')
+    expect(distTag('1.0.0-dev.20261118084548')).toBe('dev')
+  })
+
+  it('is latest-<major> for a stable release below the one npm calls latest, so latest never moves back', () => {
+    expect(distTag('1.4.2', '2.0.1')).toBe('latest-1')
+    expect(distTag('2.0.0', '2.0.0-alpha.3')).toBe('latest')
+    expect(distTag('2.1.0', '2.0.9')).toBe('latest')
+    expect(distTag('2.0.1', '2.0.1')).toBe('latest')
+    expect(distTag('1.0.0-alpha.5', '2.0.0')).toBe('alpha')
   })
 })
 
@@ -77,8 +86,17 @@ describe('the versions not released yet', () => {
     const onNpm = (spec) => spec !== 'a@1.0.0'
     const hasRelease = (tag) => tag !== 'b@1.0.0'
     expect(unreleased(packages, { onNpm, hasRelease })).toEqual([
-      { name: 'a', version: '1.0.0', published: false },
-      { name: 'b', version: '1.0.0', published: true },
+      { name: 'a', version: '1.0.0', published: false, tag: 'latest' },
+      { name: 'b', version: '1.0.0', published: true, tag: 'latest' },
+    ])
+  })
+
+  it('take latest-<major> when npm already calls a newer version latest', () => {
+    const latest = (name) => (name === 'a' ? '2.0.0' : null)
+    expect(unreleased(packages, { onNpm: () => false, hasRelease: () => false, latest }).map(({ name, tag }) => [name, tag])).toEqual([
+      ['a', 'latest-1'],
+      ['b', 'latest'],
+      ['c', 'latest'],
     ])
   })
 

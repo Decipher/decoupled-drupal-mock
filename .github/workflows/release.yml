@@ -2,18 +2,22 @@ name: Release
 
 # Publishes the engine and the presets to npm.
 #
-# While changesets are pending, a "version packages" pull request stays open against the release line. Merging it is
-# the release decision. The push that follows finds versions npm does not have, publishes them, and creates a tag and
-# a GitHub Release for each.
+# dev: a push to a release line while changesets are pending publishes a snapshot of every package they release under
+# the `dev` dist-tag, such as 1.0.0-dev.20261118084548. Nothing is committed and no git tag is made. Install one with
+# `decoupled-drupal-mock@dev`. A manual run cuts one too, and does nothing else.
+#
+# release: while changesets are pending, a "version packages" pull request stays open against the release line.
+# Merging it is the release decision. The push that follows finds versions npm does not have, publishes them, and
+# creates a tag and a GitHub Release for each.
 #
 # Building and publishing are separate jobs. A job that runs repository code, install scripts included, holds no
 # publishing rights, and ends by packing tarballs. The publishing job holds the OIDC permission and runs nothing from
 # the repository. It downloads the tarballs and hands them to npm.
 #
 # Publishing uses npm trusted publishing (OIDC), so there is no token. It stays off until NPM_PUBLISH is `true` as a
-# repository variable: the release job's `if` is read before the job enters its environment, so a variable set only on
-# the release environment does not count there. The release environment can then hold the job for a reviewer. Until
-# then the packed tarballs are the dry run.
+# repository variable: the publishing jobs' `if` is read before a job enters its environment, so a variable set only on
+# the release environment does not count there. The release environment can then hold the release job for a reviewer.
+# Until then the packed tarballs are the dry run.
 
 on:
   push:
@@ -28,7 +32,10 @@ on:
       - .github/workflows/release.yml
       - .changeset/config.json
       - scripts/release.mjs
+      # The root manifest and the lock file hold the changesets packages themselves, so a change to either can stop a
+      # release starting.
       - package.json
+      - yarn.lock
       - 'packages/*/package.json'
       - 'presets/*/package.json'
   workflow_dispatch:
@@ -74,16 +81,105 @@ jobs:
             node scripts/release.mjs check "release-package/$name.tgz" "$name"
           done
 
+  # Versions every package a pending changeset releases as a dev snapshot, and packs them. It runs on pull requests too,
+  # as the snapshot's rehearsal. No id-token here: a lifecycle script in a pull request must not be able to reach npm.
+  snapshot:
+    if: github.repository == 'Decipher/decoupled-drupal-mock'
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.snapshot.outputs.packages }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable
+      # A snapshot cannot be cut in pre mode. The checkout is thrown away, so dropping the marker here changes nothing
+      # on the branch. A dev version is the only kind with the `dev` dist-tag, so that picks out what was versioned.
+      - name: Version the snapshot
+        id: snapshot
+        run: |
+          packages='[]'
+          if [ "$(node scripts/release.mjs pending)" != 0 ]; then
+            rm -f .changeset/pre.json
+            yarn changeset version --snapshot dev
+            yarn install --mode=update-lockfile
+            packages=$(node scripts/release.mjs packages | jq -c '[.[] | select(.tag == "dev")]')
+          fi
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+          echo "$packages" | jq -r 'if length == 0 then "No changeset is pending, so there is no snapshot." else .[] | "- \(.name)@\(.version)" end' >> "$GITHUB_STEP_SUMMARY"
+      - name: Pack each snapshot and check what it holds
+        if: steps.snapshot.outputs.packages != '[]'
+        env:
+          PACKAGES: ${{ steps.snapshot.outputs.packages }}
+        run: |
+          yarn workspace decoupled-drupal-mock build
+          mkdir dev-package
+          for name in $(echo "$PACKAGES" | jq -r '.[].name'); do
+            yarn workspace "$name" pack --out "$PWD/dev-package/$name.tgz"
+            node scripts/release.mjs check "dev-package/$name.tgz" "$name"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.snapshot.outputs.packages != '[]'
+        with:
+          name: dev-package
+          path: dev-package
+          retention-days: 7
+          if-no-files-found: error
+
+  # No checkout and no install: nothing from the repository runs with the OIDC permission. No environment either: npm's
+  # trusted publisher holds one environment per package, and both this job and the release job publish through it.
+  dev:
+    needs: snapshot
+    # workflow_dispatch takes no branch filter and can target a tag, so a tag named like a release line would otherwise
+    # pass the suffix test.
+    if: >-
+      github.event_name != 'pull_request' &&
+      startsWith(github.ref, 'refs/heads/') &&
+      endsWith(github.ref, '.x') &&
+      vars.NPM_PUBLISH == 'true' &&
+      needs.snapshot.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      # An exact version, and no install scripts: this job can publish. Trusted publishing needs npm 11.5.1 or later.
+      - name: Update npm
+        run: npm install --global --ignore-scripts npm@11.19.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dev-package
+          path: dev-package
+      # The engine goes first, since each preset names its exact snapshot as a peer. The leading ./ matters: npm reads
+      # a bare "dir/file.tgz" as the GitHub shorthand "user/repo".
+      - name: Publish under the dev tag
+        shell: bash
+        env:
+          PACKAGES: ${{ needs.snapshot.outputs.packages }}
+        run: |
+          for name in $(echo "$PACKAGES" | jq -r '.[].name'); do
+            npm publish "./dev-package/$name.tgz" --access public --tag dev
+          done
+          echo "$PACKAGES" | jq -r '.[] | "- \(.name)@\(.version), under dev"' >> "$GITHUB_STEP_SUMMARY"
+
   # Opens or updates the version pull request. It holds a token that can write to the repository, so it installs
-  # without scripts and runs nothing but the changesets tooling and git.
+  # without scripts and runs nothing but the changesets tooling. Only a push to a release line gets here, so a manual
+  # run, which can name any branch or tag, never releases.
   version:
-    if: github.repository == 'Decipher/decoupled-drupal-mock' && github.event_name != 'pull_request'
+    if: github.repository == 'Decipher/decoupled-drupal-mock' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     outputs:
-      pending: ${{ steps.pending.outputs.count != '0' }}
+      pending: ${{ steps.changesets.outputs.has-changesets }}
     steps:
       # GitHub runs no checks on a pull request the workflow's own token opens. An app token gets them run. Without the
       # app the pull request still opens, and its checks need a manual run.
@@ -93,6 +189,8 @@ jobs:
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # Named, not inherited. Changesets hands this token to the version script, so it carries only what opening
+          # the version pull request needs.
           permission-contents: write
           permission-pull-requests: write
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -104,25 +202,26 @@ jobs:
           node-version: 24
       - run: corepack enable
       - run: yarn install --immutable --mode=skip-build
-      - name: Count pending changesets
-        id: pending
-        run: echo "count=$(node scripts/release.mjs pending)" >> "$GITHUB_OUTPUT"
-      # The title becomes the squash commit's subject, so it is a conventional commit.
-      - name: Open or update the version pull request
-        if: steps.pending.outputs.count != '0'
+      # v2, the line that takes @changesets/cli 3. It commits through the API, so the version commit is signed. Once
+      # prerelease mode is ending it counts the changesets that mode used, so leaving it opens the pull request too.
+      # The title becomes the squash commit's subject, so it is a conventional commit. In prerelease mode the action
+      # adds the mode's tag to it, such as " (alpha)".
+      - uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        id: changesets
+        with:
+          github-token: ${{ steps.app.outputs.token || github.token }}
+          version-script: yarn release:version
+          pr-title: 'chore(release): version packages'
+          commit-message: 'chore(release): version packages'
+      # The action's description lists each changelog. This one also says which dist-tag each version takes. The
+      # working tree is the version commit here.
+      - name: Say what merging the version pull request releases
+        if: steps.changesets.outputs.pr-number != ''
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
-          BASE: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.changesets.outputs.pr-number }}
         run: |
-          branch="changeset-release/$BASE"
-          title='chore(release): version packages'
-          yarn release:version
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git switch -C "$branch"
-          git add -A
-          git commit --no-verify --quiet -m "$title"
-          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$branch"
           {
             echo 'Merging this pull request releases these versions to npm:'
             echo
@@ -134,14 +233,19 @@ jobs:
                 printf '\n## %s\n\n%s\n' "$name" "$notes"
               fi
             done
-          } > body.md
-          number=$(gh pr list --head "$branch" --base "$BASE" --state open --json number --jq '.[0].number // empty')
-          if [ -n "$number" ]; then
-            gh pr edit "$number" --title "$title" --body-file body.md
-          else
-            gh pr create --head "$branch" --base "$BASE" --title "$title" --body-file body.md
-          fi
-          echo "The version pull request is open. Merging it is what releases." >> "$GITHUB_STEP_SUMMARY"
+          } > "$RUNNER_TEMP/body.md"
+          gh pr edit "$PR" --body-file "$RUNNER_TEMP/body.md"
+      # A pending changeset means its work is not finished, so nothing publishes. Say so, rather than leave a quiet run
+      # that reads as a failure.
+      - name: Say why nothing will publish
+        if: steps.changesets.outputs.has-changesets == 'true'
+        run: |
+          {
+            echo "### No publish this run"
+            echo
+            echo "Changesets are still pending, so the version pull request has been opened or updated instead."
+            echo "Merging that pull request is what releases."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # Finds the versions not fully released, and packs them with their release notes. It runs repository code, so it
   # holds no write or publishing rights.
@@ -247,8 +351,11 @@ jobs:
               exit 1
             fi
             if ! gh release view "$release" > /dev/null 2>&1; then
-              flags=()
-              [ "$tag" = latest ] || flags+=(--prerelease)
+              # Only a release npm calls latest is GitHub's latest too. A release from an older line is not a
+              # prerelease, just not the latest.
+              flags=(--latest=false)
+              [ "$tag" = latest ] && flags=(--latest)
+              case "$version" in *-*) flags+=(--prerelease) ;; esac
               gh release create "$release" --target "$GITHUB_SHA" --title "$release" --notes-file "release-package/$name.md" "${flags[@]}"
             fi
             echo "- $release ($state)" >> "$GITHUB_STEP_SUMMARY"

@@ -35,15 +35,24 @@ export const publicPackages = (root) => {
 }
 
 /**
- * The npm dist-tag a version goes out under. npm 11 refuses to publish a prerelease without one, and a prerelease
- * under `latest` would be what a plain install gets.
+ * The npm dist-tag a version goes out under. npm 11 refuses to publish a prerelease without one, a prerelease under
+ * `latest` would be what a plain install gets, and npm moves `latest` to whatever it publishes, so a stable release
+ * from an older line takes a tag of its own.
  *
  * @param version - The version.
- * @returns The prerelease's name, such as `alpha`, or `latest`.
+ * @param latest - The version npm calls `latest` for the package, or null when it has none or nobody asked.
+ * @returns The prerelease's name, such as `alpha` or `dev`, `latest-<major>` below npm's latest, or `latest`.
  */
-export const distTag = (version) => {
+export const distTag = (version, latest = null) => {
   const prerelease = version.split('+')[0].split('-').slice(1).join('-')
-  return prerelease ? prerelease.split('.')[0] : 'latest'
+  if (prerelease) return prerelease.split('.')[0]
+  const core = (value) => value.split(/[-+]/)[0].split('.').map(Number)
+  if (latest) {
+    const [mine, theirs] = [core(version), core(latest)]
+    const order = mine.map((part, index) => part - theirs[index]).find((difference) => difference !== 0) ?? 0
+    if (order < 0) return `latest-${mine[0]}`
+  }
+  return 'latest'
 }
 
 /**
@@ -76,16 +85,19 @@ export const releaseNotes = (changelog, version) => {
 
 /**
  * The packages whose version is not fully released. A version is released once npm has it and its GitHub Release
- * exists, so a run that published and then failed to create the Release finishes the job when it runs again.
+ * exists, so a run that published and then failed to create the Release finishes the job when it runs again. Each
+ * keeps the dist-tag it goes out under, which needs npm's `latest` to tell a release from an older line.
  *
  * @param packages - The packages, as `publicPackages` gives them.
  * @param ask - How to ask npm and GitHub.
  * @param ask.onNpm - Whether npm has `name@version`.
  * @param ask.hasRelease - Whether GitHub has the Release tagged `name@version`.
+ * @param ask.latest - The version npm calls `latest` for a package, or null.
  */
-export const unreleased = (packages, { onNpm, hasRelease }) => packages
+export const unreleased = (packages, { onNpm, hasRelease, latest = () => null }) => packages
   .map((pkg) => ({ ...pkg, published: onNpm(`${pkg.name}@${pkg.version}`) }))
   .filter((pkg) => !pkg.published || !hasRelease(`${pkg.name}@${pkg.version}`))
+  .map((pkg) => ({ ...pkg, tag: distTag(pkg.version, latest(pkg.name)) }))
 
 /**
  * What a packed tarball lacks of what its manifest names: every `bin`, every `exports` target and every `files` entry.
@@ -127,14 +139,16 @@ if (process.argv[1]?.endsWith('release.mjs')) {
   if (command === 'pending') console.log(pendingChangesets(root))
   else if (command === 'packages') console.log(JSON.stringify(publicPackages(root)))
   else if (command === 'unreleased') {
-    const onNpm = (spec) => {
+    const view = (...args) => {
       try {
-        return execFileSync('npm', ['view', spec, 'version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() !== ''
+        return execFileSync('npm', ['view', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
       } catch {
-        return false
+        return ''
       }
     }
-    console.log(JSON.stringify(unreleased(publicPackages(root), { onNpm, hasRelease: (tag) => quiet('gh', ['release', 'view', tag]) })))
+    const onNpm = (spec) => view(spec, 'version') !== ''
+    const latest = (name) => view(name, 'dist-tags.latest') || null
+    console.log(JSON.stringify(unreleased(publicPackages(root), { onNpm, latest, hasRelease: (tag) => quiet('gh', ['release', 'view', tag]) })))
   } else if (command === 'notes') {
     const pkg = find(rest[0])
     const changelog = join(root, pkg.dir, 'CHANGELOG.md')
