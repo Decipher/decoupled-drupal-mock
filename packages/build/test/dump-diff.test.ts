@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -127,7 +127,7 @@ describe('the summary of a rebuild', () => {
   })
 })
 
-describe('the pages beside the presets', () => {
+describe('the summary of each preset\'s rebuild', () => {
   // A hook runs the tests with GIT_DIR set, and git would take it for the repository each test makes.
   const repository = (): { root: string, git: (...args: string[]) => string } => {
     const root = mkdtempSync(join(tmpdir(), 'rebuild-summary-'))
@@ -155,7 +155,7 @@ describe('the pages beside the presets', () => {
     }
   }
 
-  it('writes the page for a preset the base does not have yet, and then holds the recordings to it', async () => {
+  it('summarises a preset the base does not have yet, against no build at all', async () => {
     const { rebuildSummaries } = await import('../src/rebuild-summary')
     const { root, git } = repository()
     const base = git('rev-parse', 'HEAD').trim()
@@ -163,24 +163,39 @@ describe('the pages beside the presets', () => {
     git('add', '.')
     git('commit', '--quiet', '-m', 'preset')
     const log: string[] = []
-    expect(withoutGit(() => rebuildSummaries({ base, write: true, root, log: (line) => log.push(line) }))).toBe(true)
-    expect(log).toEqual(['p: wrote presets/p/REBUILD.md'])
-    expect(readFileSync(join(root, 'presets', 'p', 'REBUILD.md'), 'utf8')).toContain('- No build before this one. Core 11.4.11, profile demo_umami')
-    expect(withoutGit(() => rebuildSummaries({ base, write: false, root, log: () => {} }))).toBe(true)
+    const { ok, summary } = withoutGit(() => rebuildSummaries({ base, root, log: (line) => log.push(line) }))
+    expect(ok).toBe(true)
+    expect(log).toEqual(['p: the recordings changed'])
+    expect(summary.startsWith('## The p rebuild\n')).toBe(true)
+    expect(summary).toContain('### Drupal\n\n- No build before this one. Core 11.4.11, profile demo_umami')
+    // Nothing is written beside the recordings.
+    expect(existsSync(join(root, 'presets', 'p', 'REBUILD.md'))).toBe(false)
   })
 
-  it('writes the page for recordings not yet staged, which git diff does not see', async () => {
+  it('summarises recordings not yet staged, which git diff does not see', async () => {
     const { rebuildSummaries } = await import('../src/rebuild-summary')
     const { root, git } = repository()
     const base = git('rev-parse', 'HEAD').trim()
     preset(root, '11.4.11')
-    const log: string[] = []
-    expect(withoutGit(() => rebuildSummaries({ base, write: true, root, log: (line) => log.push(line) }))).toBe(true)
-    expect(log).toEqual(['p: wrote presets/p/REBUILD.md'])
+    expect(withoutGit(() => rebuildSummaries({ base, root, log: () => {} })).summary).toContain('## The p rebuild')
   })
 
-  it('fails when a rebuild leaves recordings with no manifest, rather than skipping the preset', async () => {
-    const { rebuildSummaries } = await import('../src/rebuild-summary')
+  it('says what a rebuild changed against the base, and says so when nothing did', async () => {
+    const { rebuildSummaries, NO_REBUILD } = await import('../src/rebuild-summary')
+    const { root, git } = repository()
+    preset(root, '11.4.10')
+    git('add', '.')
+    git('commit', '--quiet', '-m', 'preset')
+    const base = git('rev-parse', 'HEAD').trim()
+    const log: string[] = []
+    expect(withoutGit(() => rebuildSummaries({ base, root, log: (line) => log.push(line) }))).toEqual({ ok: true, summary: NO_REBUILD })
+    expect(log).toEqual([`p: the recordings are as ${base} has them`])
+    preset(root, '11.4.11')
+    expect(withoutGit(() => rebuildSummaries({ base, root, log: () => {} })).summary).toContain('- Core 11.4.10 to 11.4.11')
+  })
+
+  it('fails when a rebuild leaves recordings with no manifest, and says so in the summary rather than skipping the preset', async () => {
+    const { rebuildSummaries, NOT_A_BUILD, NO_REBUILD } = await import('../src/rebuild-summary')
     const { root, git } = repository()
     preset(root, '11.4.11')
     git('add', '.')
@@ -189,25 +204,13 @@ describe('the pages beside the presets', () => {
     rmSync(join(root, 'presets', 'p', 'dump', 'manifest.json'))
     writeFileSync(join(root, 'presets', 'p', 'dump', 'index.json'), '{}')
     const errors: string[] = []
-    expect(withoutGit(() => rebuildSummaries({ base, write: true, root, error: (line) => errors.push(line) }))).toBe(false)
-    expect(errors).toEqual(['p: the recordings changed, but presets/p/dump/manifest.json is missing, so they are not a build. Rebuild the preset.'])
-    expect(existsSync(join(root, 'presets', 'p', 'REBUILD.md'))).toBe(false)
-  })
-
-  it('fails when the committed page does not say what changed, and names the base to write it from', async () => {
-    const { rebuildSummaries } = await import('../src/rebuild-summary')
-    const { root, git } = repository()
-    preset(root, '11.4.10')
-    git('add', '.')
-    git('commit', '--quiet', '-m', 'preset')
-    const base = git('rev-parse', 'HEAD').trim()
-    expect(withoutGit(() => rebuildSummaries({ base, write: false, root, log: () => {} }))).toBe(true)
-    preset(root, '11.4.11')
-    writeFileSync(join(root, 'presets', 'p', 'REBUILD.md'), 'stale\n')
-    const errors: string[] = []
-    expect(withoutGit(() => rebuildSummaries({ base, write: false, root, error: (line) => errors.push(line) }))).toBe(false)
-    expect(errors[0]).toContain(`Run \`yarn rebuild:summary ${base} --write\``)
-    expect(errors[0]).toContain('- Core 11.4.10 to 11.4.11')
+    const failure = 'p: the recordings changed, but presets/p/dump/manifest.json is missing, so they are not a build. Rebuild the preset.'
+    const { ok, summary } = withoutGit(() => rebuildSummaries({ base, root, error: (line) => errors.push(line) }))
+    expect(ok).toBe(false)
+    expect(errors).toEqual([failure])
+    // The file and the job summary a failed run leaves must not read as a change that rebuilt nothing.
+    expect(summary).toBe(`${NOT_A_BUILD}- ${failure}\n`)
+    expect(summary).not.toContain(NO_REBUILD)
   })
 
   it('refuses a base that is not a commit, so git never reads it as an option', async () => {
@@ -217,18 +220,37 @@ describe('the pages beside the presets', () => {
     git('add', '.')
     git('commit', '--quiet', '-m', 'preset')
     const written = join(root, 'written')
-    expect(() => withoutGit(() => rebuildSummaries({ base: `--output=${written}`, write: false, root, log: () => {} })))
+    expect(() => withoutGit(() => rebuildSummaries({ base: `--output=${written}`, root, log: () => {} })))
       .toThrow(`--output=${written} is not a commit in this repository.`)
     expect(existsSync(written)).toBe(false)
   })
 })
 
-describe('the page beside a rebuilt preset', () => {
-  it('names the preset, says how it is written, and puts the summary under its title', async () => {
-    const { rebuildPage } = await import('../src/rebuild-summary')
-    const page = rebuildPage('umami', '## Drupal\n\n- Core 11.4.6 to 11.4.11\n')
-    expect(page.startsWith('# The umami rebuild\n')).toBe(true)
-    expect(page).toContain('`yarn rebuild:summary --write`')
-    expect(page).toContain('\n## Drupal\n\n- Core 11.4.6 to 11.4.11\n')
+describe('a preset\'s part of the review summary', () => {
+  it('puts the summary under the preset\'s name, a level below it', async () => {
+    const { rebuildSection } = await import('../src/rebuild-summary')
+    expect(rebuildSection('umami', '## Drupal\n\n- Core 11.4.6 to 11.4.11\n')).toBe('## The umami rebuild\n\n### Drupal\n\n- Core 11.4.6 to 11.4.11\n')
+  })
+})
+
+describe('the rebuild summary command\'s arguments', () => {
+  it('reads the base wherever it stands, and the file after --out', async () => {
+    const { rebuildArgs } = await import('../src/rebuild-summary')
+    expect(rebuildArgs(['abc123'])).toEqual({ base: 'abc123' })
+    expect(rebuildArgs(['abc123', '--out', 'summary.md'])).toEqual({ base: 'abc123', out: 'summary.md' })
+    expect(rebuildArgs(['--out', 'summary.md', 'abc123'])).toEqual({ base: 'abc123', out: 'summary.md' })
+  })
+
+  it('refuses --out with no file after it, which would otherwise write nothing and pass', async () => {
+    const { rebuildArgs } = await import('../src/rebuild-summary')
+    expect(() => rebuildArgs(['abc123', '--out'])).toThrow('--out names the file to write the summary to')
+    expect(() => rebuildArgs(['--out', '--verbose'])).toThrow('--out names the file')
+  })
+
+  it('takes the pipeline\'s base when none is named, and 1.0.x outside one', async () => {
+    const { rebuildArgs } = await import('../src/rebuild-summary')
+    expect(rebuildArgs(['--out', 'summary.md'], { CI_MERGE_REQUEST_DIFF_BASE_SHA: 'mr-base' })).toEqual({ base: 'mr-base', out: 'summary.md' })
+    expect(rebuildArgs([], { GITHUB_BASE_SHA: 'pr-base' })).toEqual({ base: 'pr-base' })
+    expect(rebuildArgs([])).toEqual({ base: 'origin/1.0.x' })
   })
 })

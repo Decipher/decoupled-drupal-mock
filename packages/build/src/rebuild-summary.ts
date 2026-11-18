@@ -1,36 +1,38 @@
 #!/usr/bin/env -S node --experimental-strip-types
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { summarise } from './dump-diff.ts'
 
+/** What a pull request whose recordings are all as its base has them says, in place of a summary. */
+export const NO_REBUILD = 'This change leaves every preset\'s recordings as the base has them.\n'
+
+/** How a summary starts when a preset's recordings changed and are not a build, so it never reads as a clean one. */
+export const NOT_A_BUILD = '## The rebuild summary is incomplete\n\nSome recordings changed and are not a build, so this change cannot merge as it is:\n\n'
+
 /**
- * The page that says what a preset's rebuild changed, against the dump as it was before.
+ * The summary of one preset's rebuild, under the preset's name, with the summary's sections a level below it.
  *
  * @param preset - The preset's name, as its directory under `presets/` names it.
  * @param summary - What `summarise` wrote.
- * @returns The page's text, the summary's sections under its title.
+ * @returns The preset's part of the review summary.
  */
-export const rebuildPage = (preset: string, summary: string): string => `# The ${preset} rebuild
-
-\`yarn rebuild:summary --write\` writes this page from the dump before the rebuild and the dump after it. The pipeline
-writes it again and fails when the two differ, so a change to the recordings merges only with this page beside it.
-
-${summary}`
+export const rebuildSection = (preset: string, summary: string): string => `## The ${preset} rebuild\n\n${summary.replace(/^## /gm, '### ')}`
 
 /**
- * Writes or checks the page beside every preset whose recordings differ from those at a base.
+ * Says what each preset's rebuild changed against a base, for the review of the change that holds it. A rebuild's
+ * recordings are gzipped, so a reviewer reads this rather than their diff. Nothing is written beside the recordings.
  *
  * @param options - What to compare, and where.
  * @param options.base - The commit to compare with.
- * @param options.write - Whether to write each page, rather than check the one committed.
  * @param options.root - The repository's root.
  * @param options.log - Where progress goes.
- * @param options.error - Where a page that does not match goes.
- * @returns Whether every page says what its rebuild changed.
+ * @param options.error - Where recordings that are not a build go.
+ * @returns Whether every preset whose recordings changed is a build, and the summary of them all. When one is not, the
+ * summary says so first.
  */
-export const rebuildSummaries = ({ base, write, root, log = console.log, error = console.error }: { base: string, write: boolean, root: string, log?: (line: string) => void, error?: (line: string) => void }): boolean => {
+export const rebuildSummaries = ({ base, root, log = console.log, error = console.error }: { base: string, root: string, log?: (line: string) => void, error?: (line: string) => void }): { ok: boolean, summary: string } => {
   const git = (...args: string[]): string => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
   // The base comes from the command line or the pipeline. Git reads its commit id, never the name, so a name cannot pass as an option.
   let commit: string
@@ -39,12 +41,11 @@ export const rebuildSummaries = ({ base, write, root, log = console.log, error =
   } catch {
     throw new Error(`${base} is not a commit in this repository.`)
   }
-  let ok = true
+  const failures: string[] = []
+  const sections: string[] = []
   const presets = readdirSync(join(root, 'presets'), { withFileTypes: true }).filter((entry) => entry.isDirectory())
   for (const preset of presets.map((entry) => entry.name).sort()) {
     const dir = join('presets', preset)
-    const file = join(dir, 'REBUILD.md')
-    // A pull request that leaves the recordings alone has nothing to describe, and the page stays as the last rebuild left it.
     const recordings = [join(dir, 'dump'), join(dir, 'oracle')]
     // git diff does not see untracked files, so a recording not yet staged is looked for separately.
     let differs = git('ls-files', '--others', '--exclude-standard', '--', ...recordings).trim() !== ''
@@ -57,15 +58,14 @@ export const rebuildSummaries = ({ base, write, root, log = console.log, error =
       log(`${preset}: the recordings are as ${base} has them`)
       continue
     }
-    // Recordings that changed must still be a build, or there is nothing to summarise and the page goes unchecked.
+    // Recordings that changed must still be a build, or there is nothing to summarise.
     const manifest = join(dir, 'dump', 'manifest.json')
     if (!existsSync(join(root, manifest))) {
-      ok = false
-      error(`${preset}: the recordings changed, but ${manifest} is missing, so they are not a build. Rebuild the preset.`)
+      failures.push(`${preset}: the recordings changed, but ${manifest} is missing, so they are not a build. Rebuild the preset.`)
+      error(failures.at(-1)!)
       continue
     }
     const before = mkdtempSync(join(tmpdir(), `${preset}-before-`))
-    let page: string
     try {
       // A preset the base does not have yet is summarised against no build at all.
       let atBase = true
@@ -80,28 +80,43 @@ export const rebuildSummaries = ({ base, write, root, log = console.log, error =
         git('archive', `--output=${archive}`, commit, '--', dir)
         execFileSync('tar', ['-x', '-f', archive, '-C', before])
       }
-      page = rebuildPage(preset, summarise(join(before, dir, 'dump'), join(root, dir, 'dump'), { from: join(before, dir, 'oracle'), to: join(root, dir, 'oracle') }))
+      sections.push(rebuildSection(preset, summarise(join(before, dir, 'dump'), join(root, dir, 'dump'), { from: join(before, dir, 'oracle'), to: join(root, dir, 'oracle') })))
+      log(`${preset}: the recordings changed`)
     } finally {
       rmSync(before, { recursive: true, force: true })
     }
-    /* c8 ignore next */
-    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, page)
-    if (write) {
-      writeFileSync(join(root, file), page)
-      log(`${preset}: wrote ${file}`)
-    } else if (!existsSync(join(root, file)) || readFileSync(join(root, file), 'utf8') !== page) {
-      ok = false
-      error(`${preset}: ${file} does not say what this rebuild changed. Run \`yarn rebuild:summary ${base} --write\`, read it, and commit it. It should say:\n\n${page}`)
-    } else {
-      log(`${preset}: ${file} says what this rebuild changed`)
-    }
   }
-  return ok
+  if (failures.length) {
+    const failed = `${NOT_A_BUILD}${failures.map((line) => `- ${line}\n`).join('')}`
+    return { ok: false, summary: sections.length ? `${failed}\n${sections.join('\n')}` : failed }
+  }
+  return { ok: true, summary: sections.length ? sections.join('\n') : NO_REBUILD }
+}
+
+/**
+ * Reads the command's arguments: the base to compare with, and `--out` with the file to write the summary to.
+ *
+ * @param args - The arguments after the script's name.
+ * @param env - Where a pipeline names the base, when the arguments do not.
+ * @returns The base and the file, if one is named.
+ */
+export const rebuildArgs = (args: string[], env: Record<string, string | undefined> = {}): { base: string, out?: string } => {
+  const at = args.indexOf('--out')
+  const out = at >= 0 ? args[at + 1] : undefined
+  // A missing file name would otherwise write nothing and still pass.
+  if (at >= 0 && (!out || out.startsWith('--'))) throw new Error('--out names the file to write the summary to: --out rebuild-summary.md')
+  const named = args.find((arg, index) => !arg.startsWith('--') && (at < 0 || index !== at + 1))
+  const base = named || env.CI_MERGE_REQUEST_DIFF_BASE_SHA || env.GITHUB_BASE_SHA || 'origin/1.0.x'
+  return out === undefined ? { base } : { base, out }
 }
 
 /* c8 ignore start */
 if (process.argv[1]?.endsWith('rebuild-summary.ts')) {
-  const base = process.argv.slice(2).find((arg) => !arg.startsWith('--')) || process.env.CI_MERGE_REQUEST_DIFF_BASE_SHA || process.env.GITHUB_BASE_SHA || 'origin/1.0.x'
-  if (!rebuildSummaries({ base, write: process.argv.includes('--write'), root: process.cwd() })) process.exit(1)
+  const { base, out } = rebuildArgs(process.argv.slice(2), process.env)
+  const { ok, summary } = rebuildSummaries({ base, root: process.cwd(), log: console.error })
+  process.stdout.write(summary)
+  if (out) writeFileSync(out, summary)
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary)
+  if (!ok) process.exit(1)
 }
 /* c8 ignore stop */

@@ -59,10 +59,10 @@ export DECOUPLED_DRUPAL_MOCK_CLIENT_SECRET=$(openssl rand -hex 24)
 presets/umami/site.sh ../umami-site 8906
 DECOUPLED_DRUPAL_MOCK_BASE_URL=http://127.0.0.1:8906 DECOUPLED_DRUPAL_MOCK_SITE=$PWD/../umami-site yarn crawl presets/umami/build.json
 git fetch origin
-yarn rebuild:summary origin/1.0.x --write
+yarn rebuild:summary origin/1.0.x
 ```
 
-The last step writes `REBUILD.md`, which says what changed against the dump on the branch the pull request targets. Name that branch if it isn't `1.0.x`. Read the page before committing. The pipeline writes it again from the pull request's base commit and fails when the two differ, so a rebuild merges only with that page beside it. A failure prints the exact command to run. Then move the overlays in `examples/overlays/` onto the new dump, as [Overlays](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/docs/overlays.md) describes, or record them again as [their README](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/examples/overlays/README.md) describes.
+The last step prints what the rebuild changed against the dump on the branch the pull request targets, as the recordings are gzipped and their diff can't be read. Name that branch if it isn't `1.0.x`, and read the summary before committing. On GitHub the pipeline puts the same summary in the job summary, and posts it as a comment on a pull request that isn't from a fork. On GitLab it saves it as a file the merge request links to. Then move the overlays in `examples/overlays/` onto the new dump, as [Overlays](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/docs/overlays.md) describes, or record them again as [their README](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/examples/overlays/README.md) describes.
 
 ## Published files and evidence
 

@@ -136,7 +136,8 @@ lint:commit:
     - yarn commitlint --from "$CI_MERGE_REQUEST_DIFF_BASE_SHA" --to HEAD --verbose
     - section_end "commitlint"
 
-# A rebuild's recordings are gzipped, so the page beside them says what changed, and this checks the page is true.
+# A rebuild's recordings are gzipped, so the review reads what changed here: in the job log, and as a file the merge
+# request links to. The job fails when recordings that changed are not a build.
 lint:rebuild:
   extends: .node
   stage: lint
@@ -145,9 +146,14 @@ lint:rebuild:
   variables:
     GIT_DEPTH: 0
   script:
-    - section_start "rebuild" "Checking each preset's rebuild page"
-    - yarn rebuild:summary "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+    - section_start "rebuild" "Summarising what each preset's rebuild changed"
+    - yarn rebuild:summary "$CI_MERGE_REQUEST_DIFF_BASE_SHA" --out rebuild-summary.md
     - section_end "rebuild"
+  artifacts:
+    when: always
+    expose_as: Rebuild summary
+    paths:
+      - rebuild-summary.md
 
 lint:prose:
   extends: .node
