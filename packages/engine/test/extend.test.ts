@@ -107,6 +107,20 @@ describe('what a test does to the mock', () => {
     expect((await mock.fetch(`${BASE}/jsonapi/node/page`, { headers: fresh })).status).toBe(200)
   })
 
+  it('gives a handler the mock\'s clock, which a test moves and a reset puts back', async () => {
+    const clock: Extension = { routes: { 'GET /api/now': ({ now }) => ({ body: { count: now() } }) } }
+    const mock = createMock(dump, { baseUrl: BASE, extensions: [clock] })
+    const read = async () => (await json(await mock.fetch(`${BASE}/api/now`))).count as number
+    const before = Date.now()
+    const first = await read()
+    expect(first).toBeGreaterThanOrEqual(before)
+    expect(first).toBeLessThanOrEqual(Date.now())
+    mock.advanceTime(900)
+    expect(await read()).toBeGreaterThanOrEqual(first + 900_000)
+    mock.reset()
+    expect(await read()).toBeLessThan(first + 900_000)
+  })
+
   it('calls out on a successful write and not on a refused one, and the write does not wait', async () => {
     const call = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
     try {

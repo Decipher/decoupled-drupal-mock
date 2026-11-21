@@ -22,6 +22,8 @@ export default {
 | Playwright              | `withDrupal(test, 'umami', { extensions })` from `/testing`                                                                                                                  |
 | Another process         | `serve umami --control --extension ./file.mjs`, or `spawnMock('umami', { extensions: ['./file.mjs'] })` from `/jest` or `/cypress`, with the file's default export           |
 
+An extension does not have to live in this repository. A file in a module's own package works too, when it imports nothing from the mock: `--extension ./node_modules/my-module/mock.mjs`.
+
 Functions cannot be passed to a server in another process. Give the server an extension file instead, and turn on its scenarios from the test with `scenario(name)`.
 
 ## Routes, answers, fixtures and call-backs
@@ -33,7 +35,7 @@ Functions cannot be passed to a server in another process. Give the server an ex
 - **`onWrite`:** runs after a successful JSON:API write. `send` calls another service, and `sent()` holds the result.
 - **`scenarios`:** sets of `routes`, `answer` and `onWrite` under a name, off until a test turns them on.
 
-A handler gets `method`, `url`, `path`, `route`, `prefix`, `params`, `query`, `headers`, `body`, `json`, `state` and `drupal`. `state` is a `Map` shared across requests until `reset()`. `drupal.handle(...)` sends a request to the mock with the fixtures applied and every extension skipped. A handler can use it to read its own URL without calling itself. An `onWrite` handler runs after a JSON:API write that the mock itself carried out succeeds. If the handler throws, the error is recorded on that request in `requests()`, and the write is kept.
+A handler gets `method`, `url`, `path`, `route`, `prefix`, `params`, `query`, `headers`, `body`, `json`, `state`, `drupal` and `now`. `state` is a `Map` shared across requests until `reset()`. `now()` gives the mock's time in milliseconds, which `advanceTime` moves and `reset()` puts back, so a token or a draft an extension expires runs on the same clock as the mock's own tokens. `drupal.handle(...)` sends a request to the mock with the fixtures applied and every extension skipped. A handler can use it to read its own URL without calling itself. An `onWrite` handler runs after a JSON:API write that the mock itself carried out succeeds. If the handler throws, the error is recorded on that request in `requests()`, and the write is kept.
 
 An answer has `status`, `headers` and `body`. A body that is not a string is sent as JSON.
 
