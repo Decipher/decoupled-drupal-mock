@@ -9,16 +9,18 @@ import { presetDir } from './preset.js'
 import { listen } from './serve.js'
 
 /** The options `serve` takes after the preset, which a preset package's own command takes too. */
-export const serveOptions = '[--port 3005] [--host 127.0.0.1] [--base-url <url>] [--no-cors] [--control] [--extension <file>] [--overlay <file>]'
+export const serveOptions = '[--port 3005] [--host 127.0.0.1] [--base-url <url>] [--no-cors] [--cors-credentials [--cors-origin <origin>]] [--control] [--extension <file>] [--overlay <file>]'
 
 /**
  * Serves a preset over HTTP until the process ends, and says where. `decoupled-drupal-mock serve` calls it, and so does
  * each preset package's own command, with its own build directory, so the two take the same options.
  * `--host 0.0.0.0` reaches it from outside a container. `--base-url` is the address the answers' links name, for a
  * server reached through another one, such as a forwarded port. `--control` opens the routes a test uses to reset the
- * writes and to sign in, for a test's server only. `--extension` loads a module whose default export is an extension,
- * and can be given more than once. `--overlay` adds a recorded overlay, such as your site's patch or module, by its
- * file, and can too. A mistake is printed and ends the process with status 1.
+ * writes and to sign in, for a test's server only. `--cors-credentials` answers CORS as a Drupal with
+ * `supportsCredentials` does, so a browser on another origin can send the session cookie. It names only a loopback
+ * origin, unless `--cors-origin` lists the origins to name, once for each. `--extension` loads a module whose default
+ * export is an extension, and can be given more than once. `--overlay` adds a recorded overlay, such as your site's
+ * patch or module, by its file, and can too. A mistake is printed and ends the process with status 1.
  *
  * @param target - The preset: a directory, a preset package or its short name.
  * @param rest - The options.
@@ -76,8 +78,28 @@ export const serveCommand = async (target: string, rest: string[]): Promise<void
       process.exit(1)
     }
   }
+  const origins: string[] = []
+  for (const [index, argument] of rest.entries()) {
+    if (argument !== '--cors-origin') continue
+    const given = rest[index + 1]
+    let origin: string | undefined
+    try {
+      origin = given && !given.startsWith('--') ? new URL(given).origin : undefined
+    } catch {
+      // Not a URL, so not an origin.
+    }
+    if (!origin || origin === 'null') {
+      console.error('--cors-origin names an origin: --cors-origin http://localhost:3000')
+      process.exit(1)
+    }
+    origins.push(origin)
+  }
+  if (origins.length && (!rest.includes('--cors-credentials') || rest.includes('--no-cors'))) {
+    console.error('--cors-origin lists the origins CORS with credentials names, so it needs --cors-credentials and CORS on.')
+    process.exit(1)
+  }
   const drupal = createMock(dump, { baseUrl, extensions })
-  const { url } = await listen(drupal, port, host, { files: dir, cors: !rest.includes('--no-cors'), control: rest.includes('--control') }).catch((error: NodeJS.ErrnoException) => {
+  const { url } = await listen(drupal, port, host, { files: dir, cors: !rest.includes('--no-cors'), credentials: rest.includes('--cors-credentials'), origins, control: rest.includes('--control') }).catch((error: NodeJS.ErrnoException) => {
     console.error(error.code === 'EADDRINUSE' ? `Port ${port} is in use: name another with --port.` : error.message)
     process.exit(1)
   })

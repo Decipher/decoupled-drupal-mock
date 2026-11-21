@@ -11,6 +11,16 @@ export interface ListenOptions {
   files?: string
   /** CORS for a browser-side client, on unless told otherwise: any origin, the usual headers, a preflight answered. */
   cors?: boolean
+  /**
+   * CORS as a Drupal answers it with `supportsCredentials` on: the request's own origin instead of `*`, and
+   * credentials allowed, so a browser on another origin can send its session cookie. Off unless asked for.
+   */
+  credentials?: boolean
+  /**
+   * The origins that CORS with credentials names, as Drupal's `allowedOrigins` lists them. Any other origin gets no
+   * origin back. Without a list, only a loopback origin, such as `http://localhost:3000`, is named.
+   */
+  origins?: string[]
   /** The routes a test uses from another process, to reset the writes and to sign in. Off unless asked for, and only for a test's server. */
   control?: boolean
 }
@@ -70,10 +80,33 @@ const control = (drupal: Drupal | ExtendedDrupal, order: string, body: string | 
 /** A host as a URL names it: an IPv6 address goes in brackets. */
 const urlHost = (host: string): string => (host.includes(':') && !host.startsWith('[') ? `[${host}]` : host)
 
+/** A loopback origin, which only a page on the developer's own machine can send. */
+const loopback = (origin: string): boolean => {
+  try {
+    const { hostname } = new URL(origin)
+    return hostname === 'localhost' || hostname === '[::1]' || /^127\.\d+\.\d+\.\d+$/.test(hostname)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The CORS headers for one request. With credentials, Drupal names an allowed origin, says credentials are allowed,
+ * and varies on the origin. An origin it does not allow, or a request with none, gets no origin back. A sandboxed
+ * frame's `null` is never named unless it is listed.
+ */
+const corsHeaders = (options: ListenOptions, origin: string | undefined): Record<string, string> => {
+  if (options.cors === false) return {}
+  if (!options.credentials) return CORS
+  const rest = Object.fromEntries(Object.entries(CORS).filter(([name]) => name !== 'access-control-allow-origin'))
+  const allowed = origin !== undefined && (options.origins?.length ? options.origins.includes(origin) : loopback(origin))
+  return { ...rest, vary: 'Origin', ...(allowed ? { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' } : {}) }
+}
+
 export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: ListenOptions = {}): Promise<{ server: Server, url: string, close: () => Promise<void> }> => new Promise((resolve, reject) => {
-  const cors = options.cors !== false ? CORS : {}
   const server = createServer((request, response) => {
     const method = request.method || 'GET'
+    const cors = corsHeaders(options, typeof request.headers.origin === 'string' ? request.headers.origin : undefined)
     if (method === 'OPTIONS' && options.cors !== false) {
       response.writeHead(204, cors)
       response.end()

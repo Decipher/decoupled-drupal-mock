@@ -164,6 +164,52 @@ describe('the server as a backend for a frontend', () => {
     }
   })
 
+  // As a Drupal 11.4 site answered with `supportsCredentials: true` in its cors.config: an allowed origin named, with
+  // credentials, on a preflight and an answer alike, and an origin it does not allow, or none, given no origin back.
+  // With `allowedOrigins` naming two origins, a sandboxed frame's `null` got none either.
+  it('answers CORS with credentials as Drupal does when asked to, for the origins it allows', async () => {
+    const credentialed = async (url: string, origin: string, method = 'GET') => {
+      const answer = await fetch(`${url}/jsonapi`, { method, headers: { origin, 'access-control-request-method': 'GET' } })
+      return { status: answer.status, origin: answer.headers.get('access-control-allow-origin'), credentials: answer.headers.get('access-control-allow-credentials'), vary: answer.headers.get('vary') }
+    }
+    // Without a list, only an origin on the developer's own machine.
+    const { url, close } = await bind({ credentials: true })
+    try {
+      for (const origin of ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://[::1]:3000']) {
+        expect(await credentialed(url, origin, 'OPTIONS')).toEqual({ status: 204, origin, credentials: 'true', vary: 'Origin' })
+        expect(await credentialed(url, origin)).toEqual({ status: 200, origin, credentials: 'true', vary: 'Origin' })
+      }
+      for (const origin of ['null', 'http://drupal.example.com', 'not a url']) {
+        expect(await credentialed(url, origin)).toEqual({ status: 200, origin: null, credentials: null, vary: 'Origin' })
+      }
+      const answer = await fetch(`${url}/jsonapi/node/page/p-1`, { headers: { origin: 'http://localhost:3000' } })
+      expect(answer.headers.get('content-type')).toBe('application/vnd.api+json')
+      // A request with no origin is not a cross-origin one, so it gets no origin back.
+      const plain = await fetch(`${url}/jsonapi`)
+      expect(plain.headers.get('access-control-allow-origin')).toBeNull()
+      expect(plain.headers.get('vary')).toBe('Origin')
+    } finally {
+      await close()
+    }
+    // With a list, the origins in it and nothing else, a loopback origin included.
+    const listed = await bind({ credentials: true, origins: ['https://frontend.example.com', 'http://localhost:3000'] })
+    try {
+      expect(await credentialed(listed.url, 'https://frontend.example.com', 'OPTIONS')).toMatchObject({ status: 204, origin: 'https://frontend.example.com', credentials: 'true' })
+      expect((await credentialed(listed.url, 'http://localhost:3000')).origin).toBe('http://localhost:3000')
+      for (const origin of ['null', 'http://127.0.0.1:3000', 'https://other.example.com']) {
+        expect(await credentialed(listed.url, origin)).toMatchObject({ origin: null, credentials: null })
+      }
+    } finally {
+      await listed.close()
+    }
+    const quiet = await bind({ cors: false, credentials: true })
+    try {
+      expect((await fetch(`${quiet.url}/jsonapi`, { headers: { origin: 'http://localhost:3000' } })).headers.get('access-control-allow-origin')).toBeNull()
+    } finally {
+      await quiet.close()
+    }
+  })
+
   it('serves the public files from the dump, an image style with the original, and nothing outside', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mock-files-'))
     mkdirSync(join(dir, 'files', 'a'), { recursive: true })
