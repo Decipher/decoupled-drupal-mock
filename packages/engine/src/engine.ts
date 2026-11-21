@@ -11,6 +11,7 @@ import { hasOwn, own as member } from './own.js'
 import type { Document, Dump, Recorded, Resource, ResourceIdentifier } from './types.js'
 import { clone } from './clone.js'
 import { withoutTrailingSlashes } from './slashes.js'
+import { relinker } from './origins.js'
 import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND } from './format.js'
 import { checkPath } from './paths.js'
 import type { PathError, Schema } from './paths.js'
@@ -190,7 +191,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   }
 
   /** Every absolute link in the dump points at the placeholder; the server's base URL takes its place. */
-  const relink = <T>(value: T): T => JSON.parse(JSON.stringify(value).split(placeholder).join(baseUrl)) as T
+  const served = relinker(placeholder, baseUrl)
+  const relink = <T>(value: T): T => JSON.parse(served(JSON.stringify(value))) as T
 
   /** A type's resources in a language: a resource with no translation there is listed in its default language, as Drupal lists it. */
   const resourcesOf = (langcode: string, type: string): Resource[] | undefined => {

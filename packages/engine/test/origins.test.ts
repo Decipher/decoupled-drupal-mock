@@ -1,0 +1,32 @@
+import { describe, expect, it } from 'vitest'
+import { createDrupal, relinker } from '../src'
+import { dump } from './dump'
+
+// As Drupal Canvas writes an image's widths: the origin in a query value, its colons encoded and its slashes not.
+const widths = (origin: string) => `${origin}/sites/default/files/a.jpg?alternateWidths=${origin.replace(/:/g, '%3A')}/sites/default/files/styles/w/a.jpg`
+
+describe('an origin in a recorded document', () => {
+  it('is replaced as written plainly, with its colons encoded, and encoded whole', () => {
+    const relink = relinker('http://127.0.0.1:8934', 'https://drupal.invalid')
+    expect(relink(widths('http://127.0.0.1:8934'))).toBe(widths('https://drupal.invalid'))
+    expect(relink(`?next=${encodeURIComponent('http://127.0.0.1:8934/node/1')}`)).toBe(`?next=${encodeURIComponent('https://drupal.invalid/node/1')}`)
+  })
+
+  it('is not matched inside another host that begins with it, in any of those forms', () => {
+    const relink = relinker('http://127.0.0.1:8934', 'https://drupal.invalid')
+    for (const other of ['http://127.0.0.1:89341', 'http%3A//127.0.0.1%3A89341', encodeURIComponent('http://127.0.0.1:89341'), 'http://127.0.0.1:8934.example.com']) {
+      expect(relink(`${other}/x`)).toBe(`${other}/x`)
+    }
+  })
+
+  it('is served at the server\'s base URL, in the form it was recorded in', () => {
+    const recorded = widths('https://drupal.invalid')
+    const page = dump.resources.en!['node--page']![0]!
+    const changed = { ...dump, resources: { ...dump.resources, en: { ...dump.resources.en, 'node--page': [{ ...page, attributes: { ...page.attributes, title: recorded } }, ...dump.resources.en!['node--page']!.slice(1)] } } }
+    const drupal = createDrupal(changed, { baseUrl: 'http://localhost:4000' })
+    const answer = drupal.handle('GET', `http://localhost:4000/jsonapi/node/page/${page.id}`)
+    const title = (answer.body as { data: { attributes: { title: string } } }).data.attributes.title
+    expect(title).toBe(widths('http://localhost:4000'))
+    expect(title).not.toContain('drupal.invalid')
+  })
+})
