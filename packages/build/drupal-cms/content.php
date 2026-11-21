@@ -50,9 +50,10 @@ foreach ($definitions as $id => [$name, $props, $slots]) {
   JavaScriptComponent::create(['machineName' => $id, 'name' => $name, 'status' => TRUE, 'type' => 'external', 'required' => [], 'props' => $props, 'slots' => $slots, 'dataDependencies' => []])->save();
 }
 
-// The template's first published node, which the entity component points at.
+// The template's first published node, which the entity component points at. A template with no nodes, such as
+// Mercury Demo, gets no entity component.
 $nids = $etm->getStorage('node')->getQuery()->accessCheck(FALSE)->condition('status', 1)->sort('nid')->range(0, 1)->execute();
-$node = $etm->getStorage('node')->load(reset($nids));
+$node = $nids ? $etm->getStorage('node')->load(reset($nids)) : NULL;
 
 // A page of those components, with one nested in another's slot. Fails the build on a page Canvas would refuse,
 // rather than saving half a site.
@@ -61,8 +62,10 @@ $components = [
   ['uuid' => $card, 'component_id' => 'js.druxt_card', 'inputs' => ['title' => 'A Druxt card', 'body' => 'Props arrive as data.']],
   ['uuid' => $uuid('external:menu'), 'component_id' => 'js.druxt_menu', 'parent_uuid' => $card, 'slot' => 'content', 'inputs' => ['menu' => 'main']],
   ['uuid' => $uuid('external:view'), 'component_id' => 'js.druxt_view', 'inputs' => ['view_id' => 'recent_pages', 'display_id' => 'block_recent_pages']],
-  ['uuid' => $uuid('external:entity'), 'component_id' => 'js.druxt_entity', 'inputs' => ['entity_type' => 'node', 'bundle' => $node->bundle(), 'uuid' => $node->uuid(), 'view_mode' => 'teaser']],
 ];
+if ($node) {
+  $components[] = ['uuid' => $uuid('external:entity'), 'component_id' => 'js.druxt_entity', 'inputs' => ['entity_type' => 'node', 'bundle' => $node->bundle(), 'uuid' => $node->uuid(), 'view_mode' => 'teaser']];
+}
 foreach ($components as &$item) {
   $item['component_version'] = Component::load($item['component_id'])->getActiveVersion();
 }
