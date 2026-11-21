@@ -72,7 +72,7 @@
       "yoast_seo": "2.2.0"
     }
   },
-  "built": "2026-11-15T04:04:34.656Z",
+  "built": "2026-11-21T04:23:44.360Z",
   "origin": "https://drupal.invalid",
   "languages": {
     "en": "",
@@ -104,7 +104,7 @@
     "resources/en/field_config--field_config.json.gz": "2725c283001bce5b2353c515480d4b0ea3f3d3c2ea833188559547f712238893",
     "resources/en/field_storage_config--field_storage_config.json.gz": "8ab47de3d5339c86c0b8d68a1d4f9f71805c7cde07a2422c53d7128533407fb2",
     "resources/en/file--file.json.gz": "69916aa9fc2cdd2d21fb5e505ae6850f1890f48cbfd469aeffbe192fcd97c420",
-    "resources/en/filter_format--filter_format.json.gz": "0d26e508242b9191a3c1742c62d865edab957ef06bb1fe9a9e027db2e4d9d37c",
+    "resources/en/filter_format--filter_format.json.gz": "038a97cb51d754986bab61764527f0e236b1d344c3f2bde278854f69978b1653",
     "resources/en/folder--folder.json.gz": "fc7e37d0e7644d7a50618926aa4e9242a581fa5d05137b22b24857d7aa0c17b5",
     "resources/en/image_style--image_style.json.gz": "4af8f9b21d6a37f27b392796579131ab07181855a4dca62d4dd462d69f4372bc",
     "resources/en/js_component--js_component.json.gz": "33222f7e3181e436d6d023be70bd61075ab0a0ab7f913b926bf2af59d350a5d5",
@@ -116,7 +116,7 @@
     "resources/en/media_type--media_type.json.gz": "abe6eb2da27fdaccd557a5d3dd2516facd4fd0841e35a9f7b3efec825d2964f3",
     "resources/en/menu--menu.json.gz": "f7756bd897cdc78bd8cbd818dc1bf4cc73db8524de0fdc3f2188b8f010f87093",
     "resources/en/menu_link_content--menu_link_content.json.gz": "36af7ef8832e356313d4d6711f2b77a793d735db74480b403123be859f708a8c",
-    "resources/en/metatag_defaults--metatag_defaults.json.gz": "ded1e4b62ccb3513f902001230044c94f52d1a6333f55c4cbbc1559ca15aafe0",
+    "resources/en/metatag_defaults--metatag_defaults.json.gz": "c98e8b6a1dae50c392e876376a9a11d108f5e1295c4d6ce777099d8033a72c7f",
     "resources/en/node--article.json.gz": "89df05ae3412f63dfabd301ff610e8ce3a06f1303aed07fa4e5c7ab014b5da47",
     "resources/en/node--page.json.gz": "b55ff7b104589e426f61ff58a84d3c0fa61938584b6f4b20191a7654f2e64dbd",
     "resources/en/node--recipe.json.gz": "b6f06906b281c638d6fdc1834998b64865255e68bc1f582c911321a845a3ece6",
@@ -133,11 +133,11 @@
     "resources/en/taxonomy_term--recipe_category.json.gz": "06529d25e7dd47d5029dc3d7aa070d596f8add395e2b729f7774430cccb8715e",
     "resources/en/taxonomy_term--tags.json.gz": "93ccc55f6c08e154ae1af7b58a4abe98706c5e1f6839ccf128087b6ea1ba440d",
     "resources/en/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "91b769637d4cbd7440e11330eec53e4d63eefbf013a96754e78ae87b4facc8f9",
-    "resources/en/user--user.json.gz": "39e9997c088393e7732a7682f44a4d681dd2c92ad6de8d4d4fe849f2ce83d657",
+    "resources/en/user--user.json.gz": "d851ac20a652e9930f9da12363d3fa0a41cfa52bb1d178e869896d977e41b0ff",
     "resources/en/user_role--user_role.json.gz": "bf6dcdb9c0584a0d9e50b67f8098f4cb944c901258dac0e4f10dd46612252014",
     "resources/en/view--view.json.gz": "fa1b2767bcb62ae0005aed1f3f6769bc9484573aca4cb54a34cd5a08bcf891cc",
     "resources/en/workflow--workflow.json.gz": "40321a2894da33f30998c8fe3718c9783411d0450b71470c2993693c450ebd91",
-    "access/en.json.gz": "6ed273ea7628148beac4e97c0e07e06dbbf2d30168444f566914c6d4821308d9",
+    "access/en.json.gz": "f80a9f902142f8ac8154f31359f5e97317b5b66248df11156e3c571b4a839264",
     "filters.json.gz": "eccabe1fe18c43135737ad8f4794f3c5dc86ad5d39ae422f90282303970a9554",
     "index/es.json": "aee3eb9031a726a1c62c59d6bc1b278094f376f006e7fa61bda2cad4dc76e7c3",
     "resources/es/asset_library--asset_library.json.gz": "431a78fc25009b4035d56a2ad4ad0133b032ab2bb15585c253ac334b6ab57e5d",
@@ -192,12 +192,12 @@
     "resources/es/taxonomy_term--recipe_category.json.gz": "5baca4e4c9bc0ab42af2bd95d9e5a4f0faed88629f1eceebe81ca200eea09262",
     "resources/es/taxonomy_term--tags.json.gz": "64dd1260375d8b6784b59d06eda4059368d7f617df2e16e06ce767732d7a2f8a",
     "resources/es/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "640c0e84235a682d3ff9cd3b25d0a202713434741ffd4a798ed1e1b595afcec0",
-    "resources/es/user--user.json.gz": "46698dd0189460965f7b0498e3a4bcce2476c953f977b70c44ef4f4120c5dd0c",
+    "resources/es/user--user.json.gz": "3917be219d77da354a9203b773ea8d6a71f7969341eb6142b8d6ddcd40d626b1",
     "resources/es/user_role--user_role.json.gz": "7495dc47e37eb243a6fa2e064faca68d7a397b1301a9f43ced80f295beaf67dc",
     "resources/es/view--view.json.gz": "83405494977a7f18e0a9b7c7d1b640fce834b2b258b539a627bba8251c7a40ba",
     "resources/es/workflow--workflow.json.gz": "bb15f395305fb1fddd774f359dcc2a5767e46019742bad45787ea4151aae66e7",
     "access/es.json.gz": "6ed273ea7628148beac4e97c0e07e06dbbf2d30168444f566914c6d4821308d9",
-    "recorded/routes.json.gz": "ba8bf8bd478ca3cf6a5792b1dbd8c3058cfa5815b435b41c0e9f60afbddee305",
+    "recorded/routes.json.gz": "8b2a363fd08054fe54660d8b1f16d9b11ac2f0a39bfb2d288b5c4d2dba99a32a",
     "files/login-wallpaper.png": "54332ee6319ad13d167201acd484f5656679cf6a462cbe6b5d6da301c3602f7f",
     "files/avatars/default-avatar.svg": "c55e779964208bd6a80b27f8b3dd8251c4140a2358283fbed1f7bce8a75c764c",
     "files/chili-sauce-umami.jpg": "5072a11bd95bc8f294d97cb9e41ba6c99484f256494549875b90ce4eaf73de8b",
@@ -245,6 +245,6 @@
     "identities.json": "090412264627badf4f605d859d2f8dbb4c9389ab198921faa3ec467e5142d130"
   },
   "oracle": {
-    "reads.json.gz": "df93ff3e7085107f0c267d900440207db7bd6e156d6bb53dec6cd0ef1c58a8eb"
+    "reads.json.gz": "1724c5d24f3c868c01e0e2732ec94dcbcd54a8483f46e9f2173699c74711758d"
   }
 }

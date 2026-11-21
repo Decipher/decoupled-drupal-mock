@@ -22,6 +22,8 @@
 /jsonapi/menu_items/main
 /jsonapi/menu_items/footer
 /jsonapi/views/recipes/latest
+# The search page's view, a Search API view, which JSON:API Views has no route for.
+/jsonapi/views/search/search
 /jsonapi/entity_view_display/entity_view_display?filter%5Bdrupal_internal__id%5D=node.recipe.default
 /router/translate-path?path=%2F
 /router/translate-path?path=%2Fhome
