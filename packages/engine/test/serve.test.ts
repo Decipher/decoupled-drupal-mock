@@ -202,6 +202,14 @@ describe('the server as a backend for a frontend', () => {
     } finally {
       await listed.close()
     }
+    // Not even from a list that names it.
+    const nulled = await bind({ credentials: true, origins: ['null', 'http://localhost:3000'] })
+    try {
+      expect(await credentialed(nulled.url, 'null')).toMatchObject({ origin: null, credentials: null })
+      expect((await credentialed(nulled.url, 'http://localhost:3000')).origin).toBe('http://localhost:3000')
+    } finally {
+      await nulled.close()
+    }
     const quiet = await bind({ cors: false, credentials: true })
     try {
       expect((await fetch(`${quiet.url}/jsonapi`, { headers: { origin: 'http://localhost:3000' } })).headers.get('access-control-allow-origin')).toBeNull()

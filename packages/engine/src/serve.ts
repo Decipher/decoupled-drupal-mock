@@ -99,7 +99,8 @@ const corsHeaders = (options: ListenOptions, origin: string | undefined): Record
   if (options.cors === false) return {}
   if (!options.credentials) return CORS
   const rest = Object.fromEntries(Object.entries(CORS).filter(([name]) => name !== 'access-control-allow-origin'))
-  const allowed = origin !== undefined && (options.origins?.length ? options.origins.includes(origin) : loopback(origin))
+  // A sandboxed frame's `null` is never named, even from a list that holds it.
+  const allowed = origin !== undefined && origin !== 'null' && (options.origins?.length ? options.origins.includes(origin) : loopback(origin))
   return { ...rest, vary: 'Origin', ...(allowed ? { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' } : {}) }
 }
 
