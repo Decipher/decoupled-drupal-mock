@@ -27,7 +27,8 @@ export const relinker = (from: string, to: string): ((text: string) => string) =
     .map((encode) => ({ pattern: encode(withoutTrailingSlashes(from)), replacement: encode(withoutTrailingSlashes(to)) }))
     .filter(({ pattern }, index, all) => all.findIndex((other) => other.pattern === pattern) === index)
     .sort((a, b) => b.pattern.length - a.pattern.length)
-    // Only the origin itself: a host that merely begins with it is another site's.
-    .map(({ pattern, replacement }) => ({ pattern: new RegExp(`${escape(pattern)}(?![\\w.:-])`, 'g'), replacement }))
+    // Only the origin itself: a host that merely begins with it, or the same host on another port, is another site's.
+    // A port's colon may be encoded, as the origin's own colons are.
+    .map(({ pattern, replacement }) => ({ pattern: new RegExp(`${escape(pattern)}(?![\\w.:-]|%3[Aa])`, 'g'), replacement }))
   return (text) => substitutions.reduce((out, { pattern, replacement }) => out.replace(pattern, replacement), text)
 }
