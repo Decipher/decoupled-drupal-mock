@@ -12,6 +12,12 @@ describe('an origin in a recorded document', () => {
     expect(relink(`?next=${encodeURIComponent('http://127.0.0.1:8934/node/1')}`)).toBe(`?next=${encodeURIComponent('https://drupal.invalid/node/1')}`)
   })
 
+  it('is matched whether or not either origin is given with a trailing slash', () => {
+    for (const [from, to] of [['http://127.0.0.1:8934/', 'https://drupal.invalid'], ['http://127.0.0.1:8934', 'https://drupal.invalid/'], ['http://127.0.0.1:8934//', 'https://drupal.invalid//']]) {
+      expect(relinker(from!, to!)(widths('http://127.0.0.1:8934'))).toBe(widths('https://drupal.invalid'))
+    }
+  })
+
   it('is not matched inside another host that begins with it, in any of those forms', () => {
     const relink = relinker('http://127.0.0.1:8934', 'https://drupal.invalid')
     for (const other of ['http://127.0.0.1:89341', 'http%3A//127.0.0.1%3A89341', encodeURIComponent('http://127.0.0.1:89341'), 'http://127.0.0.1:8934.example.com']) {
