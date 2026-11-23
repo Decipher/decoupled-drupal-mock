@@ -1,0 +1,47 @@
+{
+  "name": "decoupled-drupal-mock-mercury",
+  "version": "1.0.0-alpha.3",
+  "description": "Drupal CMS's Mercury Demo site template, with Drupal Canvas and Canvas Headless, as decoupled-drupal-mock fixtures: Mercury's own component pages, built from a real Drupal CMS 2.2.9 install.",
+  "keywords": [
+    "drupal",
+    "decoupled",
+    "jsonapi",
+    "mock",
+    "testing",
+    "fixtures",
+    "drupal-cms",
+    "canvas",
+    "mercury"
+  ],
+  "type": "module",
+  "bin": "bin.js",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin.js",
+    "index.js",
+    "index.d.ts",
+    "dump"
+  ],
+  "peerDependencies": {
+    "decoupled-drupal-mock": "^1.0.0-alpha.3"
+  },
+  "license": "GPL-2.0-or-later",
+  "engines": {
+    "node": ">=16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Decipher/decoupled-drupal-mock.git",
+    "directory": "presets/mercury"
+  },
+  "homepage": "https://github.com/Decipher/decoupled-drupal-mock#readme",
+  "bugs": {
+    "url": "https://github.com/Decipher/decoupled-drupal-mock/issues"
+  }
+}
