@@ -78,11 +78,5 @@ describe.each(presets)('the %s preset package', (preset) => {
     expect(run('stop')).toEqual({ status: 0, output: `No mock is running on port ${port}.` })
     expect(run('start', '--ready-timeout', 'soon')).toEqual({ status: 1, output: '--ready-timeout is a number of seconds, not soon.' })
     expect(spawnSync(process.execPath, [join(dir, 'bin.js'), 'start', '--pid-file', '--port', port], { cwd: root, encoding: 'utf8' }).stderr.trim()).toBe('--pid-file names a file: --pid-file ./mock.pid')
-    for (const origin of ['null', 'frontend.test', '--control']) {
-      expect(spawnSync(process.execPath, [join(dir, 'bin.js'), '--port', port, '--cors-credentials', '--cors-origin', origin], { cwd: root, encoding: 'utf8' }).stderr.trim()).toBe('--cors-origin names an origin: --cors-origin http://localhost:3000')
-    }
-    for (const flags of [[], ['--cors-credentials', '--no-cors']]) {
-      expect(spawnSync(process.execPath, [join(dir, 'bin.js'), '--port', port, ...flags, '--cors-origin', 'http://localhost:3000'], { cwd: root, encoding: 'utf8' }).stderr.trim()).toBe('--cors-origin lists the origins CORS with credentials names, so it needs --cors-credentials and CORS on.')
-    }
   }, 30000)
 })

@@ -155,6 +155,25 @@ describe('a preset package\'s command', () => {
       expect(await run(() => presetCommand(umami, argv, join(root, 'presets', 'umami', 'bin.js')))).toEqual({ status: 1, output: '--port must be a port from 1 to 65535, not none.' })
     }
   })
+
+  it('checks each --cors-origin, and that CORS with credentials is on to name it', async () => {
+    const serve = (...argv: string[]) => run(() => presetCommand(umami, argv, join(root, 'presets', 'umami', 'bin.js')))
+    for (const origin of ['null', 'frontend.test', '--control']) {
+      printed = []
+      expect(await serve('--cors-credentials', '--cors-origin', origin)).toEqual({ status: 1, output: '--cors-origin names an origin: --cors-origin http://localhost:3000' })
+    }
+    for (const flags of [[], ['--cors-credentials', '--no-cors']]) {
+      printed = []
+      expect(await serve(...flags, '--cors-origin', 'http://localhost:3000')).toEqual({ status: 1, output: '--cors-origin lists the origins CORS with credentials names, so it needs --cors-credentials and CORS on.' })
+    }
+    // Valid origins reach the server. A port in use stops it there, so the test leaves no server running.
+    const taken = createServer().listen(0, '127.0.0.1')
+    await new Promise((done) => taken.once('listening', done))
+    onTestFinished(() => new Promise<void>((done) => taken.close(() => done())))
+    const { port } = taken.address() as { port: number }
+    printed = []
+    expect(await serve('--port', String(port), '--cors-credentials', '--cors-origin', 'http://localhost:3000/path', '--cors-origin', 'https://frontend.test')).toEqual({ status: 1, output: `Port ${port} is in use: name another with --port.` })
+  })
 })
 
 describe('the engine\'s command', () => {
