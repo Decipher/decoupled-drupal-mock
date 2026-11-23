@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createMock } from '../src'
+import { createDrupal, createMock } from '../src'
 import type { Extension } from '../src'
 import { connectMock } from '../src/control'
+import { extend } from '../src/extend'
 import { listen } from '../src/serve'
 import { dump } from './dump'
 
@@ -119,6 +120,14 @@ describe('what a test does to the mock', () => {
     expect(await read()).toBeGreaterThanOrEqual(first + 900_000)
     mock.reset()
     expect(await read()).toBeLessThan(first + 900_000)
+    // A path with a language prefix reads the same clock.
+    mock.advanceTime(60)
+    expect((await json(await mock.fetch(`${BASE}/es/api/now`))).count).toBeGreaterThanOrEqual(first + 60_000)
+    // Extended with no clock of its own, a handler reads the real time.
+    const plain = extend(createDrupal(dump, { baseUrl: BASE }), [clock])
+    const real = (plain.handle('GET', `${BASE}/api/now`).body as { count: number }).count
+    expect(real).toBeGreaterThanOrEqual(before)
+    expect(real).toBeLessThanOrEqual(Date.now())
   })
 
   it('calls out on a successful write and not on a refused one, and the write does not wait', async () => {
