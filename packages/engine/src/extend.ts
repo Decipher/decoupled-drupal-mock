@@ -23,6 +23,8 @@ export interface ExtensionRequest {
   state: Map<string, unknown>
   /** The stock site under every extension, fixtures included, for what a handler reads: `drupal.handle(...)`. */
   drupal: Drupal
+  /** The mock's time in milliseconds, which `advanceTime` moves, for what an extension expires. */
+  now: () => number
 }
 
 /** An extension's answer. A `body` that is not a string is sent as JSON. */
@@ -178,6 +180,7 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
   let sent: SentRequest[] = []
   const prefixes = Object.values(drupal.manifest.languages).filter(Boolean)
   const layers = (): Layer[] => [...added, ...active, ...[...extensions].reverse()]
+  const now = clock ? clock.now : Date.now
 
   // Only a write the site's store took: an extension's own 2xx answer saved nothing.
   const notify = (method: string, route: string, path: string, answered: Answered): string[] => {
@@ -216,7 +219,7 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
     } catch {
       // A body that is not JSON is the handler's to read as text.
     }
-    const request = (params: Record<string, string>): ExtensionRequest => ({ method: upper, url, path, route, ...(prefix ? { prefix } : {}), params, query: Object.fromEntries(url.searchParams), headers, ...(body !== undefined ? { body } : {}), ...(json !== undefined ? { json } : {}), state, drupal })
+    const request = (params: Record<string, string>): ExtensionRequest => ({ method: upper, url, path, route, ...(prefix ? { prefix } : {}), params, query: Object.fromEntries(url.searchParams), headers, ...(body !== undefined ? { body } : {}), ...(json !== undefined ? { json } : {}), state, drupal, now })
     const routed = (): Answered | undefined => {
       for (const layer of layers()) {
         for (const [pattern, handler] of Object.entries(layer.routes || {})) {
