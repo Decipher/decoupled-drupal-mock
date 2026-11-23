@@ -60,7 +60,15 @@ Add a changeset with `yarn changeset`. The engine and the Umami preset are versi
 
 ## Releases
 
-The maintainer cuts releases from `1.0.x`: `yarn changeset version` writes the versions and changelogs, and `yarn changeset publish` publishes both packages.
+Releases come from `1.0.x`, through the Release workflow in `.github/workflows/release.yml`:
+
+1. A merged change with a changeset publishes a dev snapshot of every package it releases, such as `0.0.0-dev.20261118084548`, under the `dev` dist-tag. The `0.0.0` keeps a snapshot out of every range a release names, so only `@dev` installs one. Install one with `decoupled-drupal-mock@dev`. Nothing is committed and no git tag is made. A manual run of the workflow cuts a snapshot too, and does nothing else.
+2. The same push opens or updates the "version packages" pull request. It holds the new versions with their changelogs, and the lock file that matches them. Its description lists what merging it releases, and the dist-tag each version is expected to take.
+3. Merging that pull request is the release decision. The push that follows packs every package npm does not have at its version yet and publishes it under its dist-tag: `alpha` while the line is in alpha, and `latest` once it is stable. A stable release from an older line goes out as `latest-<major>` instead, so `latest` never moves back. Each published version gets a tag and a GitHub Release.
+
+Publishing uses npm trusted publishing, so no token is stored. It runs only from a protected branch, once the repository variable `NPM_PUBLISH` is `true`. So a release line needs a branch protection rule or ruleset on GitHub before anything publishes from it. The `release` environment can hold a release for a reviewer. Until then each run packs and checks the tarballs as a dry run. A pull request that changes how a release is made gets the same rehearsal, for a snapshot and for a release.
+
+A package npm has never seen needs its first version published by hand before npm lets it trust the workflow. After that, set up the trusted publisher on npmjs.com for each package. It names this repository and the `release.yml` workflow, and leaves the environment empty: npm holds one environment per package, and the dev snapshots publish without one. Under "Allowed actions", allow `npm publish`. A new trusted publisher allows only `npm stage publish`, and the workflow publishes directly. npm drops a trusted publisher that has not published within two days of being set up, so set them up shortly before the release that will use them.
 
 ## Licence
 
