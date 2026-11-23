@@ -301,7 +301,7 @@ test:pack:
     - mkdir -p /tmp/pack /tmp/consumer
     # npm pack, as the strictest packer: it rewrites no `workspace:` range, so one left in a manifest shows here.
     - (cd packages/engine && npm pack --pack-destination /tmp/pack)
-    - (cd presets/umami && npm pack --pack-destination /tmp/pack)
+    - for preset in presets/*/; do (cd "$preset" && npm pack --pack-destination /tmp/pack); done
     - for tarball in /tmp/pack/*.tgz; do if tar -xOzf "$tarball" package/package.json | grep -q '"workspace:'; then echo "$tarball has a workspace range"; exit 1; fi; done
     # The engine and a preset that npx installs side by side, from a directory with neither installed.
     - mkdir -p /tmp/bare && cd /tmp/bare

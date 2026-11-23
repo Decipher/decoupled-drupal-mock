@@ -56,11 +56,11 @@ Check what a real Drupal answers first. To cover it with a recording, add the re
 
 ## Changes that affect users
 
-Add a changeset with `yarn changeset`. The engine and the Umami preset are versioned together, so a changeset names both. `packages/build` and the examples are not published and need none.
+Add a changeset with `yarn changeset`. The engine and the presets are versioned together, so a changeset names each package it changes, and Changesets releases them all at one version. `packages/build` and the examples are not published and need none.
 
 ## Releases
 
-The maintainer cuts releases from `1.0.x`: `yarn changeset version` writes the versions and changelogs, and `yarn changeset publish` publishes both packages.
+The maintainer cuts releases from `1.0.x`: `yarn changeset version` writes the versions and changelogs, and `yarn changeset publish` publishes the engine and every preset.
 
 ## Licence
 
