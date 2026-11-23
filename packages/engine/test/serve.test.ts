@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { http } from 'msw'
 import { setupServer } from 'msw/node'
-import { createDrupal, handlers } from '../src'
+import { createDrupal, createMock, handlers } from '../src'
 import { connectMock } from '../src/control'
 import { listen } from '../src/serve'
 import { dump } from './dump'
@@ -161,6 +161,82 @@ describe('the server as a backend for a frontend', () => {
       expect((await fetch(`${quiet.url}/jsonapi`, { method: 'OPTIONS' })).status).not.toBe(204)
     } finally {
       await quiet.close()
+    }
+  })
+
+  // As a Drupal 11.4 site answered with `supportsCredentials: true` in its cors.config: an allowed origin named, with
+  // credentials, on a preflight and an answer alike, and an origin it does not allow, or none, given no origin back.
+  // With `allowedOrigins` naming two origins, a sandboxed frame's `null` got none either.
+  it('answers CORS with credentials as Drupal does when asked to, for the origins it allows', async () => {
+    const credentialed = async (url: string, origin: string, method = 'GET') => {
+      const answer = await fetch(`${url}/jsonapi`, { method, headers: { origin, 'access-control-request-method': 'GET' } })
+      return { status: answer.status, origin: answer.headers.get('access-control-allow-origin'), credentials: answer.headers.get('access-control-allow-credentials'), vary: answer.headers.get('vary') }
+    }
+    // Without a list, only an origin on the developer's own machine.
+    const { url, close } = await bind({ credentials: true })
+    try {
+      for (const origin of ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://[::1]:3000']) {
+        expect(await credentialed(url, origin, 'OPTIONS')).toEqual({ status: 204, origin, credentials: 'true', vary: 'Origin' })
+        expect(await credentialed(url, origin)).toEqual({ status: 200, origin, credentials: 'true', vary: 'Origin' })
+      }
+      for (const origin of ['null', 'http://drupal.example.com', 'not a url']) {
+        expect(await credentialed(url, origin)).toEqual({ status: 200, origin: null, credentials: null, vary: 'Origin' })
+      }
+      const answer = await fetch(`${url}/jsonapi/node/page/p-1`, { headers: { origin: 'http://localhost:3000' } })
+      expect(answer.headers.get('content-type')).toBe('application/vnd.api+json')
+      // A request with no origin is not a cross-origin one, so it gets no origin back.
+      const plain = await fetch(`${url}/jsonapi`)
+      expect(plain.headers.get('access-control-allow-origin')).toBeNull()
+      expect(plain.headers.get('vary')).toBe('Origin')
+    } finally {
+      await close()
+    }
+    // With a list, the origins in it and nothing else, a loopback origin included.
+    const listed = await bind({ credentials: true, origins: ['https://frontend.example.com', 'http://localhost:3000'] })
+    try {
+      expect(await credentialed(listed.url, 'https://frontend.example.com', 'OPTIONS')).toMatchObject({ status: 204, origin: 'https://frontend.example.com', credentials: 'true' })
+      expect((await credentialed(listed.url, 'http://localhost:3000')).origin).toBe('http://localhost:3000')
+      for (const origin of ['null', 'http://127.0.0.1:3000', 'https://other.example.com']) {
+        expect(await credentialed(listed.url, origin)).toMatchObject({ origin: null, credentials: null })
+      }
+    } finally {
+      await listed.close()
+    }
+    // Not even from a list that names it.
+    const nulled = await bind({ credentials: true, origins: ['null', 'http://localhost:3000'] })
+    try {
+      expect(await credentialed(nulled.url, 'null')).toMatchObject({ origin: null, credentials: null })
+      expect((await credentialed(nulled.url, 'http://localhost:3000')).origin).toBe('http://localhost:3000')
+    } finally {
+      await nulled.close()
+    }
+    const quiet = await bind({ cors: false, credentials: true })
+    try {
+      expect((await fetch(`${quiet.url}/jsonapi`, { headers: { origin: 'http://localhost:3000' } })).headers.get('access-control-allow-origin')).toBeNull()
+    } finally {
+      await quiet.close()
+    }
+  })
+
+  // An answer that already varies keeps its fields and gains Origin, as Drupal's CORS middleware adds it to a response's Vary.
+  it('adds Origin to the Vary an answer already has, when CORS with credentials names it', async () => {
+    const varies = (vary: string) => createMock(dump, { baseUrl: 'http://127.0.0.1', extensions: [{ routes: { 'GET /varies': () => ({ headers: { vary }, body: {} }) } }] })
+    for (const [own, sent] of [['Accept-Language', 'Accept-Language, Origin'], ['accept-language, origin', 'accept-language, origin'], ['*', '*']] as const) {
+      const { url, close } = await listen(varies(own), 0, '127.0.0.1', { credentials: true })
+      try {
+        const answer = await fetch(`${url}/varies`, { headers: { origin: 'http://localhost:3000' } })
+        expect(answer.headers.get('vary')).toBe(sent)
+        expect(answer.headers.get('access-control-allow-origin')).toBe('http://localhost:3000')
+      } finally {
+        await close()
+      }
+    }
+    // Without credentials CORS does not vary, so the answer's own Vary goes out unchanged.
+    const { url, close } = await listen(varies('Accept-Language'), 0, '127.0.0.1')
+    try {
+      expect((await fetch(`${url}/varies`, { headers: { origin: 'http://localhost:3000' } })).headers.get('vary')).toBe('Accept-Language')
+    } finally {
+      await close()
     }
   })
 

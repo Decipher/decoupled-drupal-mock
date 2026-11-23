@@ -64,14 +64,15 @@ describe.each(presets)('the %s preset package', (preset) => {
     })
     const build = JSON.parse(readFileSync(join(dir, 'dump', 'manifest.json'), 'utf8')) as { preset: string }
     expect(run('status')).toEqual({ status: 1, output: `No mock is running on port ${port}.` })
-    const started = run('start', '--no-cors')
+    const started = run('start', '--cors-credentials', '--cors-origin', 'https://frontend.test')
     expect(started.status).toBe(0)
     // The same line serve prints, so the logs read the same.
     expect(started.output).toMatch(new RegExp(`^${build.preset} from Drupal .+, listening on http://127\\.0\\.0\\.1:${port}$`))
     const response = await fetch(`http://127.0.0.1:${port}/jsonapi`, { headers: { Origin: 'https://frontend.test' } })
     expect(response.status).toBe(200)
     // The serve options reached the server in the background too.
-    expect(response.headers.get('access-control-allow-origin')).toBeNull()
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://frontend.test')
+    expect(response.headers.get('access-control-allow-credentials')).toBe('true')
     expect(run('status')).toMatchObject({ status: 0, output: expect.stringMatching(new RegExp(`^${build.preset} is running on http://127\\.0\\.0\\.1:${port}, pid \\d+\\.$`)) })
     expect(run('stop')).toMatchObject({ status: 0, output: expect.stringMatching(/^Stopped the mock on port \d+, pid \d+\.$/) })
     expect(run('stop')).toEqual({ status: 0, output: `No mock is running on port ${port}.` })
