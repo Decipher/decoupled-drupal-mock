@@ -104,6 +104,23 @@ const corsHeaders = (options: ListenOptions, origin: string | undefined): Record
   return { ...rest, vary: 'Origin', ...(allowed ? { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' } : {}) }
 }
 
+/**
+ * The answer's headers under CORS's. An answer's own `Vary` keeps its fields, and gains `Origin` when CORS names it, as
+ * Drupal's CORS middleware adds to the `Vary` a response already has. Otherwise a cache could give an answer to a request
+ * with no origin to an allowed origin later. `Vary: *` stays as it is.
+ *
+ * @param cors - The CORS headers for this request.
+ * @param answer - The headers the engine or an extension answered with.
+ */
+const withCors = (cors: Record<string, string>, answer: Record<string, string>): Record<string, string> => {
+  const name = Object.keys(answer).find((key) => key.toLowerCase() === 'vary')
+  if (!cors.vary || !name) return { ...cors, ...answer }
+  const { [name]: own, ...rest } = answer
+  const fields = own!.split(',').map((field) => field.trim()).filter(Boolean)
+  const vary = fields.includes('*') ? '*' : [...fields, ...(fields.some((field) => field.toLowerCase() === 'origin') ? [] : [cors.vary])].join(', ')
+  return { ...cors, ...rest, vary }
+}
+
 export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: ListenOptions = {}): Promise<{ server: Server, url: string, close: () => Promise<void> }> => new Promise((resolve, reject) => {
   const server = createServer((request, response) => {
     const method = request.method || 'GET'
@@ -141,7 +158,7 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
         }
         const { status, headers: responseHeaders, body } = drupal.handle(method, `http://${urlHost(host)}:${port}${request.url || '/'}`, headers, requestBody)
         const text = status === 204 || body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body)
-        response.writeHead(status, { ...cors, ...responseHeaders, ...(status === 204 ? {} : { 'content-length': Buffer.byteLength(text) }) })
+        response.writeHead(status, { ...withCors(cors, responseHeaders), ...(status === 204 ? {} : { 'content-length': Buffer.byteLength(text) }) })
         response.end(method === 'HEAD' || status === 204 ? undefined : text)
       } catch {
         response.writeHead(400, { ...cors, 'content-type': 'text/plain' })

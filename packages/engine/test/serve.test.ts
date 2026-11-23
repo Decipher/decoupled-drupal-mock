@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { http } from 'msw'
 import { setupServer } from 'msw/node'
-import { createDrupal, handlers } from '../src'
+import { createDrupal, createMock, handlers } from '../src'
 import { connectMock } from '../src/control'
 import { listen } from '../src/serve'
 import { dump } from './dump'
@@ -215,6 +215,28 @@ describe('the server as a backend for a frontend', () => {
       expect((await fetch(`${quiet.url}/jsonapi`, { headers: { origin: 'http://localhost:3000' } })).headers.get('access-control-allow-origin')).toBeNull()
     } finally {
       await quiet.close()
+    }
+  })
+
+  // An answer that already varies keeps its fields and gains Origin, as Drupal's CORS middleware adds it to a response's Vary.
+  it('adds Origin to the Vary an answer already has, when CORS with credentials names it', async () => {
+    const varies = (vary: string) => createMock(dump, { baseUrl: 'http://127.0.0.1', extensions: [{ routes: { 'GET /varies': () => ({ headers: { vary }, body: {} }) } }] })
+    for (const [own, sent] of [['Accept-Language', 'Accept-Language, Origin'], ['accept-language, origin', 'accept-language, origin'], ['*', '*']] as const) {
+      const { url, close } = await listen(varies(own), 0, '127.0.0.1', { credentials: true })
+      try {
+        const answer = await fetch(`${url}/varies`, { headers: { origin: 'http://localhost:3000' } })
+        expect(answer.headers.get('vary')).toBe(sent)
+        expect(answer.headers.get('access-control-allow-origin')).toBe('http://localhost:3000')
+      } finally {
+        await close()
+      }
+    }
+    // Without credentials CORS does not vary, so the answer's own Vary goes out unchanged.
+    const { url, close } = await listen(varies('Accept-Language'), 0, '127.0.0.1')
+    try {
+      expect((await fetch(`${url}/varies`, { headers: { origin: 'http://localhost:3000' } })).headers.get('vary')).toBe('Accept-Language')
+    } finally {
+      await close()
     }
   })
 
