@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import type { Answer, RecordedWrite, WriteScript } from 'decoupled-drupal-mock/recorded-writes'
 import type { Document, Dump, Manifest, Recorded, Resource, TypeFilters } from 'decoupled-drupal-mock'
-import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND, DUMP_FORMAT, sortedSearch } from 'decoupled-drupal-mock'
+import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND, DUMP_FORMAT, relinker, sortedSearch } from 'decoupled-drupal-mock'
 import { KEPT_HEADERS, resolve } from 'decoupled-drupal-mock/recorded-writes'
 
 export interface CrawlOptions {
@@ -89,9 +89,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   const base = options.baseUrl.replace(/\/+$/, '')
   const origin = (options.origin || PLACEHOLDER).replace(/\/+$/, '')
   const log = options.log || ((line: string) => console.log(line))
-  // Only the origin itself: a host that merely begins with it is another site's.
-  const crawled = new RegExp(`${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w.:-])`, 'g')
-  const relink = (text: string): string => text.replace(crawled, origin)
+  // Every form the origin is written in, as a link or encoded in a query value.
+  const relink = relinker(base, origin)
   /** A link as a path on the crawled site, whatever host the site wrote it with. */
   const basePath = new URL(base).pathname.replace(/\/+$/, '')
   const pathOf = (href: string): string => {
