@@ -1,5 +1,20 @@
 # decoupled-drupal-mock
 
+## 1.0.0-alpha.4
+
+### Minor Changes
+
+- 6994148: The server runs in the background: `npx decoupled-drupal-mock-umami@alpha start --port 3005` returns once the server answers HTTP, `status --port 3005` says whether it runs, and `stop --port 3005` returns once the port is free. The engine's command has `start`, `status` and `stop` too. Each preset package's `bin.js` now calls `presetCommand` from `decoupled-drupal-mock/cli`.
+- 9402ddb: The engine answers Canvas Headless's content API from a build of a site that runs it: `/canvas/content-api` for each path the build recorded, Canvas's own 404 for any other path and its 400 for a `requestUri` that is not site-relative, plus `/canvas/content-api/entity` and `/canvas/api/v0/site-data`. A visitor's filtered collection of a type no module lets a visitor filter, such as `canvas_page` or `user`, now answers with nothing, as JSON:API's query guard does, when the build recorded that.
+- b687550: The engine gives Canvas Headless's draft preview on a build that recorded one. An editor's cookie session mints a preview assertion at `/canvas-headless/assertion`, the jwt-bearer grant at `/oauth/token` redeems it once for a preview token, and the content API answers that token with drafts. `/canvas-headless/renew` redirects to the frontend's draft route. The build records a preview with `canvasPreview` in its configuration, and the Dashi preset has one, with an auto-saved edit to its About page.
+- b6d77da: The server answers CORS with credentials when it runs with `--cors-credentials`, or with `credentials: true` in `listen`'s options. It names the request's origin instead of `*` and allows credentials, as a Drupal does with `supportsCredentials` in its `cors.config`, so a browser on another origin can send the mock's session cookie. It names only a loopback origin, unless `--cors-origin`, or `origins` in `listen`'s options, lists the origins to name. `start` takes the options too.
+- 7302e8a: An extension's handler gets `now()`, which returns the mock's time in milliseconds. `advanceTime(seconds)` moves it on and `reset()` puts it back, so what an extension expires, such as a preview token, runs on the mock's own clock.
+- 9402ddb: The engine checks a filter or sort path as JSON:API's field resolver does, from what the build now asks Drupal about each field. A visitor may filter by a field it can't read, such as a user's `name`, unless Drupal refuses it. A path that stops at a relationship, a field the related type doesn't have, a property below a single-property field and a `meta` property Drupal doesn't name each get Drupal's 400. A sort path is checked too. A reference to no entity, such as a root term's `virtual` parent, matches no `id`. A dump built before these probes keeps the older check. The Umami preset is rebuilt with them, and a visitor sees two answers change from alpha.3. A filter on users, or one that crosses into them such as `uid.name`, answers 200 with no data, where alpha.3 answered 403. A sort by a field the visitor may not filter, such as `uid.mail`, is now refused with a 403.
+
+### Patch Changes
+
+- 07b0ed4: The build replaces the crawled site's address where a document writes it encoded in a query value, as Drupal Canvas does in an image's `alternateWidths`, and the mock serves those at its own base URL. The Dashi preset is rebuilt with it, so its Canvas images name the mock's address and never the one it was built from. `relinker` is exported for a tool that rewrites an origin the same way.
+
 ## 1.0.0-alpha.3
 
 ### Minor Changes

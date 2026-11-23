@@ -1,6 +1,6 @@
 {
   "name": "decoupled-drupal-mock-mercury",
-  "version": "1.0.0-alpha.3",
+  "version": "1.0.0-alpha.4",
   "description": "Drupal CMS's Mercury Demo site template, with Drupal Canvas and Canvas Headless, as decoupled-drupal-mock fixtures: Mercury's own component pages, built from a real Drupal CMS 2.2.9 install.",
   "keywords": [
     "drupal",
@@ -29,7 +29,7 @@
     "dump"
   ],
   "peerDependencies": {
-    "decoupled-drupal-mock": "^1.0.0-alpha.3"
+    "decoupled-drupal-mock": "^1.0.0-alpha.4"
   },
   "license": "GPL-2.0-or-later",
   "engines": {
