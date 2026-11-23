@@ -36,6 +36,8 @@ Canvas Headless's content API answers for every path the build asked the router 
 
 A query on the content API that the build did not record, such as `requestUri=/home?page=1`, answers as an unknown path. Dashi's privacy policy page is unpublished, so the entity route answers it 403, as Drupal does.
 
+The search page's views block is a Search API view, and JSON:API Views has no route for one, so `/jsonapi/views/search/search` answers 404, as Drupal does. Answering Search API is [issue 39](https://github.com/Decipher/decoupled-drupal-mock/issues/39).
+
 ## Draft preview
 
 Dashi's About page, `/about-dashi`, has an edit that is auto-saved and not published: its heading reads "About Dashi, in draft". The heading sits three levels deep, in a group inside a grid inside a section. A visitor reads the published page, and a preview token reads the draft, with Canvas's comment markers around each component. The mock gives the preview as Canvas Headless does:
