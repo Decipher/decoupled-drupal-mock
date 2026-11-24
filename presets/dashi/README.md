@@ -55,7 +55,7 @@ Dashi's About page, `/about-dashi`, has an edit that is auto-saved and not publi
 
 An assertion is single-use and lives 60 seconds. A renewal, minted with `renewal=1`, redeems only with the `code_verifier` of the challenge the last redemption registered. With the editor's cookie, `GET /canvas-headless/renew?path=/about-dashi` redirects to `http://127.0.0.1:3000/api/draft?assertion=<jwt>`, the frontend the site names.
 
-The cookie steps run on a server, such as a frontend's draft route. The mock's CORS answer allows any origin but no credentials, so a browser on another origin cannot send the cookie. With `--cors-credentials` it can, from a loopback origin or one that `--cors-origin` names: see [Running a frontend against the mock](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/README.md#running-a-frontend-against-the-mock).
+The cookie steps run on a server, such as a frontend's draft route. The mock's CORS answer allows any origin but no credentials, so a browser on another origin cannot send the cookie. With `--cors-credentials` it can, from a loopback origin. With `--cors-origin`, only the origins it names can, so list a loopback origin too if the frontend uses one: see [Running a frontend against the mock](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/README.md#running-a-frontend-against-the-mock).
 
 The assertion's claims are a real one's, with the issuer, audience and renewal URL the build recorded. Its signature is random bytes of an RS256 signature's length. Canvas's SDK reads the claims without checking the signature, as a frontend does. A client that checks it cannot use the mock's.
 

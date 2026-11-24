@@ -312,10 +312,9 @@ test:pack:
     - (npx decoupled-drupal-mock serve umami --port 3005 &)
     # Up to 30 seconds: the preset loads before the port opens.
     - 'node -e "const until = Date.now() + 30000; const probe = () => fetch(\"http://127.0.0.1:3005/jsonapi\").then((response) => process.exit(response.ok ? 0 : 1), () => (Date.now() < until ? setTimeout(probe, 500) : process.exit(1))); probe()"'
-    # A preset's own command, from a directory with nothing installed, as `npx decoupled-drupal-mock-umami` runs it.
+    # Each preset's own command, from a directory with nothing installed, as `npx decoupled-drupal-mock-umami` runs it.
     - mkdir -p /tmp/empty && cd /tmp/empty
-    - (npx --yes -p /tmp/pack/decoupled-drupal-mock-1*.tgz -p /tmp/pack/decoupled-drupal-mock-umami-*.tgz decoupled-drupal-mock-umami --port 3006 &)
-    - 'node -e "const until = Date.now() + 60000; const probe = () => fetch(\"http://127.0.0.1:3006/jsonapi\").then((response) => process.exit(response.ok ? 0 : 1), () => (Date.now() < until ? setTimeout(probe, 500) : process.exit(1))); probe()"'
+    - 'port=3010; for tarball in /tmp/pack/decoupled-drupal-mock-[a-z]*.tgz; do name=$(basename "$tarball" | sed "s/-[0-9].*//"); (npx --yes -p /tmp/pack/decoupled-drupal-mock-1*.tgz -p "$tarball" "$name" --port "$port" &); PORT="$port" node -e "const until = Date.now() + 60000; const probe = () => fetch(\"http://127.0.0.1:\" + process.env.PORT + \"/jsonapi\").then((response) => process.exit(response.ok ? 0 : 1), () => (Date.now() < until ? setTimeout(probe, 500) : process.exit(1))); probe()" || { echo "$name did not answer on port $port"; exit 1; }; echo "$name answered on port $port"; port=$((port + 1)); done'
     - section_end "pack"
 
 test:e2e:
