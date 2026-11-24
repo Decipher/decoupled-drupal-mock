@@ -5970,7 +5970,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "decoupled-drupal-mock-dashi@workspace:presets/dashi"
   peerDependencies:
-    decoupled-drupal-mock: ^1.0.0-alpha.3
+    decoupled-drupal-mock: ^1.0.0-alpha.4
   bin:
     decoupled-drupal-mock-dashi: bin.js
   languageName: unknown
@@ -5980,7 +5980,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "decoupled-drupal-mock-haven@workspace:presets/haven"
   peerDependencies:
-    decoupled-drupal-mock: ^1.0.0-alpha.3
+    decoupled-drupal-mock: ^1.0.0-alpha.4
   bin:
     decoupled-drupal-mock-haven: bin.js
   languageName: unknown
@@ -5990,7 +5990,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "decoupled-drupal-mock-mercury@workspace:presets/mercury"
   peerDependencies:
-    decoupled-drupal-mock: ^1.0.0-alpha.3
+    decoupled-drupal-mock: ^1.0.0-alpha.4
   bin:
     decoupled-drupal-mock-mercury: bin.js
   languageName: unknown
@@ -6000,7 +6000,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "decoupled-drupal-mock-umami@workspace:presets/umami"
   peerDependencies:
-    decoupled-drupal-mock: ^1.0.0-alpha.3
+    decoupled-drupal-mock: ^1.0.0-alpha.4
   bin:
     decoupled-drupal-mock-umami: bin.js
   languageName: unknown
