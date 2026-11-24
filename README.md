@@ -6,7 +6,7 @@
 
 **Built by a human using an AI assistant.** Much of the code and documentation in this repository was written with an AI coding assistant, directed and reviewed by its maintainer. The mock's answers are checked against answers recorded from a real Drupal. See [AI use](CONTRIBUTING.md#ai-use).
 
-This package answers requests to Drupal's decoupled APIs without a running Drupal site. It covers JSON:API, Decoupled Router, menus through JSON:API Menu Items, and Simple OAuth, with answers from a preset: a recording of a real Drupal site. Your tests can call the mock directly, or run it as an HTTP server for a frontend.
+This package answers requests to Drupal's decoupled APIs without a running Drupal site. It covers JSON:API, Decoupled Router, menus through JSON:API Menu Items, Simple OAuth and Canvas Headless's content API, with answers from a preset: a recording of a real Drupal site. Your tests can call the mock directly, or run it as an HTTP server for a frontend.
 
 It was built for [Druxt](https://druxtjs.org), the decoupled Drupal and Nuxt framework, and works with any client of Drupal's JSON:API.
 
@@ -18,15 +18,15 @@ To try the mock without installing anything, serve the Umami preset with one com
 npx decoupled-drupal-mock-umami@alpha --port 3005
 ```
 
-Every preset package has a command like this, named after the package, and it takes the same options as `decoupled-drupal-mock serve`.
+Every preset package has a command like this, named after the package, and it takes the same options as `decoupled-drupal-mock serve`. Without `--port`, every preset listens on 3005, so give each its own port to run two at once.
 
-The engine and the Umami preset are published to npm as prereleases, under the `alpha` tag:
+The engine and its presets are published to npm as prereleases, under the `alpha` tag:
 
 ```sh
 npm install --save-dev decoupled-drupal-mock@alpha decoupled-drupal-mock-umami@alpha
 ```
 
-With Yarn, `yarn add --dev decoupled-drupal-mock@alpha decoupled-drupal-mock-umami@alpha`. Install the two at the same version. The preset needs an engine that reads its dump. The preset's default export reads it with `loadDump`, which refuses a dump format the engine cannot read with an error that says so. An alpha can change between releases, so pin the version you test against.
+With Yarn, `yarn add --dev decoupled-drupal-mock@alpha decoupled-drupal-mock-umami@alpha`. Install the engine and a preset at the same version. The preset needs an engine that reads its dump. The preset's default export reads it with `loadDump`, which refuses a dump format the engine cannot read with an error that says so. An alpha can change between releases, so pin the version you test against.
 
 ## Terms
 
@@ -39,13 +39,14 @@ With Yarn, `yarn add --dev decoupled-drupal-mock@alpha decoupled-drupal-mock-uma
 
 - `decoupled-drupal-mock`, the engine. `createDrupal(dump, { baseUrl })` serves the JSON:API index, individual and related resources, and collections with Drupal's filter, sort, page, sparse fieldset and include rules, under each language prefix. Anonymous requests see only what Drupal shows a visitor, with the same resources left out. Signed-in requests see the rest. Router lookups, menus and views are answered from what the build recorded.
 - `decoupled-drupal-mock-umami`, the Umami preset. It holds Drupal's demo site in English and Spanish, recorded from a real Drupal 11.4.11 install. Its README lists the accounts and OAuth clients it holds.
+- `decoupled-drupal-mock-dashi`, `decoupled-drupal-mock-haven` and `decoupled-drupal-mock-mercury`, Drupal CMS 2.2.9 with its Dashi, Haven and Mercury Demo site templates, recorded with Drupal Canvas and Canvas Headless. They answer Canvas Headless's content API and its draft preview too, and each README walks through the preview. Dashi holds Umami's recipes and articles in English and Spanish, Haven a climate non-profit's blog and projects, and Mercury Demo a page for each of Mercury's components.
 - `packages/build`, the crawler that records a preset from a running Drupal. It is part of this repository and is not published.
 
 The engine runs on Node, including under a test runner's jsdom environment, and its root entry also runs in a browser or a service worker. `loadDump` and the server need Node, so read the dump there and pass the object to `createDrupal` in the page. `drupal.fetch` and `createMock().fetch` build a `Request` and a `Response`, which Node provides from version 18. On Node 16, and in Jest's jsdom environment on any Node, use the axios entry point or a fetch polyfill.
 
 | Entry point                             | What it holds                                                               |
 | --------------------------------------- | --------------------------------------------------------------------------- |
-| `decoupled-drupal-mock`                 | `createDrupal`, `createMock` and the types                                  |
+| `decoupled-drupal-mock`                 | `createDrupal`, `createMock`, `relinker` and the types                      |
 | `decoupled-drupal-mock/node`            | `loadDump`, to read a build directory                                       |
 | `decoupled-drupal-mock/serve`           | `listen`, the HTTP server                                                   |
 | `decoupled-drupal-mock/msw`             | `handlers`, for msw                                                         |
@@ -142,7 +143,7 @@ The images and other files the content links to are included in the preset and s
 
 ## Fidelity
 
-Each preset includes an oracle: a list of real client requests, with the answers a real Drupal gave. It covers reads as well as writes and sign-in, errors included. The fidelity tests send each request to the engine and compare its answer with Drupal's. For Drupal's themed HTML pages they compare the status and headers, not the markup. All 151 of the Umami preset's read entries match, of which 11 are 404s and 1 is a 403, and so do all 52 write steps. The oracle covers Umami's request list, not every request a client could make.
+Each preset includes an oracle: a list of real client requests, with the answers a real Drupal gave. It covers reads as well as writes and sign-in, errors included. The fidelity tests send each request to the engine and compare its answer with Drupal's. For Drupal's themed HTML pages they compare the status and headers, not the markup. All 167 of the Umami preset's read entries match, of which 11 are 404s, 3 are 403s and 9 are 400s, and so do all 52 write steps. The Dashi, Haven and Mercury presets each have an oracle of their own. The oracle covers Umami's request list, not every request a client could make.
 
 ## Building a preset
 

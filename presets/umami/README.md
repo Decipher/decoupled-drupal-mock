@@ -24,6 +24,8 @@ npm installs the engine with it, as the preset's peer. Where npm skips peers, as
 npx -p decoupled-drupal-mock@alpha -p decoupled-drupal-mock-umami@alpha decoupled-drupal-mock-umami --port 3005
 ```
 
+Without `--port`, every preset listens on 3005, so give each its own port to run two at once. `start --port 3005` runs it in the background, `status --port 3005` says whether it runs, and `stop --port 3005` ends it. `drupal.fetch` needs Node 18's `Request` and `Response`. On Node 16, use the engine's axios entry point.
+
 The baseline is the site as released modules answer it, and `dump/manifest.json` names each module's version.
 
 ## Accounts and OAuth clients

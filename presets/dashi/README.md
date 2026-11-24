@@ -9,7 +9,7 @@ import { createDrupal } from 'decoupled-drupal-mock';
 import dashi from 'decoupled-drupal-mock-dashi';
 
 const drupal = createDrupal(dashi(), { baseUrl: 'https://drupal.test' });
-const home = await drupal.fetch('https://drupal.test/canvas/content-api?requestUri=/home');
+const home = await drupal.fetch('https://drupal.test/canvas/content-api?requestUri=/');
 ```
 
 The package also serves itself over HTTP, with nothing installed first. It takes the same options as `decoupled-drupal-mock serve`:
@@ -17,6 +17,14 @@ The package also serves itself over HTTP, with nothing installed first. It takes
 ```sh
 npx decoupled-drupal-mock-dashi@alpha --port 3005
 ```
+
+npm installs the engine with it, as the preset's peer. Where npm skips peers, as with `legacy-peer-deps`, name the engine too:
+
+```sh
+npx -p decoupled-drupal-mock@alpha -p decoupled-drupal-mock-dashi@alpha decoupled-drupal-mock-dashi --port 3005
+```
+
+Without `--port`, every preset listens on 3005, so give each its own port to run two at once. `start --port 3005` runs it in the background, `status --port 3005` says whether it runs, and `stop --port 3005` ends it. `drupal.fetch` needs Node 18's `Request` and `Response`. On Node 16, use the engine's axios entry point.
 
 The baseline is the site as released modules answer it, and `dump/manifest.json` names each module's version.
 
@@ -45,9 +53,9 @@ Dashi's About page, `/about-dashi`, has an edit that is auto-saved and not publi
 3. Redeem it at `POST /oauth/token` with `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`, `client_id=canvas_headless` and the assertion, and optionally a PKCE `code_challenge` with `code_challenge_method=S256`. It answers a preview token that lives 900 seconds.
 4. Read `/canvas/content-api?requestUri=/about-dashi` with `Authorization: Bearer <token>`.
 
-An assertion is single-use and lives 60 seconds. A renewal, minted with `renewal=1`, redeems only with the `code_verifier` of the challenge the last redemption registered. `GET /canvas-headless/renew?path=/about-dashi` redirects to `http://127.0.0.1:3000/api/draft?assertion=<jwt>`, the frontend the site names.
+An assertion is single-use and lives 60 seconds. A renewal, minted with `renewal=1`, redeems only with the `code_verifier` of the challenge the last redemption registered. With the editor's cookie, `GET /canvas-headless/renew?path=/about-dashi` redirects to `http://127.0.0.1:3000/api/draft?assertion=<jwt>`, the frontend the site names.
 
-The cookie steps run on a server, such as a frontend's draft route. The mock's CORS answer allows any origin but no credentials, so a browser on another origin cannot send the cookie. With `--cors-credentials` it can, from a loopback origin or one that `--cors-origin` names: see [Running a frontend against the mock](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/README.md#running-a-frontend-against-the-mock).
+The cookie steps run on a server, such as a frontend's draft route. The mock's CORS answer allows any origin but no credentials, so a browser on another origin cannot send the cookie. With `--cors-credentials` it can, from a loopback origin. With `--cors-origin`, only the origins it names can, so list a loopback origin too if the frontend uses one: see [Running a frontend against the mock](https://github.com/Decipher/decoupled-drupal-mock/blob/1.0.x/README.md#running-a-frontend-against-the-mock).
 
 The assertion's claims are a real one's, with the issuer, audience and renewal URL the build recorded. Its signature is random bytes of an RS256 signature's length. Canvas's SDK reads the claims without checking the signature, as a frontend does. A client that checks it cannot use the mock's.
 

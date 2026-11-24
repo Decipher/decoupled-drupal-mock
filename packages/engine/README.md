@@ -2,7 +2,7 @@
 
 **Built by a human using an AI assistant.** Much of the code and documentation in this project was written with an AI coding assistant, directed and reviewed by its maintainer. The mock's answers are checked against answers recorded from a real Drupal.
 
-This package answers requests to Drupal's decoupled APIs, such as JSON:API, Decoupled Router, menus and Simple OAuth, without a running Drupal site. The answers come from a preset, which is a recording of a real Drupal site, such as [`decoupled-drupal-mock-umami`](https://www.npmjs.com/package/decoupled-drupal-mock-umami).
+This package answers requests to Drupal's decoupled APIs, such as JSON:API, Decoupled Router, menus, Simple OAuth and Canvas Headless's content API, without a running Drupal site. The answers come from a preset, which is a recording of a real Drupal site: [`decoupled-drupal-mock-umami`](https://www.npmjs.com/package/decoupled-drupal-mock-umami), Drupal's demo site, or one of the Drupal CMS site templates recorded with Drupal Canvas, [`decoupled-drupal-mock-dashi`](https://www.npmjs.com/package/decoupled-drupal-mock-dashi), [`decoupled-drupal-mock-haven`](https://www.npmjs.com/package/decoupled-drupal-mock-haven) and [`decoupled-drupal-mock-mercury`](https://www.npmjs.com/package/decoupled-drupal-mock-mercury).
 
 ```sh
 npm install --save-dev decoupled-drupal-mock@alpha decoupled-drupal-mock-umami@alpha
