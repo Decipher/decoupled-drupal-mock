@@ -23,11 +23,14 @@ describe.skipIf(!available)('the engine against the oracle', () => {
   // The body runs even when skipped, so nothing is read without a build.
   const dump = available ? loadDump(dir!) : undefined
   const drupal = dump ? createDrupal(dump, { baseUrl: dump.manifest.origin }) : undefined
-  const entries = available ? JSON.parse(gunzipSync(readFileSync(join(oracleDir(dir!), 'reads.json.gz'))).toString('utf8')) as Array<{ request: string, status: number, body: unknown }> : []
+  const entries = available ? JSON.parse(gunzipSync(readFileSync(join(oracleDir(dir!), 'reads.json.gz'))).toString('utf8')) as Array<{ request: string, status: number, headers?: Record<string, string>, body: unknown }> : []
 
   it.each(entries.map((entry) => [entry.request, entry] as const))('%s', (_request, entry) => {
     const answer = drupal!.handle('GET', entry.request)
     expect(answer.status).toBe(entry.status)
+    // The language Drupal answered in, wherever the recording kept it.
+    const language = entry.headers?.['content-language']
+    if (language) expect(answer.headers['content-language']).toBe(language)
     // Drupal's HTML pages are themed; the engine's are not. The status is what a client reads.
     if (typeof entry.body !== 'string') expect(comparable(answer.body)).toEqual(comparable(entry.body))
   })

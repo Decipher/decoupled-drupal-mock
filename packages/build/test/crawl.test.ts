@@ -134,6 +134,15 @@ describe('the crawl', () => {
     expect(JSON.stringify(entries)).not.toContain('a-real-csrf-token')
   })
 
+  it('keeps the language Drupal answered in on an oracle read, and leaves it off a refusal the engine replays', async () => {
+    const oracleOut = mkdtempSync(join(tmpdir(), 'oracle-'))
+    const { out } = await build(site({ admin: [], visitor: [] }, (path) => (path === '/jsonapi/node/secret' ? { status: 403, headers: { 'content-language': 'en' }, body: {} } : path === '/es/jsonapi' ? { headers: { 'content-language': 'es' }, body: {} } : undefined)), { oracleOut, oracle: ['/es/jsonapi', '/jsonapi/node/secret'] })
+    const entries = read(oracleOut, 'reads.json.gz') as Array<{ request: string, headers: Record<string, string> }>
+    expect(entries.find((entry) => entry.request === '/es/jsonapi')!.headers['content-language']).toBe('es')
+    const routes = read(out, 'recorded/routes.json.gz') as Record<string, { headers: Record<string, string> }>
+    expect(routes['GET /jsonapi/node/secret']!.headers).toEqual({ 'content-type': 'application/vnd.api+json' })
+  })
+
   it('names the dump\'s format in its manifest', async () => {
     const { manifest } = await build(site({ admin: [], visitor: [] }))
     expect(manifest.format).toBe(1)
