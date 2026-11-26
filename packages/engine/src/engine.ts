@@ -341,7 +341,14 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   const stampOf = (now = new Date()): string => now.toISOString().replace(/\.\d{3}Z$/, '+00:00')
   const typePath = (type: string): string => type.replace('--', '/')
 
+  // Drupal names the language it answered in on every response: the prefix's, or the default language without one.
   const handle: Drupal['handle'] = (method, input, requestHeaders = {}, requestBody) => {
+    const answer = respond(method, input, requestHeaders, requestBody)
+    const { langcode } = language(withoutTrailingSlashes(new URL(input, baseUrl).pathname) || '/')
+    return { ...answer, headers: { ...answer.headers, 'content-language': langcode } }
+  }
+
+  const respond: Drupal['handle'] = (method, input, requestHeaders = {}, requestBody) => {
     const url = new URL(input, baseUrl)
     const path = withoutTrailingSlashes(url.pathname) || '/'
     const search = url.search.replace(/^\?/, '')
