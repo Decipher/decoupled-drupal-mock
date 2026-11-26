@@ -150,6 +150,11 @@ en/jsonapi
 /jsonapi/views/featured_articles/default
 /jsonapi/views/featured_articles/page_1
 /router/translate-path?path=/es/recipes
+/es/router/translate-path?path=/recipes/borscht-con-costillas-de-cerdo
+/es/router/translate-path?path=/es/recipes
+/es/router/translate-path?path=/
+/en/router/translate-path?path=/node/1
+/es/router/translate-path?path=/nowhere
 /en/jsonapi/node/article?filter%5Buid.name%5D=admin
 /en/jsonapi/node/article?filter%5Buid%5D=x
 /en/jsonapi/node/article?filter%5Buid.nope%5D=x

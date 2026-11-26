@@ -172,6 +172,21 @@ describe('the crawl', () => {
     expect(read(out, 'recorded/routes.json.gz')).toHaveProperty(['GET /router/translate-path?path=%2Ftaxonomy%2Fterm%2F7'])
   })
 
+  it('records the router under each prefixed language too, asked for the path with its prefix and without', async () => {
+    const node = (langcode: string, alias: string) => ({ type: 'node--page', id: 'n', attributes: { langcode, drupal_internal__nid: 5, path: { alias } } })
+    const { out } = await build((path) => {
+      if (path === '/jsonapi' || path === '/es/jsonapi') return { body: { links: { 'node--page': { href: `${path}/node/page` } } } }
+      if (path === `/jsonapi/node/page${LIMIT}`) return { body: { data: [node('en', '/about')], links: {} } }
+      if (path === `/es/jsonapi/node/page${LIMIT}`) return { body: { data: [node('es', '/recetas')], links: {} } }
+      return undefined
+    }, { languages: { en: '', es: 'es' } })
+    const routes = read(out, 'recorded/routes.json.gz') as Record<string, unknown>
+    for (const path of ['/es/recetas', '/recetas', '/es', '/', '/es/node/5', '/node/5']) expect(routes).toHaveProperty([`GET /es/router/translate-path?path=${encodeURIComponent(path)}`])
+    expect(routes).toHaveProperty([`GET /router/translate-path?path=${encodeURIComponent('/es/recetas')}`])
+    // The default language has no prefix here, so its router is the unprefixed one alone.
+    expect(Object.keys(routes).filter((key) => key.startsWith('GET /en/router'))).toEqual([])
+  })
+
   it('records a type a visitor may not filter on a build without a token too, from the visitor\'s own read', async () => {
     const { server, base } = await drupal((path) => {
       if (path === '/jsonapi') return { body: { links: { 'canvas_page--canvas_page': { href: '/jsonapi/canvas_page/canvas_page' } } } }

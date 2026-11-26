@@ -428,8 +428,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const answer = recorded(lookup, path, `requestUri=${encodeURIComponent(valid ? CANVAS_NOT_FOUND : CANVAS_BAD_REQUEST)}`)
       if (answer) return { status: answer.status, headers: answer.headers, body: relink(answer.body) }
     }
-    // Decoupled Router answers for the paths the build recorded, and as itself for the rest.
-    if (path === '/router/translate-path') {
+    // Decoupled Router answers for the paths the build recorded, and as itself for the rest, under any language's prefix.
+    if (language(path).rest === '/router/translate-path') {
       const asked = String((query.path as string | undefined) ?? '')
       return { status: 404, headers: { 'content-type': 'application/json' }, body: { message: `Unable to resolve path ${asked}.`, details: 'None of the available methods were able to find a match for this path.' } }
     }
