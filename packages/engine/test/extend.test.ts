@@ -19,6 +19,13 @@ describe('an extension', () => {
     expect((await mock.fetch(`${BASE}/api/n-1/preview`)).status).not.toBe(200)
   })
 
+  it('answers in the language of the prefix it was asked under, as Drupal names it on every response', async () => {
+    const mock = createMock(dump, { baseUrl: BASE, extensions: [{ routes: { 'GET /api/hello': () => ({ body: {} }) } }, { answer: ({ query }, next) => (query.fail ? { status: 503, body: 'down' } : next()) }] })
+    expect((await mock.fetch(`${BASE}/api/hello`)).headers.get('content-language')).toBe('en')
+    expect((await mock.fetch(`${BASE}/es/api/hello`)).headers.get('content-language')).toBe('es')
+    expect((await mock.fetch(`${BASE}/es/jsonapi?fail=1`)).headers.get('content-language')).toBe('es')
+  })
+
   it('leaves the stock site alone', async () => {
     const mock = createMock(dump, { baseUrl: BASE, extensions: [{ routes: { 'GET /other': () => ({ body: {} }) } }] })
     expect(((await json(await mock.fetch(`${BASE}/jsonapi/node/page/p-1`))).data as { id: string }).id).toBe('p-1')

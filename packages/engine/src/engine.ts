@@ -344,7 +344,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   // Drupal names the language it answered in on every response: the prefix's, or the default language without one.
   const handle: Drupal['handle'] = (method, input, requestHeaders = {}, requestBody) => {
     const answer = respond(method, input, requestHeaders, requestBody)
-    const { langcode } = language(withoutTrailingSlashes(new URL(input, baseUrl).pathname) || '/')
+    const { langcode } = language(withoutTrailingSlashes(new URL(input, baseUrl).pathname))
     return { ...answer, headers: { ...answer.headers, 'content-language': langcode } }
   }
 

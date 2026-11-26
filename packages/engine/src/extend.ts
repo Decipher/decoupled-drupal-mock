@@ -179,6 +179,7 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
   let requests: RecordedRequest[] = []
   let sent: SentRequest[] = []
   const prefixes = Object.values(drupal.manifest.languages).filter(Boolean)
+  const langcodeOf = new Map(Object.entries(drupal.manifest.languages).map(([langcode, prefix]) => [prefix, langcode]))
   const layers = (): Layer[] => [...added, ...active, ...[...extensions].reverse()]
   const now = clock ? clock.now : Date.now
 
@@ -238,7 +239,9 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
       return drupal.handle(method, input, headers, body)
     }
     const chain = layers().reduceRight<() => Answered>((next, layer) => (layer.answer ? () => settled(layer.answer!(request({}), next), layer.name || 'answer') : next), stock)
-    const answered = chain()
+    // Drupal names the language on every response, so an extension's own answer carries it as the stock site's do.
+    const answered = { ...chain() }
+    answered.headers = { ...answered.headers, 'content-language': prefix ? langcodeOf.get(prefix)! : drupal.manifest.defaultLanguage }
     const errors = fromStore ? notify(upper, route, path, answered) : []
     requests.push({ method: upper, path, search: url.search, headers, ...(body !== undefined ? { body } : {}), status: answered.status, ...(errors.length ? { errors } : {}) })
     return answered
