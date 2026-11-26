@@ -445,6 +445,14 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
           all[langcode]![type] = full
           write(`resources/${langcode}/${type}.json.gz`, full)
         }
+        // A type whose entity query refuses JSON:API's offset, as Drupal Canvas's config entity query does, is recorded
+        // refusing one, so the engine fails a page past the first where Drupal does.
+        const offset = `${pathOf(link.href)}?page%5Boffset%5D=0`
+        const refusal = scrub(await get(offset))
+        if (refusal.status >= 500) {
+          recorded[`GET ${offset}`] = refusal
+          log(`  ${type}: refuses page[offset], answering ${refusal.status}`)
+        }
       }
       if (Object.keys(access).length) write(`access/${langcode}.json.gz`, access)
       if (langcode === options.defaultLanguage) write('filters.json.gz', filters)

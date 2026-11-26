@@ -157,6 +157,23 @@ describe('the query parser', () => {
   })
 })
 
+describe('a configuration type whose query refuses an offset, as Drupal Canvas\'s does', () => {
+  it('answers any page[offset] with the recorded error, its via link naming the request', async () => {
+    const refused = await get('/jsonapi/block/block?page[offset]=50&page[limit]=50')
+    expect(refused.status).toBe(500)
+    const error = (refused.body.errors as unknown as Array<{ detail: string, links: { via: { href: string } } }>)[0]!
+    expect(error.detail).toContain('array_slice()')
+    expect(error.links.via.href).toBe('https://drupal.test/jsonapi/block/block?page[offset]=50&page[limit]=50')
+    expect((await get('/jsonapi/block/block?filter[status]=1&page[offset]=1')).status).toBe(500)
+  })
+
+  it('still answers the type without an offset, and other types with one', async () => {
+    expect((await get('/jsonapi/block/block')).status).toBe(200)
+    expect((await get('/jsonapi/block/block?page[limit]=1')).status).toBe(200)
+    expect((await get('/jsonapi/node/page?page[offset]=1')).status).toBe(200)
+  })
+})
+
 describe('recorded routes', () => {
   it('answers Decoupled Router and JSON:API Menu Items from the recordings, relinked', async () => {
     const route = await get('/router/translate-path?path=%2Fabout-umami')

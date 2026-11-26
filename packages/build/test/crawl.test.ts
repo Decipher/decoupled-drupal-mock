@@ -196,6 +196,22 @@ describe('the crawl', () => {
     expect(Object.keys(routes).filter((key) => key.startsWith('GET /en/router'))).toEqual([])
   })
 
+  it('records a type that refuses page[offset], in each language, and nothing for a type that takes one', async () => {
+    const refusal: Answer = { status: 500, body: { errors: [{ status: '500', detail: 'array_slice(): Argument #2 ($offset) must be of type int, string given' }] } }
+    const { out } = await build((path) => {
+      if (path === '/jsonapi' || path === '/es/jsonapi') return { body: { links: { 'menu--menu': { href: `${path}/menu/menu` }, 'node--page': { href: `${path}/node/page` } } } }
+      if (path.endsWith(`/menu/menu${LIMIT}`)) return { body: { data: [{ type: 'menu--menu', id: 'm', attributes: { drupal_internal__id: 'main' } }], links: {} } }
+      if (path.endsWith(`/node/page${LIMIT}`)) return { body: { data: [], links: {} } }
+      if (path.endsWith('/menu/menu?page%5Boffset%5D=0')) return refusal
+      if (path.endsWith('/node/page?page%5Boffset%5D=0')) return { body: { data: [] } }
+      return undefined
+    }, { languages: { en: '', es: 'es' } })
+    const routes = read(out, 'recorded/routes.json.gz') as Record<string, { status: number }>
+    expect(routes['GET /jsonapi/menu/menu?page%5Boffset%5D=0']).toMatchObject({ status: 500 })
+    expect(routes['GET /es/jsonapi/menu/menu?page%5Boffset%5D=0']).toMatchObject({ status: 500 })
+    expect(routes).not.toHaveProperty(['GET /jsonapi/node/page?page%5Boffset%5D=0'])
+  })
+
   it('records a type a visitor may not filter on a build without a token too, from the visitor\'s own read', async () => {
     const { server, base } = await drupal((path) => {
       if (path === '/jsonapi') return { body: { links: { 'canvas_page--canvas_page': { href: '/jsonapi/canvas_page/canvas_page' } } } }

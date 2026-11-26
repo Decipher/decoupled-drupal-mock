@@ -543,6 +543,14 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
         if (head && fieldNames.size > 2 && !fieldNames.has(head)) return refuse({ status: 400, detail: `Invalid nested filtering. The field \`${head}\`, given in the path \`${condition.path}\`, does not exist.` })
       }
     }
+    // A type whose entity query refuses JSON:API's offset, as Drupal Canvas's config entity query does, fails any page
+    // past the default when the query runs: after the filters and sorts are checked, before anything is read.
+    const offsetRefused = (query.page as Record<string, unknown> | undefined)?.offset !== undefined ? recorded('GET', path, 'page%5Boffset%5D=0') : undefined
+    if (offsetRefused && offsetRefused.status >= 500) {
+      const body = relink(offsetRefused.body) as { errors?: Array<{ links?: { via?: { href: string } } }> }
+      for (const item of body.errors || []) if (item.links?.via) item.links.via.href = via
+      return { status: offsetRefused.status, headers: offsetRefused.headers, body }
+    }
     const readAny = read(langcode)
     // Whether a path crosses into a type a visitor may not filter depends on the type and the path only, so it is
     // worked out once per request rather than once per resource.
