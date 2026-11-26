@@ -2,6 +2,7 @@ import { clone } from './clone.js'
 import type { Drupal } from './engine.js'
 import type { Dump, Resource } from './types.js'
 import { withoutTrailingSlashes } from './slashes.js'
+import { answeredIn } from './language.js'
 
 /** A request as an extension reads it. */
 export interface ExtensionRequest {
@@ -238,7 +239,10 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
       return drupal.handle(method, input, headers, body)
     }
     const chain = layers().reduceRight<() => Answered>((next, layer) => (layer.answer ? () => settled(layer.answer!(request({}), next), layer.name || 'answer') : next), stock)
-    const answered = chain()
+    // Drupal names the language on every response, so an extension's own answer carries it as the stock site's do.
+    const answered = { ...chain() }
+    const others = Object.entries(answered.headers).filter(([name]) => name.toLowerCase() !== 'content-language')
+    answered.headers = { ...Object.fromEntries(others), 'content-language': answeredIn(drupal.manifest.languages, drupal.manifest.defaultLanguage, url.pathname) }
     const errors = fromStore ? notify(upper, route, path, answered) : []
     requests.push({ method: upper, path, search: url.search, headers, ...(body !== undefined ? { body } : {}), status: answered.status, ...(errors.length ? { errors } : {}) })
     return answered

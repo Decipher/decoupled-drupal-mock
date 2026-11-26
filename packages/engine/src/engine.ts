@@ -14,6 +14,7 @@ import { withoutTrailingSlashes } from './slashes.js'
 import { relinker } from './origins.js'
 import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND } from './format.js'
 import { checkPath } from './paths.js'
+import { answeredIn } from './language.js'
 import type { PathError, Schema } from './paths.js'
 import { CanvasPreview } from './canvas.js'
 
@@ -341,7 +342,14 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   const stampOf = (now = new Date()): string => now.toISOString().replace(/\.\d{3}Z$/, '+00:00')
   const typePath = (type: string): string => type.replace('--', '/')
 
+  // Drupal names the language it answered in on every response: the prefix's, or the default language without one.
   const handle: Drupal['handle'] = (method, input, requestHeaders = {}, requestBody) => {
+    const answer = respond(method, input, requestHeaders, requestBody)
+    const langcode = answeredIn(languages, dump.manifest.defaultLanguage, new URL(input, baseUrl).pathname)
+    return { ...answer, headers: { ...answer.headers, 'content-language': langcode } }
+  }
+
+  const respond: Drupal['handle'] = (method, input, requestHeaders = {}, requestBody) => {
     const url = new URL(input, baseUrl)
     const path = withoutTrailingSlashes(url.pathname) || '/'
     const search = url.search.replace(/^\?/, '')

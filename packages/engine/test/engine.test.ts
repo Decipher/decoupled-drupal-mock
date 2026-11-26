@@ -20,6 +20,18 @@ describe('the index', () => {
     expect((await get('/es/jsonapi')).body.links!.self).toEqual({ href: 'https://drupal.test/es/jsonapi' })
     expect(JSON.stringify(body)).not.toContain(ORIGIN)
   })
+
+  it('names the language it answered in, as Drupal does on every response', async () => {
+    expect((await get('/jsonapi')).headers.get('content-language')).toBe('en')
+    expect((await get('/es/jsonapi')).headers.get('content-language')).toBe('es')
+    expect((await get('/es/jsonapi/node/page/missing')).headers.get('content-language')).toBe('es')
+    expect((await get('/router/translate-path?path=/nowhere')).headers.get('content-language')).toBe('en')
+  })
+
+  it('reads the prefix decoded, as Drupal does, and leaves a segment that will not decode as it is', async () => {
+    expect((await get('/%65s/jsonapi')).headers.get('content-language')).toBe('es')
+    expect((await get('/%E0%A4%A/jsonapi')).headers.get('content-language')).toBe('en')
+  })
 })
 
 describe('an individual resource', () => {

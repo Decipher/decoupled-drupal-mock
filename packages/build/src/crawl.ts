@@ -138,13 +138,15 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   }
   const authorized = (): Record<string, string> => (token ? { authorization: `Bearer ${token}` } : {})
 
-  const get = async (path: string, headers: Record<string, string> = {}): Promise<{ status: number, headers: Record<string, string>, body: unknown }> => {
+  // `keep` names the headers kept beyond the content type, which only the oracle records.
+  const get = async (path: string, headers: Record<string, string> = {}, keep: string[] = []): Promise<{ status: number, headers: Record<string, string>, body: unknown }> => {
     const url = path.startsWith('/') ? `${base}${path}` : `${base}/${path}`
     const response = await fetch(url, { headers: { accept: 'application/vnd.api+json, application/json;q=0.9, */*;q=0.8', ...headers } }).catch((err: unknown) => { throw new Error(`GET ${url}: ${(err as Error).message}`) })
     const text = await response.text()
     const type = response.headers.get('content-type') || ''
     const body: unknown = type.includes('json') ? JSON.parse(text) : text
-    return { status: response.status, headers: { 'content-type': type.split(';')[0]!.trim() }, body }
+    const kept = Object.fromEntries(keep.flatMap((name) => { const value = response.headers.get(name); return value === null ? [] : [[name, value]] }))
+    return { status: response.status, headers: { 'content-type': type.split(';')[0]!.trim(), ...kept }, body }
   }
 
   const recorded: Record<string, Recorded> = {}
@@ -503,13 +505,14 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       const resolve = (request: string): string => request.replace(/\{([a-z0-9_]+--[a-z0-9_]+):(\d+)\}/g, (_whole, type: string, n: string) => all[options.defaultLanguage]?.[type]?.[Number(n)]?.id || `missing-${type}-${n}`)
       for (const request of options.oracle) {
         const resolved = resolve(request)
-        const entry = await get(resolved)
+        // Drupal names the language it answered in, which the oracle holds the engine to.
+        const entry = await get(resolved, {}, ['content-language'])
         entries.push({ request: resolved, ...entry, ...(isSessionToken(resolved) ? { body: '<token>' } : {}) })
         // A type that refuses reads is recorded by its path, so the engine refuses it as Drupal does. A query refused
         // for what it asks, such as a filter on a field, says nothing of the plain path, so that is asked too.
         if (entry.status === 403 || entry.status === 405) {
           const [pathname, search] = resolved.split('?') as [string, string?]
-          const plain = search ? await get(pathname) : entry
+          const plain = search ? await get(pathname) : { ...entry, headers: { 'content-type': entry.headers['content-type']! } }
           if (plain.status === 403 || plain.status === 405) recorded[`GET ${pathname}`] = recorded[`GET ${pathname}`] || plain
         }
       }
