@@ -212,6 +212,18 @@ describe('the crawl', () => {
     expect(routes).not.toHaveProperty(['GET /jsonapi/node/page?page%5Boffset%5D=0'])
   })
 
+  it('tries a failed page[offset] probe again, and records nothing when the type answers the next time', async () => {
+    let tries = 0
+    const { out } = await build((path) => {
+      if (path === '/jsonapi') return { body: { links: { 'menu--menu': { href: '/jsonapi/menu/menu' } } } }
+      if (path.endsWith(`/menu/menu${LIMIT}`)) return { body: { data: [{ type: 'menu--menu', id: 'm', attributes: { drupal_internal__id: 'main' } }], links: {} } }
+      if (path.endsWith('/menu/menu?page%5Boffset%5D=0')) return ++tries < 3 ? { status: 503, body: { errors: [{ status: '503' }] } } : { body: { data: [] } }
+      return undefined
+    })
+    expect(tries).toBe(3)
+    expect(read(out, 'recorded/routes.json.gz')).not.toHaveProperty(['GET /jsonapi/menu/menu?page%5Boffset%5D=0'])
+  })
+
   it('records a type a visitor may not filter on a build without a token too, from the visitor\'s own read', async () => {
     const { server, base } = await drupal((path) => {
       if (path === '/jsonapi') return { body: { links: { 'canvas_page--canvas_page': { href: '/jsonapi/canvas_page/canvas_page' } } } }

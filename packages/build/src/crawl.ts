@@ -448,7 +448,10 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         // A type whose entity query refuses JSON:API's offset, as Drupal Canvas's config entity query does, is recorded
         // refusing one, so the engine fails a page past the first where Drupal does.
         const offset = `${pathOf(link.href)}?page%5Boffset%5D=0`
-        const refusal = scrub(await get(offset))
+        // A server's failure is tried again, as a collection's page is, so only one that stays is recorded.
+        let probe = await get(offset)
+        for (let attempt = 0; attempt < 2 && probe.status >= 500; attempt++) probe = await get(offset)
+        const refusal = scrub(probe)
         if (refusal.status >= 500) {
           recorded[`GET ${offset}`] = refusal
           log(`  ${type}: refuses page[offset], answering ${refusal.status}`)
