@@ -224,6 +224,18 @@ describe('the crawl', () => {
     expect(read(out, 'recorded/routes.json.gz')).not.toHaveProperty(['GET /jsonapi/menu/menu?page%5Boffset%5D=0'])
   })
 
+  it('records no page[offset] failure that is not a JSON:API error, and says so', async () => {
+    const lines: string[] = []
+    const { out } = await build((path) => {
+      if (path === '/jsonapi') return { body: { links: { 'menu--menu': { href: '/jsonapi/menu/menu' } } } }
+      if (path.endsWith(`/menu/menu${LIMIT}`)) return { body: { data: [{ type: 'menu--menu', id: 'm', attributes: { drupal_internal__id: 'main' } }], links: {} } }
+      if (path.endsWith('/menu/menu?page%5Boffset%5D=0')) return { status: 503, headers: { 'content-type': 'text/html' }, body: '<h1>Service Unavailable</h1>', raw: true }
+      return undefined
+    }, { log: (line) => lines.push(line) })
+    expect(read(out, 'recorded/routes.json.gz')).not.toHaveProperty(['GET /jsonapi/menu/menu?page%5Boffset%5D=0'])
+    expect(lines).toContain('  menu--menu: page[offset] answered 503 without a JSON:API error, so nothing is recorded')
+  })
+
   it('records a type a visitor may not filter on a build without a token too, from the visitor\'s own read', async () => {
     const { server, base } = await drupal((path) => {
       if (path === '/jsonapi') return { body: { links: { 'canvas_page--canvas_page': { href: '/jsonapi/canvas_page/canvas_page' } } } }
