@@ -28,6 +28,10 @@
 /router/translate-path?path=%2Fes%2Fhome
 /router/translate-path?path=%2Fpage%2F2
 /router/translate-path?path=%2Frecipes%2Ffiery-chili-sauce
+/es/router/translate-path?path=%2Frecipes
+/es/router/translate-path?path=%2Fes%2Frecipes
+/es/router/translate-path?path=%2F
+/es/router/translate-path?path=%2Fnowhere
 /canvas/content-api?requestUri=%2F
 /canvas/content-api?requestUri=%2Fhome
 /canvas/content-api?requestUri=%2Fes%2Fhome

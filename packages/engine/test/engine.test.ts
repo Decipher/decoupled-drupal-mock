@@ -171,6 +171,13 @@ describe('recorded routes', () => {
     expect((await get('/jsonapi/menu_items/main?filter[nope]=1')).status).toBe(404)
     expect((await get('/router/translate-path?path=%2Fnope')).status).toBe(404)
   })
+
+  it('answers Decoupled Router under a language prefix as Drupal does a path it cannot resolve: in JSON', async () => {
+    const route = await get('/es/router/translate-path?path=%2Fnope')
+    expect(route.status).toBe(404)
+    expect(route.headers.get('content-type')).toBe('application/json')
+    expect(route.body).toMatchObject({ message: 'Unable to resolve path /nope.' })
+  })
 })
 
 describe('a type no module lets a visitor filter', () => {

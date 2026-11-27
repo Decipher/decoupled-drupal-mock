@@ -472,6 +472,12 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       const paths = [...new Set([...prefixed, ...unprefixed])]
       log(`${langcode}: ${paths.length} router lookups`)
       for (const path of paths) await record(`/router/translate-path?path=${encodeURIComponent(path)}`)
+      // Under a language's prefix the router answers in that language, asked for the path with its prefix or without.
+      if (lang) {
+        const own = [...new Set([...prefixed, ...prefixed.map((path) => path === lang ? '/' : path.slice(lang.length))])]
+        log(`${langcode}: ${own.length} router lookups under ${lang}`)
+        for (const path of own) await record(`${lang}/router/translate-path?path=${encodeURIComponent(path)}`)
+      }
 
       // Canvas Headless resolves a path itself, so its content API is recorded for every path the router was asked.
       await recordCanvas(paths, all[langcode]!)
