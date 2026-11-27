@@ -171,3 +171,4 @@ en/jsonapi
 /en/jsonapi/block/block?filter%5Bnope.x%5D=x
 /en/jsonapi/user/user?filter%5Bname%5D=admin
 /es/jsonapi/node/article?filter%5Buid.entity.zz%5D=x
+/jsonapi/menu/menu?page%5Boffset%5D=1

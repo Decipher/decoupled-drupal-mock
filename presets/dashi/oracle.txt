@@ -55,3 +55,6 @@
 /jsonapi/node/article?sort=uid
 /jsonapi/node/article?filter%5Bzzz%5D=y&filter%5Buid.mail%5D=x
 /es/jsonapi/node/article?filter%5Bfield_tags.nope%5D=x
+/jsonapi/component/component?page%5Boffset%5D=50&page%5Blimit%5D=50
+/jsonapi/menu/menu?page%5Boffset%5D=1
+/es/jsonapi/menu/menu?page%5Boffset%5D=1

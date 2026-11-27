@@ -49,3 +49,5 @@
 /jsonapi/node/blog?filter%5Bzzz%5D=y&filter%5Buid.mail%5D=x
 /jsonapi/user/user?filter%5Bname%5D=admin
 /jsonapi/media_type/media_type?filter%5Bstatus%5D=1
+/jsonapi/component/component?page%5Boffset%5D=50&page%5Blimit%5D=50
+/jsonapi/menu/menu?page%5Boffset%5D=1

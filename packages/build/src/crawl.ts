@@ -445,6 +445,20 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
           all[langcode]![type] = full
           write(`resources/${langcode}/${type}.json.gz`, full)
         }
+        // A type whose entity query refuses JSON:API's offset, as Drupal Canvas's config entity query does, is recorded
+        // refusing one, so the engine fails a page past the first where Drupal does.
+        const offset = `${pathOf(link.href)}?page%5Boffset%5D=0`
+        // A server's failure is tried again, as a collection's page is, so only one that stays is recorded.
+        let probe = await get(offset)
+        for (let attempt = 0; attempt < 2 && probe.status >= 500; attempt++) probe = await get(offset)
+        const refusal = scrub(probe)
+        // Only JSON:API's own error is recorded, as the engine points its via link at each request. Anything else, such
+        // as a proxy's page, is not Drupal's answer.
+        const jsonapi = Array.isArray((refusal.body as { errors?: unknown } | null)?.errors)
+        if (refusal.status >= 500 && jsonapi) {
+          recorded[`GET ${offset}`] = refusal
+          log(`  ${type}: refuses page[offset], answering ${refusal.status}`)
+        } else if (refusal.status >= 500) log(`  ${type}: page[offset] answered ${refusal.status} without a JSON:API error, so nothing is recorded`)
       }
       if (Object.keys(access).length) write(`access/${langcode}.json.gz`, access)
       if (langcode === options.defaultLanguage) write('filters.json.gz', filters)

@@ -15,7 +15,7 @@
       "simple_oauth": "6.1.4"
     }
   },
-  "built": "2026-11-26T04:19:48.863Z",
+  "built": "2026-11-26T05:42:50.938Z",
   "origin": "https://drupal.invalid",
   "languages": {
     "en": "en",
@@ -55,7 +55,7 @@
     "resources/en/taxonomy_term--recipe_category.json.gz": "8625a04dcbd73eff0dcaeeaa9a5423c74956ef0346ffcc16f428ad4abc5406a9",
     "resources/en/taxonomy_term--tags.json.gz": "7602439a9ae8265d798d74922385a51697bd6d1a3321348a50e69a97214454b4",
     "resources/en/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "94d48995f864119e270bb9762bda4652a43c2756a89e12034ca6a9e5f23c096b",
-    "resources/en/user--user.json.gz": "980ade192cac37516cfad0c7cc659b0bcc38cea01a33eb490f4f8b978d4a5a66",
+    "resources/en/user--user.json.gz": "32df2b9357fa88b6f6db161dd3726d705c7969942d650f842e1ed6bd7453af80",
     "resources/en/user_role--user_role.json.gz": "23368f5095eeb7eef333d468fc5a3ba41ccbe48f40625cba373fe54b12e647ba",
     "resources/en/view--view.json.gz": "87600b7dad1d63463fddcd2e04be5a2821eb951a6a5d9fd71c1b52bd433fe0bb",
     "resources/en/workflow--workflow.json.gz": "f99609289ea594624f415bcafa779f5cdbad2b0b814cf65209f23639823caaf2",
@@ -93,7 +93,7 @@
     "resources/es/taxonomy_term--recipe_category.json.gz": "f38dda0d0827d48f4648101fcd91ad653e57f712569cd51272497afa63166b0d",
     "resources/es/taxonomy_term--tags.json.gz": "9ea6f76ae06a1f7a435a01e2b0b1b8c7ebea59711b15c631533731e26292a796",
     "resources/es/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "d32e4496f41827c662f6e19b88370ba9778a4b283f636b5139b11af10d432665",
-    "resources/es/user--user.json.gz": "c93c0d71fa59ac13fa87306eecc2f40964c24721a7bb64860acc3ebe1911ee84",
+    "resources/es/user--user.json.gz": "eace8823a07292542f8d8a5dd5efaecc971884dd5e418aa5f79aa0ddcc31fa68",
     "resources/es/user_role--user_role.json.gz": "93a9923220525693e3e732157d52f54dd79f6fb5367665dafe87c74bfd3535ac",
     "resources/es/view--view.json.gz": "6b691c76a18404da4e21d449110ab9f9a7683046c3899515d87fe5fe1f468022",
     "resources/es/workflow--workflow.json.gz": "87d6c4bbcd1d8ca9f27eeded9ee74540610db0d64566b9438326fd374ee54c1a",
@@ -123,7 +123,7 @@
     "identities.json": "10f18908c7bd768ed9d331c7632caba011e9356856308f9bde5e4f8034fe3fb8"
   },
   "oracle": {
-    "reads.json.gz": "079a05c033b6acdc76d2938f49e796f90ce84b03ed4bf886f53cb59485766414",
-    "writes.json.gz": "4fd85b8b5bf3df66cf10692a5ec02273b266c4a72b0a9c0201b54a3f944e5f57"
+    "reads.json.gz": "2b95f136f48e00e3adbb85b841e6cd0bde00a514e94dca48358cad2407cccdde",
+    "writes.json.gz": "4f192f1966e703b32a5e60c136c37227aa355e8e7ffa078b15f663f2f483d768"
   }
 }
