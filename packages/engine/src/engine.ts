@@ -547,8 +547,9 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     // past the default when the query runs: after the filters and sorts are checked, before anything is read.
     const offsetRefused = (query.page as Record<string, unknown> | undefined)?.offset !== undefined ? recorded('GET', path, 'page%5Boffset%5D=0') : undefined
     if (offsetRefused && offsetRefused.status >= 500) {
-      const body = relink(offsetRefused.body) as { errors?: Array<{ links?: { via?: { href: string } } }> }
-      for (const item of body.errors || []) if (item.links?.via) item.links.via.href = via
+      // JSON:API writes every error with a via link, so each one is pointed at this request.
+      const body = relink(offsetRefused.body) as { errors: Array<{ links: { via: { href: string } } }> }
+      for (const item of body.errors) item.links.via.href = via
       return { status: offsetRefused.status, headers: offsetRefused.headers, body }
     }
     const readAny = read(langcode)
