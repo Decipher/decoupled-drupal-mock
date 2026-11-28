@@ -677,7 +677,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const created = writes.create(session, entityType, bundle, attributes, relationships as Record<string, NonNullable<Resource['relationships']>[string]>)
       const revision = (created.attributes as Record<string, unknown>).drupal_internal__vid ?? (created.attributes as Record<string, unknown>).drupal_internal__revision_id
       // Drupal names the prefix the request came through, and the new resource is in the default language whichever it was.
-      const own = `${baseUrl}${prefix || defaultPrefix}${basePath}/${typePath(type)}/${created.id}`
+      // It is stored under the dump's placeholder origin, as the dump's own are, so a later rebase names the new one.
+      const own = `${placeholder}${prefix || defaultPrefix}${basePath}/${typePath(type)}/${created.id}`
       const moderated = 'moderation_state' in (created.attributes || {})
       created.links = { self: { href: revision !== undefined ? `${own}?resourceVersion=id%3A${revision}` : own }, ...(moderated ? { 'working-copy': { href: `${own}?resourceVersion=rel%3Aworking-copy` } } : {}) }
       // Every relationship carries its related and self links, as a stored resource does. Contact Storage's answer to a
@@ -685,7 +686,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const version = revision !== undefined ? `?resourceVersion=id%3A${revision}` : ''
       if (entityType !== 'contact_message') for (const [name, relationship] of Object.entries(created.relationships || {})) relationship.links = { related: { href: `${own}/${name}${version}` }, self: { href: `${own}/relationships/${name}${version}` } }
       if (entityType !== 'contact_message') store.add(dump.manifest.defaultLanguage, type, created)
-      return { status: 201, headers: { ...headers, location: created.links.self!.href }, body: relink({ jsonapi: JSONAPI, data: created, links: { self: { href: `${baseUrl}${prefix}${rest}` } } }) }
+      return { status: 201, headers: { ...headers, location: served(created.links.self!.href) }, body: relink({ jsonapi: JSONAPI, data: created, links: { self: { href: `${baseUrl}${prefix}${rest}` } } }) }
     }
 
     if (!id) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: ${allow}, HEAD)`, via) }
@@ -739,7 +740,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if ('changed' in merged) updated.attributes.changed = stampOf()
       if ('revision_timestamp' in merged) updated.attributes.revision_timestamp = stampOf()
       if (updated.relationships.revision_uid && session.user) updated.relationships.revision_uid = { ...updated.relationships.revision_uid, data: { type: 'user--user', id: session.user.id, meta: { drupal_internal__target_id: session.uid } } }
-      if (updated.links?.self && revisionKey) updated.links = { ...updated.links, self: { href: `${own}?resourceVersion=id%3A${updated.attributes[revisionKey]}` } }
+      // The stored link is under the placeholder origin, as the dump's are.
+      if (updated.links?.self && revisionKey) updated.links = { ...updated.links, self: { href: `${placeholder}${defaultPrefix}${basePath}/${typePath(type)}/${id}?resourceVersion=id%3A${updated.attributes[revisionKey]}` } }
       // Every relationship's links name the revision too.
       if (revisionKey) {
         const version = `resourceVersion=id%3A${updated.attributes[revisionKey]}`

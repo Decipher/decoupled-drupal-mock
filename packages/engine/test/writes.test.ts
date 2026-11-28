@@ -107,6 +107,23 @@ describe('writes', () => {
     expect((await d.fetch(`${BASE}/jsonapi/node/page/${resource.id}`)).status).toBe(404)
   })
 
+  it('names the rebased origin in what it wrote before a rebase', async () => {
+    const d = drupal()
+    const admin = bearer(d.tokenFor('admin').access)
+    const created = await d.fetch(`${BASE}/jsonapi/node/page`, { method: 'POST', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: { type: 'node--page', attributes: { title: 'Before' } } }) })
+    const id = ((await read(created)).data as Resource).id
+    expect(created.headers.get('location')).toMatch(new RegExp(`^${BASE}/jsonapi/node/page/${id}`))
+    expect((await d.fetch(`${BASE}/jsonapi/node/recipe/r-1`, { method: 'PATCH', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: { type: 'node--recipe', id: 'r-1', attributes: { title: 'Changed' } } }) })).status).toBe(200)
+    // A user has no revisions, so its stored link is the dump's own.
+    expect((await d.fetch(`${BASE}/jsonapi/user/user/u-1`, { method: 'PATCH', headers: { ...JSON_API, ...admin }, body: JSON.stringify({ data: { type: 'user--user', id: 'u-1', attributes: { timezone: 'Australia/Melbourne' } } }) })).status).toBe(200)
+    d.rebase('http://127.0.0.1:4321')
+    for (const path of [`/jsonapi/node/page/${id}`, '/jsonapi/node/recipe/r-1', '/jsonapi/user/user/u-1']) {
+      const text = await (await d.fetch(`http://127.0.0.1:4321${path}`)).text()
+      expect(text).toContain('http://127.0.0.1:4321/jsonapi/')
+      expect(text).not.toContain(BASE)
+    }
+  })
+
   it('answers 422 for a required field left empty, as a draft for a moderated bundle, and 405 for a config type', async () => {
     const d = drupal()
     const admin = d.tokenFor('admin')
