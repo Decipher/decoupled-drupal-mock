@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { bannerLines } from './banner.js'
 import { daemonCommand, daemonCommands } from './daemon.js'
 import type { DaemonCommand } from './daemon.js'
+import { withFixtures } from './extend.js'
 import type { Extension } from './extend.js'
 import { createMock } from './mock.js'
 import { loadDump, loadOverlay } from './load.js'
@@ -22,7 +23,7 @@ export const serveOptions = '[--port 3005] [--host 127.0.0.1] [--base-url <url>]
  * origin, unless `--cors-origin` lists the origins to name, once for each. `--extension` loads a module whose default
  * export is an extension, and can be given more than once. `--overlay` adds a recorded overlay, such as your site's
  * patch or module, by its file, and can too. Once it listens it prints where, then the URLs the preset answers and the
- * accounts it signs in, unless `--quiet` asks for the first line only. A mistake is printed and ends the process with
+ * accounts it signs in, as its overlays and extensions leave them, unless `--quiet` asks for the first line only. A mistake is printed and ends the process with
  * status 1.
  *
  * @param target - The preset: a directory, a preset package or its short name.
@@ -110,7 +111,7 @@ export const serveCommand = async (target: string, rest: string[]): Promise<() =
   // The first line is the one `start` waits for, so it stays as it is. The rest go out with it, in one write.
   const said = `${dump.manifest.preset} from Drupal ${dump.manifest.drupal.core}, listening on ${url}`
   const color = !!process.stdout.isTTY && !process.env.NO_COLOR
-  console.log(rest.includes('--quiet') ? said : [said, '', ...bannerLines(dump, baseUrl, color), ''].join('\n'))
+  console.log(rest.includes('--quiet') ? said : [said, '', ...bannerLines(withFixtures(dump, extensions), baseUrl, color), ''].join('\n'))
   return close
 }
 

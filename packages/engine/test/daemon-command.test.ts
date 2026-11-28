@@ -182,6 +182,11 @@ describe('a preset package\'s command', () => {
       expect(listed).toContain('  JSON:API (es)     https://mock.example.com/es/jsonapi')
       expect(listed).toContain('  Accounts          editor, author, reader')
       expect((await served('--quiet')).split('\n')).toHaveLength(1)
+      // The listing is of what the server answers, so an overlay that drops the main menu drops its row.
+      const dropped = join(mkdtempSync(join(tmpdir(), 'ddm-banner-')), 'no-menu.mjs')
+      writeFileSync(dropped, `export default { name: 'no-menu', overlay: { removed: ['GET /en/jsonapi/menu_items/main', 'GET /es/jsonapi/menu_items/main'] } }`)
+      expect(listed).toContain('Main menu')
+      expect(await served('--extension', dropped)).not.toContain('Main menu')
       terminal(true)
       expect(await served()).toContain('\x1b[2mJSON:API (en)')
       vi.stubEnv('NO_COLOR', '1')

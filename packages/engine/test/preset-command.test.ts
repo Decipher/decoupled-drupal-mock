@@ -18,6 +18,12 @@ const freePort = (): Promise<number> => new Promise((resolve) => {
 
 describe.each(presets)('the %s preset package', (preset) => {
   const dir = join(root, 'presets', preset)
+  /** The default language's index under its own prefix, as the listing names it: `/en/jsonapi` for Umami, `/jsonapi` for Dashi. */
+  const indexed = (port: number | string): RegExp => {
+    const { languages, defaultLanguage } = JSON.parse(readFileSync(join(dir, 'dump', 'manifest.json'), 'utf8')) as { languages: Record<string, string>, defaultLanguage: string }
+    const prefix = languages[defaultLanguage]
+    return new RegExp(`^  JSON:API \\(${defaultLanguage}\\) +http://127\\.0\\.0\\.1:${port}${prefix ? `/${prefix}` : ''}/jsonapi$`, 'm')
+  }
   const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name: string, bin?: string | Record<string, string>, files: string[] }
 
   // npm names a command given as a string after the package, and removes one whose path starts with ./ when it publishes.
@@ -46,7 +52,7 @@ describe.each(presets)('the %s preset package', (preset) => {
     const [line = '', ...listed] = said.split('\n')
     expect(line).toMatch(new RegExp(`listening on http://127\\.0\\.0\\.1:${port}$`))
     // Under it, the URLs a developer opens first.
-    expect(listed.join('\n')).toMatch(new RegExp(`JSON:API \\(en\\) +http://127\\.0\\.0\\.1:${port}(/en)?/jsonapi`))
+    expect(listed.join('\n')).toMatch(indexed(port))
     // The build it serves is this package's, not another preset's.
     const build = JSON.parse(readFileSync(join(dir, 'dump', 'manifest.json'), 'utf8')) as { preset: string }
     expect(line.startsWith(`${build.preset} from Drupal `)).toBe(true)
@@ -72,7 +78,7 @@ describe.each(presets)('the %s preset package', (preset) => {
     expect(started.status).toBe(0)
     // What serve prints, so the logs read the same: the line that says where, then the URLs under it.
     expect(started.output.split('\n')[0]).toMatch(new RegExp(`^${build.preset} from Drupal .+, listening on http://127\\.0\\.0\\.1:${port}$`))
-    expect(started.output).toMatch(new RegExp(`JSON:API \\(en\\) +http://127\\.0\\.0\\.1:${port}(/en)?/jsonapi`))
+    expect(started.output).toMatch(indexed(port))
     const response = await fetch(`http://127.0.0.1:${port}/jsonapi`, { headers: { Origin: 'https://frontend.test' } })
     expect(response.status).toBe(200)
     // The serve options reached the server in the background too.
