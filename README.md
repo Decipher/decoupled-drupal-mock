@@ -135,6 +135,19 @@ Any frontend that reads Drupal over HTTP can use the mock's server as its Drupal
 npx decoupled-drupal-mock-umami@alpha --port 3005
 ```
 
+It says where it listens, then lists the URLs to start from and the accounts it signs in. `--quiet` prints the first line alone:
+
+```text
+umami from Drupal 11.4.11, listening on http://127.0.0.1:3005
+
+  JSON:API (en)     http://127.0.0.1:3005/en/jsonapi
+  JSON:API (es)     http://127.0.0.1:3005/es/jsonapi
+  Decoupled Router  http://127.0.0.1:3005/router/translate-path?path=/
+  Main menu         http://127.0.0.1:3005/en/jsonapi/menu_items/main
+  OAuth token       http://127.0.0.1:3005/oauth/token
+  Accounts          editor, author, reader
+```
+
 - Druxt 0.x on Nuxt 2: `druxt.baseUrl: 'http://127.0.0.1:3005'`, or `BASE_URL=http://127.0.0.1:3005` where the site reads it from the environment.
 - Next.js with next-drupal: `NEXT_PUBLIC_DRUPAL_BASE_URL=http://127.0.0.1:3005` and `NEXT_IMAGE_DOMAIN=127.0.0.1`.
 - Any other client: its base URL.

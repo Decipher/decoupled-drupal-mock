@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { daemonCommand, identityOf, running, stop } from '../src/daemon'
-import { presetCommand } from '../src/serve-command'
+import { presetCommand, serveCommand } from '../src/serve-command'
 
 const root = join(__dirname, '..', '..', '..')
 const cli = join(root, 'packages', 'engine', 'dist', 'cli.js')
@@ -64,7 +64,10 @@ describe('the start, status and stop commands', () => {
     expect(await run(() => daemonCommand('status', [], options))).toEqual({ status: 1, output: `No mock is running on port ${port}.` })
     printed = []
     const started = await run(() => daemonCommand('start', [cli, 'serve', umami], [...options, '--ready-timeout', '20']))
-    expect(started).toMatchObject({ status: 0, output: expect.stringMatching(new RegExp(`^umami from Drupal .+, listening on http://127\\.0\\.0\\.1:${port}$`)) })
+    expect(started.status).toBe(0)
+    // The line serve prints, then the URLs under it.
+    expect(started.output.split('\n')[0]).toMatch(new RegExp(`^umami from Drupal .+, listening on http://127\\.0\\.0\\.1:${port}$`))
+    expect(started.output).toContain(`http://127.0.0.1:${port}/en/jsonapi`)
     printed = []
     expect(await run(() => daemonCommand('status', [], options))).toMatchObject({ status: 0, output: expect.stringMatching(new RegExp(`^umami is running on http://127\\.0\\.0\\.1:${port}, pid \\d+\\.$`)) })
     printed = []
@@ -73,6 +76,10 @@ describe('the start, status and stop commands', () => {
     expect(await run(() => daemonCommand('stop', [], options))).toMatchObject({ status: 0, output: expect.stringMatching(new RegExp(`^Stopped the mock on port ${port}, pid \\d+\\.$`)) })
     printed = []
     expect(await run(() => daemonCommand('stop', [], options))).toEqual({ status: 0, output: `No mock is running on port ${port}.` })
+    // --quiet reaches the server, which then prints its one line, and start prints that alone.
+    printed = []
+    const quiet = await run(() => daemonCommand('start', [cli, 'serve', umami], [...options, '--quiet', '--ready-timeout', '20']))
+    expect(quiet).toMatchObject({ status: 0, output: expect.stringMatching(new RegExp(`^umami from Drupal .+, listening on http://127\\.0\\.0\\.1:${port}$`)) })
   }, 30000)
 
   it('say a server that has not listened yet is starting', async () => {
@@ -155,6 +162,41 @@ describe('a preset package\'s command', () => {
       expect(await run(() => presetCommand(umami, argv, join(root, 'presets', 'umami', 'bin.js')))).toEqual({ status: 1, output: '--port must be a port from 1 to 65535, not none.' })
     }
   })
+
+  it('prints where it listens and the URLs under it, the line alone with --quiet, and dims a terminal\'s labels', async () => {
+    const served = async (...flags: string[]): Promise<string> => {
+      printed = []
+      const close = await serveCommand(umami, ['--port', String(await freePort()), ...flags])
+      await close()
+      return printed.join('\n')
+    }
+    // Whatever runs the suite, each check says whether it is a terminal.
+    const tty = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+    const terminal = (on: boolean) => Object.defineProperty(process.stdout, 'isTTY', { value: on, configurable: true })
+    try {
+      vi.stubEnv('NO_COLOR', '')
+      terminal(false)
+      const listed = await served('--base-url', 'https://mock.example.com')
+      expect(listed.split('\n')[0]).toMatch(/^umami from Drupal .+, listening on http:\/\/127\.0\.0\.1:\d+$/)
+      // The links name the base URL the answers name.
+      expect(listed).toContain('  JSON:API (es)     https://mock.example.com/es/jsonapi')
+      expect(listed).toContain('  Accounts          editor, author, reader')
+      expect((await served('--quiet')).split('\n')).toHaveLength(1)
+      // The listing is of what the server answers, so an overlay that drops the main menu drops its row.
+      const dropped = join(mkdtempSync(join(tmpdir(), 'ddm-banner-')), 'no-menu.mjs')
+      writeFileSync(dropped, `export default { name: 'no-menu', overlay: { removed: ['GET /en/jsonapi/menu_items/main', 'GET /es/jsonapi/menu_items/main'] } }`)
+      expect(listed).toContain('Main menu')
+      expect(await served('--extension', dropped)).not.toContain('Main menu')
+      terminal(true)
+      expect(await served()).toContain('\x1b[2mJSON:API (en)')
+      vi.stubEnv('NO_COLOR', '1')
+      expect(await served()).not.toContain('\x1b[')
+    } finally {
+      vi.unstubAllEnvs()
+      if (tty) Object.defineProperty(process.stdout, 'isTTY', tty)
+      else delete (process.stdout as { isTTY?: boolean }).isTTY
+    }
+  }, 30000)
 
   it('checks each --cors-origin, and that CORS with credentials is on to name it', async () => {
     const serve = (...argv: string[]) => run(() => presetCommand(umami, argv, join(root, 'presets', 'umami', 'bin.js')))
