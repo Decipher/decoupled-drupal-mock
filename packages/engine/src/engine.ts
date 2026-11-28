@@ -38,6 +38,8 @@ export interface Drupal {
   tokenFor: (name: string, scopes?: string[]) => Token
   /** Drops every write and every token, back to the preset as built. */
   reset: () => void
+  /** Names another origin in every link from now on: a server's, once it knows the port it bound. */
+  rebase: (baseUrl: string) => void
   readonly manifest: Dump['manifest']
 }
 
@@ -72,7 +74,7 @@ const STATUS_TEXT: Record<number, string> = { 200: 'OK', 201: 'Created', 204: 'N
  * @param options - The origin and base path to answer for.
  */
 export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal => {
-  const baseUrl = withoutTrailingSlashes(options.baseUrl || 'https://drupal.invalid')
+  let baseUrl = withoutTrailingSlashes(options.baseUrl || 'https://drupal.invalid')
   // A trailing slash on the base path would make every route an HTML 404.
   const basePath = withoutTrailingSlashes(options.basePath || '/jsonapi') || '/jsonapi'
   const placeholder = withoutTrailingSlashes(dump.manifest.origin)
@@ -192,7 +194,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   }
 
   /** Every absolute link in the dump points at the placeholder; the server's base URL takes its place. */
-  const served = relinker(placeholder, baseUrl)
+  let served = relinker(placeholder, baseUrl)
   const relink = <T>(value: T): T => JSON.parse(served(JSON.stringify(value))) as T
 
   /** A type's resources in a language: a resource with no translation there is listed in its default language, as Drupal lists it. */
@@ -675,7 +677,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const created = writes.create(session, entityType, bundle, attributes, relationships as Record<string, NonNullable<Resource['relationships']>[string]>)
       const revision = (created.attributes as Record<string, unknown>).drupal_internal__vid ?? (created.attributes as Record<string, unknown>).drupal_internal__revision_id
       // Drupal names the prefix the request came through, and the new resource is in the default language whichever it was.
-      const own = `${baseUrl}${prefix || defaultPrefix}${basePath}/${typePath(type)}/${created.id}`
+      // It is stored under the dump's placeholder origin, as the dump's own are, so a later rebase names the new one.
+      const own = `${placeholder}${prefix || defaultPrefix}${basePath}/${typePath(type)}/${created.id}`
       const moderated = 'moderation_state' in (created.attributes || {})
       created.links = { self: { href: revision !== undefined ? `${own}?resourceVersion=id%3A${revision}` : own }, ...(moderated ? { 'working-copy': { href: `${own}?resourceVersion=rel%3Aworking-copy` } } : {}) }
       // Every relationship carries its related and self links, as a stored resource does. Contact Storage's answer to a
@@ -683,7 +686,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       const version = revision !== undefined ? `?resourceVersion=id%3A${revision}` : ''
       if (entityType !== 'contact_message') for (const [name, relationship] of Object.entries(created.relationships || {})) relationship.links = { related: { href: `${own}/${name}${version}` }, self: { href: `${own}/relationships/${name}${version}` } }
       if (entityType !== 'contact_message') store.add(dump.manifest.defaultLanguage, type, created)
-      return { status: 201, headers: { ...headers, location: created.links.self!.href }, body: relink({ jsonapi: JSONAPI, data: created, links: { self: { href: `${baseUrl}${prefix}${rest}` } } }) }
+      return { status: 201, headers: { ...headers, location: served(created.links.self!.href) }, body: relink({ jsonapi: JSONAPI, data: created, links: { self: { href: `${baseUrl}${prefix}${rest}` } } }) }
     }
 
     if (!id) return { status: 405, headers, body: error(JSONAPI, 405, 'Method Not Allowed', `No route found for "${upper} ${path}": Method Not Allowed (Allow: ${allow}, HEAD)`, via) }
@@ -737,7 +740,8 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       if ('changed' in merged) updated.attributes.changed = stampOf()
       if ('revision_timestamp' in merged) updated.attributes.revision_timestamp = stampOf()
       if (updated.relationships.revision_uid && session.user) updated.relationships.revision_uid = { ...updated.relationships.revision_uid, data: { type: 'user--user', id: session.user.id, meta: { drupal_internal__target_id: session.uid } } }
-      if (updated.links?.self && revisionKey) updated.links = { ...updated.links, self: { href: `${own}?resourceVersion=id%3A${updated.attributes[revisionKey]}` } }
+      // The stored link is under the placeholder origin, as the dump's are.
+      if (updated.links?.self && revisionKey) updated.links = { ...updated.links, self: { href: `${placeholder}${defaultPrefix}${basePath}/${typePath(type)}/${id}?resourceVersion=id%3A${updated.attributes[revisionKey]}` } }
       // Every relationship's links name the revision too.
       if (revisionKey) {
         const version = `resourceVersion=id%3A${updated.attributes[revisionKey]}`
@@ -763,5 +767,5 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return new Response(request.method === 'HEAD' || status === 204 || status === 304 ? null : text, { status, statusText: STATUS_TEXT[status] ?? '', headers })
   }
 
-  return { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset(); identity.reset(); canvas.reset() } }
+  return { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset(); identity.reset(); canvas.reset() }, rebase: (url) => { baseUrl = withoutTrailingSlashes(url); served = relinker(placeholder, baseUrl) } }
 }

@@ -19,6 +19,8 @@ export { createDrupal } from './engine.js'
 export { createMock } from './mock.js'
 export { loadDump, loadOverlay } from './load.js'
 export { presetDir } from './preset.js'
+export { listen } from './serve.js'
+export type { ListenOptions } from './serve.js'
 
 /**
  * The engine over a preset, in this process: synchronous, and no port to manage. Reading the dump is the slow part, so

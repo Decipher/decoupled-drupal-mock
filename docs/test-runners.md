@@ -61,6 +61,26 @@ module.exports = require('decoupled-drupal-mock/jest').globalSetup('umami');
 module.exports = require('decoupled-drupal-mock/jest').globalTeardown;
 ```
 
+A server shared that way loads its extensions from files, so a test cannot add one that closes over its own state, such as a spy. For that, serve from the test process with `listen`. Port 0 takes a free port, and `rebase: true` sets the engine's base URL to it, so the engine can be made first:
+
+```js
+const { listen, loadPreset } = require('decoupled-drupal-mock/jest');
+
+const drupal = loadPreset('umami');
+let server;
+beforeAll(async () => {
+  server = await listen(drupal, 0, '127.0.0.1', { rebase: true });
+});
+afterAll(() => server.close());
+afterEach(() => drupal.reset());
+
+test('an answer from a spy', async () => {
+  const spy = jest.fn(() => ({ body: { cached: false } }));
+  drupal.use({ routes: { 'GET /api/cache': spy } });
+  // A request to `${server.url}/api/cache` gets the spy's answer, and links in every other answer name server.url.
+});
+```
+
 **Vitest**, or anything else that imports ESM:
 
 ```ts
