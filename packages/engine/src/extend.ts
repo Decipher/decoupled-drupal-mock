@@ -3,6 +3,8 @@ import type { Drupal } from './engine.js'
 import type { Dump, Resource } from './types.js'
 import { withoutTrailingSlashes } from './slashes.js'
 import { answeredIn } from './language.js'
+import { withCache } from './cache.js'
+import { cacheableRequests } from './engine.js'
 
 /** A request as an extension reads it. */
 export interface ExtensionRequest {
@@ -182,6 +184,7 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
   const prefixes = Object.values(drupal.manifest.languages).filter(Boolean)
   const layers = (): Layer[] => [...added, ...active, ...[...extensions].reverse()]
   const now = clock ? clock.now : Date.now
+  const cacheable = cacheableRequests.get(drupal)!
 
   // Only a write the site's store took: an extension's own 2xx answer saved nothing.
   const notify = (method: string, route: string, path: string, answered: Answered): string[] => {
@@ -243,6 +246,8 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
     const answered = { ...chain() }
     const others = Object.entries(answered.headers).filter(([name]) => name.toLowerCase() !== 'content-language')
     answered.headers = { ...Object.fromEntries(others), 'content-language': answeredIn(drupal.manifest.languages, drupal.manifest.defaultLanguage, url.pathname) }
+    // And the cache headers, which keep what the extension set unless it lets a private request be shared.
+    Object.assign(answered, withCache(drupal.manifest.cache, cacheable(upper, headers), answered))
     const errors = fromStore ? notify(upper, route, path, answered) : []
     requests.push({ method: upper, path, search: url.search, headers, ...(body !== undefined ? { body } : {}), status: answered.status, ...(errors.length ? { errors } : {}) })
     return answered

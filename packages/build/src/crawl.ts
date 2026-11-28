@@ -149,6 +149,20 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     return { status: response.status, headers: { 'content-type': type.split(';')[0]!.trim(), ...kept }, body }
   }
 
+  // A prefixed language's index is read before the default's. Drupal's dynamic page cache keeps a visitor's `/jsonapi`
+  // without the language it was asked in, so after it `/es/jsonapi` answers with the English links.
+  const indexOrder = Object.entries(options.languages).sort(([, a], [, b]) => Number(!a) - Number(!b))
+  const indexPath = (prefix: string): string => `${prefix ? `/${prefix}` : ''}/jsonapi`
+  // The cache headers the site sends with an answer its page cache may keep, and with one it never keeps: a visitor's
+  // JSON:API index, the first one the crawl reads, and the session token. A site that sends no Cache-Control is no
+  // Drupal's, so it records none.
+  const CACHED = ['cache-control', 'vary', 'expires']
+  const pairOf = (headers: Record<string, string>): Record<string, string> => Object.fromEntries(CACHED.flatMap((name) => (headers[name] ? [[name, headers[name]!]] : [])))
+  const shared = pairOf((await get(indexPath(indexOrder[0]![1]), {}, CACHED)).headers)
+  const cache = shared['cache-control'] ? { public: shared, private: pairOf((await get('/session/token', {}, CACHED)).headers) } : undefined
+  /** A recorded route keeps the cache headers it sends apart from the site's, as Canvas's content API varies by token. */
+  const apart = (entry: Recorded): Recorded => ({ ...entry, headers: Object.fromEntries(Object.entries(entry.headers).filter(([name, value]) => !CACHED.includes(name) || (cache && value !== cache.public[name]))) })
+
   const recorded: Record<string, Recorded> = {}
   /** The ids of what the crawl excluded, so a recorded document listing one by id alone drops it too. */
   const excludedIds = new Set<string>()
@@ -176,7 +190,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   const record = async (path: string, headers: Record<string, string> = {}, marker = ''): Promise<Recorded> => {
     const [pathname, search = ''] = path.split('?') as [string, string?]
     const key = `GET ${pathname}${search ? `?${sortedSearch(search)}` : ''}${marker}`
-    const entry = scrub(await get(path, headers))
+    const entry = apart(scrub(await get(path, headers, CACHED)))
     recorded[key] = entry
     return entry
   }
@@ -262,7 +276,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         log(`Canvas Headless: previews, as ${options.canvasPreview.account}`)
         previewToken = await previewSignIn()
         // A token Drupal does not know, answered as Canvas answers any request with one.
-        recorded['GET /canvas/content-api#unauthorized'] = await get('/canvas/content-api?requestUri=%2F', { authorization: 'Bearer decoupled.drupal.mock' })
+        recorded['GET /canvas/content-api#unauthorized'] = apart(await get('/canvas/content-api?requestUri=%2F', { authorization: 'Bearer decoupled.drupal.mock' }, CACHED))
       }
     }
     if (!canvas) return
@@ -317,12 +331,10 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     return entry
   }
 
-  // Every language's index before anything else, a prefixed language's before the default's. Drupal's dynamic page cache
-  // keeps a visitor's index without the language it was asked in, so after a visitor's `/jsonapi`, `/es/jsonapi`
-  // answers with the English links.
+  // Every language's index before anything else, in the order above.
   const indexes: Record<string, Awaited<ReturnType<typeof get>>> = {}
-  for (const [langcode, prefix] of Object.entries(options.languages).sort(([, a], [, b]) => Number(!a) - Number(!b))) {
-    indexes[langcode] = await get(`${prefix ? `/${prefix}` : ''}/jsonapi`)
+  for (const [langcode, prefix] of indexOrder) {
+    indexes[langcode] = await get(indexPath(prefix))
   }
 
   const all: Record<string, Record<string, Resource[]>> = {}
@@ -449,9 +461,9 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         // refusing one, so the engine fails a page past the first where Drupal does.
         const offset = `${pathOf(link.href)}?page%5Boffset%5D=0`
         // A server's failure is tried again, as a collection's page is, so only one that stays is recorded.
-        let probe = await get(offset)
-        for (let attempt = 0; attempt < 2 && probe.status >= 500; attempt++) probe = await get(offset)
-        const refusal = scrub(probe)
+        let probe = await get(offset, {}, CACHED)
+        for (let attempt = 0; attempt < 2 && probe.status >= 500; attempt++) probe = await get(offset, {}, CACHED)
+        const refusal = apart(scrub(probe))
         // Only JSON:API's own error is recorded, as the engine points its via link at each request. Anything else, such
         // as a proxy's page, is not Drupal's answer.
         const jsonapi = Array.isArray((refusal.body as { errors?: unknown } | null)?.errors)
@@ -525,14 +537,15 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
       const resolve = (request: string): string => request.replace(/\{([a-z0-9_]+--[a-z0-9_]+):(\d+)\}/g, (_whole, type: string, n: string) => all[options.defaultLanguage]?.[type]?.[Number(n)]?.id || `missing-${type}-${n}`)
       for (const request of options.oracle) {
         const resolved = resolve(request)
-        // Drupal names the language it answered in, which the oracle holds the engine to.
-        const entry = await get(resolved, {}, ['content-language'])
+        // Drupal names the language it answered in, and how long a cache may keep the answer, which the oracle holds the
+        // engine to.
+        const entry = await get(resolved, {}, ['content-language', ...CACHED])
         entries.push({ request: resolved, ...entry, ...(isSessionToken(resolved) ? { body: '<token>' } : {}) })
         // A type that refuses reads is recorded by its path, so the engine refuses it as Drupal does. A query refused
         // for what it asks, such as a filter on a field, says nothing of the plain path, so that is asked too.
         if (entry.status === 403 || entry.status === 405) {
           const [pathname, search] = resolved.split('?') as [string, string?]
-          const plain = search ? await get(pathname) : { ...entry, headers: { 'content-type': entry.headers['content-type']! } }
+          const plain = search ? apart(await get(pathname, {}, CACHED)) : { ...entry, headers: { 'content-type': entry.headers['content-type']! } }
           if (plain.status === 403 || plain.status === 405) recorded[`GET ${pathname}`] = recorded[`GET ${pathname}`] || plain
         }
       }
@@ -650,7 +663,7 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     languages: options.languages,
     defaultLanguage: options.defaultLanguage,
     files,
-
+    ...(cache ? { cache } : {}),
     ...(Object.keys(oracleFiles).length ? { oracle: oracleFiles } : {}),
   }
   writeFileSync(join(options.out, 'manifest.json'), JSON.stringify(manifest, null, 2))

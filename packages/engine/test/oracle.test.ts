@@ -31,6 +31,11 @@ describe.skipIf(!available)('the engine against the oracle', () => {
     // The language Drupal answered in, wherever the recording kept it.
     const language = entry.headers?.['content-language']
     if (language) expect(answer.headers['content-language']).toBe(language)
+    // How long a cache may keep it, and what it varies by. Drupal can name a field twice, as its exception page names the
+    // consumer, so the fields are compared as a set.
+    for (const name of ['cache-control', 'expires']) if (entry.headers?.[name]) expect(answer.headers[name]).toBe(entry.headers[name])
+    const fields = (vary?: string) => [...new Set((vary || '').split(',').map((field) => field.trim().toLowerCase()).filter(Boolean))].sort()
+    if (entry.headers?.vary) expect(fields(answer.headers.vary)).toEqual(fields(entry.headers.vary))
     // Drupal's HTML pages are themed; the engine's are not. The status is what a client reads.
     if (typeof entry.body !== 'string') expect(comparable(answer.body)).toEqual(comparable(entry.body))
   })

@@ -177,17 +177,18 @@ describe('the server as a backend for a frontend', () => {
     try {
       for (const origin of ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://[::1]:3000']) {
         expect(await credentialed(url, origin, 'OPTIONS')).toEqual({ status: 204, origin, credentials: 'true', vary: 'Origin' })
-        expect(await credentialed(url, origin)).toEqual({ status: 200, origin, credentials: 'true', vary: 'Origin' })
+        // The answer varies by cookie and consumer already, and CORS adds the origin to that.
+        expect(await credentialed(url, origin)).toEqual({ status: 200, origin, credentials: 'true', vary: 'Cookie, X-Consumer-ID, Origin' })
       }
       for (const origin of ['null', 'http://drupal.example.com', 'not a url']) {
-        expect(await credentialed(url, origin)).toEqual({ status: 200, origin: null, credentials: null, vary: 'Origin' })
+        expect(await credentialed(url, origin)).toEqual({ status: 200, origin: null, credentials: null, vary: 'Cookie, X-Consumer-ID, Origin' })
       }
       const answer = await fetch(`${url}/jsonapi/node/page/p-1`, { headers: { origin: 'http://localhost:3000' } })
       expect(answer.headers.get('content-type')).toBe('application/vnd.api+json')
       // A request with no origin is not a cross-origin one, so it gets no origin back.
       const plain = await fetch(`${url}/jsonapi`)
       expect(plain.headers.get('access-control-allow-origin')).toBeNull()
-      expect(plain.headers.get('vary')).toBe('Origin')
+      expect(plain.headers.get('vary')).toBe('Cookie, X-Consumer-ID, Origin')
     } finally {
       await close()
     }
