@@ -93,7 +93,7 @@ const loopback = (origin: string): boolean => {
 /**
  * The CORS headers for one request. With credentials, Drupal names an allowed origin, says credentials are allowed,
  * and varies on the origin. An origin it does not allow, or a request with none, gets no origin back. A sandboxed
- * frame's `null` is never named unless it is listed.
+ * frame's `null` is never named, even when the list holds it.
  */
 const corsHeaders = (options: ListenOptions, origin: string | undefined): Record<string, string> => {
   if (options.cors === false) return {}
