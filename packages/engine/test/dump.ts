@@ -68,6 +68,11 @@ export const dump: Dump = {
     languages: { en: '', es: 'es' },
     defaultLanguage: 'en',
     files: {},
+    // What Umami sends with an answer its page cache may keep, and with one it never keeps.
+    cache: {
+      public: { 'cache-control': 'max-age=300, public', vary: 'Cookie, X-Consumer-ID', expires: 'Sun, 19 Nov 1978 05:00:00 GMT' },
+      private: { 'cache-control': 'must-revalidate, no-cache, private', vary: 'X-Consumer-ID', expires: 'Sun, 19 Nov 1978 05:00:00 GMT' },
+    },
   },
   index: {
     en: { jsonapi: { version: '1.0' }, data: [], links: { self: link('/jsonapi'), 'node--page': link('/jsonapi/node/page'), 'node--recipe': link('/jsonapi/node/recipe') } },

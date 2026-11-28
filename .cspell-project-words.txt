@@ -53,6 +53,7 @@ lndo
 lstart
 lychee
 markdownlint
+maxage
 mediterráneo
 metas
 metatag

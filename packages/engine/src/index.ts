@@ -1,3 +1,4 @@
+export { CACHE_HEADERS, isPublic } from './cache.js'
 export { createDrupal } from './engine.js'
 export type { Drupal, DrupalOptions } from './engine.js'
 export { parseQuery, sortedSearch } from './query.js'

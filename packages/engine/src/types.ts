@@ -41,6 +41,11 @@ export interface Manifest {
   files: Record<string, string>
   /** The hash of each recording of the oracle, kept beside the dump and not in it. */
   oracle?: Record<string, string>
+  /**
+   * The cache headers the site sends: `public` with an answer its page cache may keep, `private` with one it never
+   * keeps. Each holds `cache-control`, `vary` and `expires` as the site sent them. A dump built before them has none.
+   */
+  cache?: { public: Record<string, string>, private: Record<string, string> }
 }
 
 /** A preset build, in memory. */

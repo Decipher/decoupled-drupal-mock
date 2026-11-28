@@ -72,7 +72,7 @@
       "yoast_seo": "2.2.0"
     }
   },
-  "built": "2026-11-26T06:06:26.359Z",
+  "built": "2026-11-28T13:29:57.965Z",
   "origin": "https://drupal.invalid",
   "languages": {
     "en": "",
@@ -92,7 +92,7 @@
     "resources/en/crop_type--crop_type.json.gz": "db3cfc7e592da05ba22cc5db6c964c0b63a3f8111c77711d647db0b75a86c55a",
     "resources/en/dashboard--dashboard.json.gz": "12f327f30e8c73a5f0e8fa8d6dcd3d01176b524fe60d913d977545d3a6a1f229",
     "resources/en/date_format--date_format.json.gz": "9145068eb3b0e2bf0d2d9bf6deaa0e3413aa23c8b758caeb14a2c83acd6405cd",
-    "resources/en/easy_email--default.json.gz": "7c8ee5f5a5598e4567dcfc52adf4e2be1f1cfa4f3e44447fe66ed14972e8c0b7",
+    "resources/en/easy_email--default.json.gz": "9d0ef5362be16e3ba8321191bb82747630e1a0896151da1460b404c8f836b8a5",
     "resources/en/easy_email_override--easy_email_override.json.gz": "12c1bb2ff7cf45dc6d17b782f9702011596c85aea799906d1419aecf7f5d6ffc",
     "resources/en/easy_email_type--easy_email_type.json.gz": "8e3be94b76979619edef12ee0817b335c7447bc50e6abc9c1df4f71fdf28fa4c",
     "resources/en/eca--eca.json.gz": "bc1bbcf51fb0da20a35fe8272a5178dddf1dad90f43c455a06453fba49d4a466",
@@ -133,7 +133,7 @@
     "resources/en/taxonomy_term--recipe_category.json.gz": "06529d25e7dd47d5029dc3d7aa070d596f8add395e2b729f7774430cccb8715e",
     "resources/en/taxonomy_term--tags.json.gz": "93ccc55f6c08e154ae1af7b58a4abe98706c5e1f6839ccf128087b6ea1ba440d",
     "resources/en/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "91b769637d4cbd7440e11330eec53e4d63eefbf013a96754e78ae87b4facc8f9",
-    "resources/en/user--user.json.gz": "8890382059648fc61405704c012825dc9aaef179f3aeb9c42dbf6586ec0b0b28",
+    "resources/en/user--user.json.gz": "367ce3579b48f9dbe3a0c53b3684cae2cb724b28c06fbe92ba715ca36db346cb",
     "resources/en/user_role--user_role.json.gz": "bf6dcdb9c0584a0d9e50b67f8098f4cb944c901258dac0e4f10dd46612252014",
     "resources/en/view--view.json.gz": "fa1b2767bcb62ae0005aed1f3f6769bc9484573aca4cb54a34cd5a08bcf891cc",
     "resources/en/workflow--workflow.json.gz": "40321a2894da33f30998c8fe3718c9783411d0450b71470c2993693c450ebd91",
@@ -151,7 +151,7 @@
     "resources/es/crop_type--crop_type.json.gz": "e9ff56ad4d6f2b3677b1ba463757099483711e9290a9f4d20a88a3a905ebf87f",
     "resources/es/dashboard--dashboard.json.gz": "03e9df9bcb5d9b01931bfcead62cbf1f481cdba5b8968fc8cd87e81c73a592df",
     "resources/es/date_format--date_format.json.gz": "b1676e6637d7667af532859d1b9a47d6962ebe569739424e6393b30dc6046388",
-    "resources/es/easy_email--default.json.gz": "22ce57280d15df0865c03af54cb301d7e61d97a8e02aefca22e822cd3d14ac79",
+    "resources/es/easy_email--default.json.gz": "0ae56389b8e62cbc3eedc730077dc15b5fad8e0156c2c6229a9f0d64257870c8",
     "resources/es/easy_email_override--easy_email_override.json.gz": "882bce7d489d70432767f60bb8a26957289f3d3f54a37ef7108276f303e5cd5a",
     "resources/es/easy_email_type--easy_email_type.json.gz": "46454770e6803dc446d251e1cde184b0026a2627c6a92d2527ddcfe4a0c6b31f",
     "resources/es/eca--eca.json.gz": "88b102b9d7f82b9d6def54a7bd0224e35276f35b0789680feeba1ccc8d1c1ee5",
@@ -192,12 +192,12 @@
     "resources/es/taxonomy_term--recipe_category.json.gz": "5baca4e4c9bc0ab42af2bd95d9e5a4f0faed88629f1eceebe81ca200eea09262",
     "resources/es/taxonomy_term--tags.json.gz": "64dd1260375d8b6784b59d06eda4059368d7f617df2e16e06ce767732d7a2f8a",
     "resources/es/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "640c0e84235a682d3ff9cd3b25d0a202713434741ffd4a798ed1e1b595afcec0",
-    "resources/es/user--user.json.gz": "6ea1b7dc282df264bd0a8927960d19bd6bc39865cf7efe9a87faa4ba61edd07e",
+    "resources/es/user--user.json.gz": "3fb8b1d3a4bc70754b4fd49e0005272b21fe88a4b18190fd15cfd5f920451549",
     "resources/es/user_role--user_role.json.gz": "7495dc47e37eb243a6fa2e064faca68d7a397b1301a9f43ced80f295beaf67dc",
     "resources/es/view--view.json.gz": "83405494977a7f18e0a9b7c7d1b640fce834b2b258b539a627bba8251c7a40ba",
     "resources/es/workflow--workflow.json.gz": "bb15f395305fb1fddd774f359dcc2a5767e46019742bad45787ea4151aae66e7",
     "access/es.json.gz": "6ed273ea7628148beac4e97c0e07e06dbbf2d30168444f566914c6d4821308d9",
-    "recorded/routes.json.gz": "5486e99cb478ae7410055bc95834c02487de3620e94e6f15bb19bfb17a5a0bba",
+    "recorded/routes.json.gz": "3d4e0707ea48d01de319e1419460fbdefeb3ec8573539432f8ca46a764a60b48",
     "files/login-wallpaper.png": "54332ee6319ad13d167201acd484f5656679cf6a462cbe6b5d6da301c3602f7f",
     "files/avatars/default-avatar.svg": "c55e779964208bd6a80b27f8b3dd8251c4140a2358283fbed1f7bce8a75c764c",
     "files/chili-sauce-umami.jpg": "5072a11bd95bc8f294d97cb9e41ba6c99484f256494549875b90ce4eaf73de8b",
@@ -244,7 +244,19 @@
     "files/umami-bundle_0.png": "fbdf538ecc9a46011fe6867f7756393801d6f17af75091c90e1f27c8f19bfe68",
     "identities.json": "090412264627badf4f605d859d2f8dbb4c9389ab198921faa3ec467e5142d130"
   },
+  "cache": {
+    "public": {
+      "cache-control": "max-age=900, public",
+      "vary": "Cookie, X-Consumer-ID",
+      "expires": "Sun, 19 Nov 1978 05:00:00 GMT"
+    },
+    "private": {
+      "cache-control": "must-revalidate, no-cache, private",
+      "vary": "X-Consumer-ID",
+      "expires": "Sun, 19 Nov 1978 05:00:00 GMT"
+    }
+  },
   "oracle": {
-    "reads.json.gz": "1d9438ab0d7fa89cfc6921b3a8fb23209f0db7f3bd60400d1d8d58e28e5122e6"
+    "reads.json.gz": "49cc776a278baa5016086cfba08821238fabfdfc4d3692c7ba68b21370df8029"
   }
 }

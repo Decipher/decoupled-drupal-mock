@@ -15,6 +15,7 @@ import { relinker } from './origins.js'
 import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND } from './format.js'
 import { checkPath } from './paths.js'
 import { answeredIn } from './language.js'
+import { withCache } from './cache.js'
 import type { PathError, Schema } from './paths.js'
 import { CanvasPreview } from './canvas.js'
 
@@ -40,6 +41,9 @@ export interface Drupal {
   reset: () => void
   readonly manifest: Dump['manifest']
 }
+
+/** Each engine's answer to whether the page cache may keep a request, for the answers an extension gives in its place. */
+export const cacheableRequests = new WeakMap<Drupal, (method: string, headers: Record<string, string>) => boolean>()
 
 /** The entity types JSON:API writes; a config entity type answers 405. */
 const CONTENT_TYPES = new Set(['node', 'taxonomy_term', 'media', 'block_content', 'contact_message', 'menu_link_content', 'comment', 'user', 'file', 'path_alias', 'shortcut'])
@@ -180,7 +184,12 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   })
   /** The resource types the index lists, which answer with an empty collection when the dump holds none. */
   const listed = new Set(Object.keys(dump.index[dump.manifest.defaultLanguage]?.links || {}).filter((key) => key !== 'self'))
-  const html404 = (path: string) => ({ status: 404, headers: { 'content-type': 'text/html; charset=UTF-8' }, body: `<!DOCTYPE html><html><body><h1>Page not found</h1><p>The requested page "${path}" could not be found.</p></body></html>` })
+  // Drupal answers a path no route takes, or a route the user may not reach, from its exception page: kept as any
+  // visitor's answer is, but varied by consumer alone. A dump without the site's cache headers sends none.
+  const { cache } = dump.manifest
+  const fromExceptionPage = cache ? { vary: cache.private.vary ?? '' } : {}
+  const neverCached = cache ? { 'cache-control': cache.private['cache-control']! } : {}
+  const html404 = (path: string) => ({ status: 404, headers: { 'content-type': 'text/html; charset=UTF-8', ...fromExceptionPage }, body: `<!DOCTYPE html><html><body><h1>Page not found</h1><p>The requested page "${path}" could not be found.</p></body></html>` })
   const prefixes = Object.entries(languages).filter(([, prefix]) => prefix).sort((a, b) => b[1].length - a[1].length)
 
   /** The language and the path after its prefix. */
@@ -343,10 +352,21 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   const typePath = (type: string): string => type.replace('--', '/')
 
   // Drupal names the language it answered in on every response: the prefix's, or the default language without one.
+  // It sets the cache headers on every response too, by whether its page cache may keep the request.
   const handle: Drupal['handle'] = (method, input, requestHeaders = {}, requestBody) => {
+    // Asked before the answer, as a logout ends the session it was asked with.
+    const cacheable = pageCacheable(method, requestHeaders)
     const answer = respond(method, input, requestHeaders, requestBody)
     const langcode = answeredIn(languages, dump.manifest.defaultLanguage, new URL(input, baseUrl).pathname)
-    return { ...answer, headers: { ...answer.headers, 'content-language': langcode } }
+    return withCache(cache, cacheable, { ...answer, headers: { ...answer.headers, 'content-language': langcode } })
+  }
+
+  /** Whether Drupal's page cache may keep a request: a GET or HEAD with no token and no signed-in session. */
+  const pageCacheable = (method: string, requestHeaders: Record<string, string>): boolean => {
+    const upper = method.toUpperCase()
+    if (upper !== 'GET' && upper !== 'HEAD') return false
+    if (Object.keys(requestHeaders).some((name) => name.toLowerCase() === 'authorization')) return false
+    return !identity.cookieSession(requestHeaders).user
   }
 
   const respond: Drupal['handle'] = (method, input, requestHeaders = {}, requestBody) => {
@@ -380,11 +400,14 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     }
     if (path === '/oauth/userinfo') {
       const claims = identity.userinfo(session, baseUrl, prefix0 || defaultPrefix)
-      return claims ? { status: 200, headers: { 'content-type': 'application/json; charset=UTF-8' }, body: claims } : html(403, 'Access denied')
+      if (claims) return { status: 200, headers: { 'content-type': 'application/json; charset=UTF-8' }, body: claims }
+      const refused = html(403, 'Access denied')
+      return { ...refused, headers: { ...refused.headers, ...fromExceptionPage } }
     }
     if (path === '/oauth/authorize') {
       const answer = identity.authorize(query, session)
-      return answer.location ? { status: 302, headers: { location: answer.location }, body: '' } : html(answer.status, answer.status === 403 ? 'Access denied' : 'Bad Request')
+      const page = answer.location ? { status: 302, headers: { location: answer.location }, body: '' } : html(answer.status, answer.status === 403 ? 'Access denied' : 'Bad Request')
+      return { ...page, headers: { ...page.headers, ...neverCached } }
     }
     if (path === `${prefix0}/user/login` || path === '/user/login') {
       if (upper !== 'POST' || query._format !== 'json') return html(upper === 'POST' ? 400 : 200, 'Log in')
@@ -403,7 +426,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
       identity.logout(requestHeaders)
       return { status: upper === 'POST' && query._format === 'json' ? 204 : 303, headers: upper === 'POST' && query._format === 'json' ? {} : { location: `${baseUrl}${prefix0 || '/'}` }, body: '' }
     }
-    if (path === '/session/token') return { status: 200, headers: { 'content-type': 'text/plain; charset=UTF-8' }, body: identity.csrf(requestHeaders) }
+    if (path === '/session/token') return { status: 200, headers: { 'content-type': 'text/plain; charset=UTF-8', ...neverCached }, body: identity.csrf(requestHeaders) }
     void lang0
 
     // Canvas Headless's draft preview: an assertion for an editor's cookie session, and the renewal that redirects.
@@ -763,5 +786,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return new Response(request.method === 'HEAD' || status === 204 || status === 304 ? null : text, { status, statusText: STATUS_TEXT[status] ?? '', headers })
   }
 
-  return { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset(); identity.reset(); canvas.reset() } }
+  const drupal: Drupal = { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset(); identity.reset(); canvas.reset() } }
+  cacheableRequests.set(drupal, pageCacheable)
+  return drupal
 }

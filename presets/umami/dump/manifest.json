@@ -15,7 +15,7 @@
       "simple_oauth": "6.1.4"
     }
   },
-  "built": "2026-11-26T05:42:50.938Z",
+  "built": "2026-11-28T13:09:51.435Z",
   "origin": "https://drupal.invalid",
   "languages": {
     "en": "en",
@@ -55,7 +55,7 @@
     "resources/en/taxonomy_term--recipe_category.json.gz": "8625a04dcbd73eff0dcaeeaa9a5423c74956ef0346ffcc16f428ad4abc5406a9",
     "resources/en/taxonomy_term--tags.json.gz": "7602439a9ae8265d798d74922385a51697bd6d1a3321348a50e69a97214454b4",
     "resources/en/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "94d48995f864119e270bb9762bda4652a43c2756a89e12034ca6a9e5f23c096b",
-    "resources/en/user--user.json.gz": "32df2b9357fa88b6f6db161dd3726d705c7969942d650f842e1ed6bd7453af80",
+    "resources/en/user--user.json.gz": "e6af64b2872d49997927267690442f2bee19df58bd8312b8ca11047f70b3bfc0",
     "resources/en/user_role--user_role.json.gz": "23368f5095eeb7eef333d468fc5a3ba41ccbe48f40625cba373fe54b12e647ba",
     "resources/en/view--view.json.gz": "87600b7dad1d63463fddcd2e04be5a2821eb951a6a5d9fd71c1b52bd433fe0bb",
     "resources/en/workflow--workflow.json.gz": "f99609289ea594624f415bcafa779f5cdbad2b0b814cf65209f23639823caaf2",
@@ -93,12 +93,12 @@
     "resources/es/taxonomy_term--recipe_category.json.gz": "f38dda0d0827d48f4648101fcd91ad653e57f712569cd51272497afa63166b0d",
     "resources/es/taxonomy_term--tags.json.gz": "9ea6f76ae06a1f7a435a01e2b0b1b8c7ebea59711b15c631533731e26292a796",
     "resources/es/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "d32e4496f41827c662f6e19b88370ba9778a4b283f636b5139b11af10d432665",
-    "resources/es/user--user.json.gz": "eace8823a07292542f8d8a5dd5efaecc971884dd5e418aa5f79aa0ddcc31fa68",
+    "resources/es/user--user.json.gz": "78a36f505c5c06e7ae33506eeef38805f76e833211d428274608b3821eb8ecc0",
     "resources/es/user_role--user_role.json.gz": "93a9923220525693e3e732157d52f54dd79f6fb5367665dafe87c74bfd3535ac",
     "resources/es/view--view.json.gz": "6b691c76a18404da4e21d449110ab9f9a7683046c3899515d87fe5fe1f468022",
     "resources/es/workflow--workflow.json.gz": "87d6c4bbcd1d8ca9f27eeded9ee74540610db0d64566b9438326fd374ee54c1a",
     "access/es.json.gz": "cce066e79393d3ae20a74e82d1a7aed019dafe095650d369b2d2b8cf6e4e7457",
-    "recorded/routes.json.gz": "ef68a9ee96585456ff2049bc880caf9c2fc2455e84b15a80b67df8fbda9f1ce1",
+    "recorded/routes.json.gz": "e1488723674b9f7b931e327780825ff15c4c7aa9e5645b71d19eb193538a0d34",
     "files/mediterranean-quiche-umami.jpg": "095b9d287d4c5d1cef61884d3a87a531980a8b97ca94e334a78e8063cbfba3b8",
     "files/vegan-chocolate-nut-brownies.jpg": "5463b279a7907aeb42a59c129da8be7fc5650af62f4fc664346c12124d6c8861",
     "files/veggie-pasta-bake-umami.jpg": "3c6c7188276deb374286b9a896ff868955bc0b5eb6fe5a92bb89f45818b7ba52",
@@ -122,8 +122,20 @@
     "files/borscht-with-pork-ribs-umami.jpg": "71e70b275690211d92b52ca514529fb58bdeeb76c46b3da683d52f611e366023",
     "identities.json": "10f18908c7bd768ed9d331c7632caba011e9356856308f9bde5e4f8034fe3fb8"
   },
+  "cache": {
+    "public": {
+      "cache-control": "max-age=300, public",
+      "vary": "Cookie, X-Consumer-ID",
+      "expires": "Sun, 19 Nov 1978 05:00:00 GMT"
+    },
+    "private": {
+      "cache-control": "must-revalidate, no-cache, private",
+      "vary": "X-Consumer-ID",
+      "expires": "Sun, 19 Nov 1978 05:00:00 GMT"
+    }
+  },
   "oracle": {
-    "reads.json.gz": "2b95f136f48e00e3adbb85b841e6cd0bde00a514e94dca48358cad2407cccdde",
-    "writes.json.gz": "4f192f1966e703b32a5e60c136c37227aa355e8e7ffa078b15f663f2f483d768"
+    "reads.json.gz": "2da83797b840a2fd1533d68d1129754e5311b3adb8d9b5403a2742b86f637c1a",
+    "writes.json.gz": "e33e9f8650c803a24a01982f7bd06a472877260bd580c030bde8886417493bb4"
   }
 }
