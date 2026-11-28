@@ -68,7 +68,8 @@ const setDelay = (map: Map<string, number>, ms: unknown, path: unknown = '/'): v
 /** The delay for a path: the longest path named that it is or is under, with or without its language prefix. */
 const delayFor = (map: Map<string, number>, prefixes: string[], path: string): number => {
   const segment = path.split('/')[1]!
-  const paths = prefixes.includes(segment) ? [path, path.slice(segment.length + 1) || '/'] : [path]
+  // `/es` alone is under `/` already, so the path after its prefix is only asked when there is one.
+  const paths = prefixes.includes(segment) ? [path, path.slice(segment.length + 1)] : [path]
   const named = [...map.keys()].filter((key) => paths.some((candidate) => candidate === key || candidate.startsWith(key.endsWith('/') ? key : `${key}/`)))
   return map.get(named.sort((a, b) => b.length - a.length)[0] ?? '') || 0
 }
@@ -153,7 +154,8 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
   const server = createServer((request, response) => {
     let ms = 0
     try {
-      const { pathname } = new URL(request.url || '/', 'http://localhost')
+      // An http.Server's request always has its target. Only a client's request has none.
+      const { pathname } = new URL(request.url!, 'http://localhost')
       if (!(options.control && pathname.startsWith(`${CONTROL_PATH}/`))) ms = delayFor(delay.now, prefixes, pathname)
     } catch {
       // A target no URL can be made of is not delayed, and the engine answers it.
