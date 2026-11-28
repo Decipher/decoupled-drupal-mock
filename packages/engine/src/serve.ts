@@ -23,6 +23,11 @@ export interface ListenOptions {
   origins?: string[]
   /** The routes a test uses from another process, to reset the writes and to sign in. Off unless asked for, and only for a test's server. */
   control?: boolean
+  /**
+   * Sets the engine's base URL to the URL the server listens at, so an engine made before the port was known links to
+   * it. For a test's server on `127.0.0.1`: behind a forwarded port or a tunnel, give the engine its public URL instead.
+   */
+  rebase?: boolean
 }
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.avif': 'image/avif', '.pdf': 'application/pdf', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.txt': 'text/plain', '.json': 'application/json', '.css': 'text/css', '.js': 'text/javascript' }
@@ -54,7 +59,7 @@ export const publicFile = (dir: string, pathname: string): { path: string, mime:
  * An HTTP server answering as the Drupal would, for a frontend pointed at it, an end-to-end suite or a developer's
  * browser.
  *
- * @param drupal - The engine, created with the base URL the server is reached at.
+ * @param drupal - The engine, created with the base URL the server is reached at, or rebased to it with `rebase`.
  * @param port - The port, or 0 for one the system picks.
  * @param host - The interface to listen on: `0.0.0.0` for a devpod with the port forwarded.
  * @param options - The public files directory and CORS.
@@ -122,6 +127,8 @@ const withCors = (cors: Record<string, string>, answer: Record<string, string>):
 }
 
 export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: ListenOptions = {}): Promise<{ server: Server, url: string, close: () => Promise<void> }> => new Promise((resolve, reject) => {
+  // Set when the server binds its port, before any request comes in.
+  let origin = ''
   const server = createServer((request, response) => {
     const method = request.method || 'GET'
     const cors = corsHeaders(options, typeof request.headers.origin === 'string' ? request.headers.origin : undefined)
@@ -132,7 +139,7 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
     }
     let file: ReturnType<typeof publicFile>
     try {
-      if (options.files) file = publicFile(options.files, new URL(request.url || '/', `http://${urlHost(host)}:${port}`).pathname)
+      if (options.files) file = publicFile(options.files, new URL(request.url || '/', origin).pathname)
     } catch {
       // A target or an escape that does not parse names no file, and the engine answers it.
     }
@@ -156,7 +163,7 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
           response.end(answer.text)
           return
         }
-        const { status, headers: responseHeaders, body } = drupal.handle(method, `http://${urlHost(host)}:${port}${request.url || '/'}`, headers, requestBody)
+        const { status, headers: responseHeaders, body } = drupal.handle(method, `${origin}${request.url || '/'}`, headers, requestBody)
         const text = status === 204 || body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body)
         response.writeHead(status, { ...withCors(cors, responseHeaders), ...(status === 204 ? {} : { 'content-length': Buffer.byteLength(text) }) })
         response.end(method === 'HEAD' || status === 204 ? undefined : text)
@@ -169,7 +176,8 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
   server.on('error', reject)
   server.listen(port, host, () => {
     const address = server.address()
-    const bound = typeof address === 'object' && address ? address.port : port
-    resolve({ server, url: `http://${urlHost(host)}:${bound}`, close: () => new Promise((done) => server.close(() => done())) })
+    origin = `http://${urlHost(host)}:${typeof address === 'object' && address ? address.port : port}`
+    if (options.rebase) drupal.rebase(origin)
+    resolve({ server, url: origin, close: () => new Promise((done) => server.close(() => done())) })
   })
 })

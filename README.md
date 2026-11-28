@@ -44,18 +44,18 @@ With Yarn, `yarn add --dev decoupled-drupal-mock@alpha decoupled-drupal-mock-uma
 
 The engine runs on Node, including under a test runner's jsdom environment, and its root entry also runs in a browser or a service worker. `loadDump` and the server need Node, so read the dump there and pass the object to `createDrupal` in the page. `drupal.fetch` and `createMock().fetch` build a `Request` and a `Response`, which Node provides from version 18. On Node 16, and in Jest's jsdom environment on any Node, use the axios entry point or a fetch polyfill.
 
-| Entry point                             | What it holds                                                               |
-| --------------------------------------- | --------------------------------------------------------------------------- |
-| `decoupled-drupal-mock`                 | `createDrupal`, `createMock`, `relinker` and the types                      |
-| `decoupled-drupal-mock/node`            | `loadDump`, to read a build directory                                       |
-| `decoupled-drupal-mock/serve`           | `listen`, the HTTP server                                                   |
-| `decoupled-drupal-mock/msw`             | `handlers`, for msw                                                         |
-| `decoupled-drupal-mock/axios`           | `axiosAdapter` and `axiosVerbs`                                             |
-| `decoupled-drupal-mock/testing`         | `startMock` and `withDrupal`, for Vitest, Playwright and other ESM runners  |
-| `decoupled-drupal-mock/jest`            | `loadPreset`, `spawnMock`, `globalSetup` and the axios helpers, in CommonJS |
-| `decoupled-drupal-mock/cypress`         | `spawnMock` and `cypressTasks`, in CommonJS                                 |
-| `decoupled-drupal-mock/recorded-writes` | Helpers for replaying recorded writes                                       |
-| `decoupled-drupal-mock/cli`             | `presetCommand`, the command a preset package runs, and `serveCommand`      |
+| Entry point                             | What it holds                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------------- |
+| `decoupled-drupal-mock`                 | `createDrupal`, `createMock`, `relinker` and the types                                |
+| `decoupled-drupal-mock/node`            | `loadDump`, to read a build directory                                                 |
+| `decoupled-drupal-mock/serve`           | `listen`, the HTTP server                                                             |
+| `decoupled-drupal-mock/msw`             | `handlers`, for msw                                                                   |
+| `decoupled-drupal-mock/axios`           | `axiosAdapter` and `axiosVerbs`                                                       |
+| `decoupled-drupal-mock/testing`         | `startMock` and `withDrupal`, for Vitest, Playwright and other ESM runners            |
+| `decoupled-drupal-mock/jest`            | `loadPreset`, `listen`, `spawnMock`, `globalSetup` and the axios helpers, in CommonJS |
+| `decoupled-drupal-mock/cypress`         | `spawnMock` and `cypressTasks`, in CommonJS                                           |
+| `decoupled-drupal-mock/recorded-writes` | Helpers for replaying recorded writes                                                 |
+| `decoupled-drupal-mock/cli`             | `presetCommand`, the command a preset package runs, and `serveCommand`                |
 
 ## Using the mock in a test
 

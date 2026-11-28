@@ -38,6 +38,8 @@ export interface Drupal {
   tokenFor: (name: string, scopes?: string[]) => Token
   /** Drops every write and every token, back to the preset as built. */
   reset: () => void
+  /** Names another origin in every link from now on: a server's, once it knows the port it bound. */
+  rebase: (baseUrl: string) => void
   readonly manifest: Dump['manifest']
 }
 
@@ -72,7 +74,7 @@ const STATUS_TEXT: Record<number, string> = { 200: 'OK', 201: 'Created', 204: 'N
  * @param options - The origin and base path to answer for.
  */
 export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal => {
-  const baseUrl = withoutTrailingSlashes(options.baseUrl || 'https://drupal.invalid')
+  let baseUrl = withoutTrailingSlashes(options.baseUrl || 'https://drupal.invalid')
   // A trailing slash on the base path would make every route an HTML 404.
   const basePath = withoutTrailingSlashes(options.basePath || '/jsonapi') || '/jsonapi'
   const placeholder = withoutTrailingSlashes(dump.manifest.origin)
@@ -192,7 +194,7 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   }
 
   /** Every absolute link in the dump points at the placeholder; the server's base URL takes its place. */
-  const served = relinker(placeholder, baseUrl)
+  let served = relinker(placeholder, baseUrl)
   const relink = <T>(value: T): T => JSON.parse(served(JSON.stringify(value))) as T
 
   /** A type's resources in a language: a resource with no translation there is listed in its default language, as Drupal lists it. */
@@ -763,5 +765,5 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
     return new Response(request.method === 'HEAD' || status === 204 || status === 304 ? null : text, { status, statusText: STATUS_TEXT[status] ?? '', headers })
   }
 
-  return { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset(); identity.reset(); canvas.reset() } }
+  return { fetch, handle, manifest: dump.manifest, tokenFor: (name, scopes) => identity.tokenFor(name, scopes), reset: () => { store.reset(); identity.reset(); canvas.reset() }, rebase: (url) => { baseUrl = withoutTrailingSlashes(url); served = relinker(placeholder, baseUrl) } }
 }

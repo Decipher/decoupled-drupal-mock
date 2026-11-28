@@ -116,6 +116,21 @@ describe('serving', () => {
     }
   })
 
+  it('sets the engine\'s base URL to the port it bound, when asked, for an engine made first', async () => {
+    const drupal = createMock(dump)
+    const { url, close } = await listen(drupal, 0, '127.0.0.1', { rebase: true })
+    try {
+      expect(url).not.toBe('http://127.0.0.1:0')
+      const document = await (await fetch(`${url}/jsonapi/node/page/p-1`)).json() as { links: { self: { href: string } } }
+      expect(document.links.self.href).toBe(`${url}/jsonapi/node/page/p-1`)
+      // An extension added after the server started answers over it.
+      drupal.use({ routes: { 'GET /hello': () => ({ body: { hello: 'world' } }) } })
+      expect(await (await fetch(`${url}/hello`)).json()).toEqual({ hello: 'world' })
+    } finally {
+      await close()
+    }
+  })
+
   it('answers through msw handlers', async () => {
     const drupal = createDrupal(dump, { baseUrl: 'https://drupal.test' })
     const server = setupServer(...handlers(drupal, http, 'https://drupal.test'))

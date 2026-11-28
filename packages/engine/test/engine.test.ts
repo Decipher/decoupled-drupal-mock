@@ -319,6 +319,18 @@ describe('a base URL and path with trailing slashes', () => {
   })
 })
 
+describe('a base URL set after the engine is made', () => {
+  it('names the new origin in every link from then on, as a server that bound its port asks', async () => {
+    const moved = createDrupal(dump, { baseUrl: 'https://drupal.test' })
+    moved.rebase('http://127.0.0.1:4321///')
+    const response = await moved.fetch('http://127.0.0.1:4321/jsonapi')
+    const text = await response.text()
+    expect((JSON.parse(text) as Document).links!['node--page']).toEqual({ href: 'http://127.0.0.1:4321/jsonapi/node/page' })
+    expect(text).not.toContain('https://drupal.test')
+    expect(text).not.toContain(ORIGIN)
+  })
+})
+
 describe('what the first review found', () => {
   const hidden = createDrupal({ ...dump, access: { en: { 'node--page': { hidden: ['field_secret'] }, 'file--file': { forbidden: true } } } }, { baseUrl: 'https://drupal.test' })
   const read = async (drupal: ReturnType<typeof createDrupal>, path: string) => { const response = await drupal.fetch(`https://drupal.test${path}`); const text = await response.text(); return { status: response.status, body: text.startsWith('<') ? { meta: { html: text } } : JSON.parse(text) as Document } }
