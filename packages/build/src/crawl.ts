@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import type { Answer, RecordedWrite, WriteScript } from 'decoupled-drupal-mock/recorded-writes'
 import type { Document, Dump, Manifest, Recorded, Resource, TypeFilters } from 'decoupled-drupal-mock'
-import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND, DUMP_FORMAT, isPublic, relinker, sortedSearch } from 'decoupled-drupal-mock'
+import { CACHE_HEADERS, CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND, DUMP_FORMAT, isPublic, relinker, sortedSearch } from 'decoupled-drupal-mock'
 import { KEPT_HEADERS, resolve } from 'decoupled-drupal-mock/recorded-writes'
 
 export interface CrawlOptions {
@@ -156,7 +156,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   // The cache headers the site sends with an answer its page cache may keep, and with one it never keeps: a visitor's
   // JSON:API index, the first one the crawl reads, and the session token. A site that sends no Cache-Control is no
   // Drupal's, so it records none.
-  const CACHED = ['cache-control', 'vary', 'expires']
+  // The engine's own list, so what is recorded and what is replayed cannot drift apart.
+  const CACHED: string[] = [...CACHE_HEADERS]
   const pairOf = (headers: Record<string, string>): Record<string, string> => Object.fromEntries(CACHED.flatMap((name) => (headers[name] ? [[name, headers[name]!]] : [])))
   const shared = pairOf((await get(indexPath(indexOrder[0]![1]), {}, CACHED)).headers)
   const cache = shared['cache-control'] ? { public: shared, private: pairOf((await get('/session/token', {}, CACHED)).headers) } : undefined
