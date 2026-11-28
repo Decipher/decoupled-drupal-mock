@@ -124,7 +124,9 @@ Every runner's client has the same calls, in-process or over `--control`:
 | `requests()`             | The requests the mock answered, for assertions                                  |
 | `sent()`                 | What an extension's `onWrite` called                                            |
 | `advanceTime(seconds)`   | Moves the clock on, for a token's expiry                                        |
-| `delay(ms, path)`        | Waits before each answer under a path, or every answer without one              |
+| `delay(ms, path)`        | Over HTTP only: waits before each answer under a path, or every one without     |
+
+An in-process engine has no `delay`, because the HTTP server does the waiting and the engine answers at once. A server from `spawnMock`, `globalSetup` or `startMock` has it, and so does `connectMock()` against any server started with `--control`.
 
 In Cypress these are the tasks `drupal:reset`, `drupal:token`, `drupal:scenario`, `drupal:requests`, `drupal:sent`, `drupal:time` and `drupal:delay`, which takes `{ ms, path }`.
 
