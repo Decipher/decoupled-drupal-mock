@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { http } from 'msw'
 import { setupServer } from 'msw/node'
 import { createDrupal, createMock, handlers } from '../src'
@@ -98,6 +98,48 @@ describe('serving', () => {
     }
   })
 
+  it('refuses a starting delay no timer can wait for', async () => {
+    await expect(listen(createDrupal(dump), 0, '127.0.0.1', { delay: 2147483648 })).rejects.toThrow('not 2147483648 for /')
+    await expect(listen(createDrupal(dump), 0, '127.0.0.1', { delay: { jsonapi: 10 } })).rejects.toThrow('not 10 for jsonapi')
+  })
+
+  it('delays a path under a language prefix of more than one segment', async () => {
+    const nested = { ...dump, manifest: { ...dump.manifest, languages: { en: '', es: 'languages/es' } } }
+    const { url, close } = await listen(createDrupal(nested, { baseUrl: 'http://127.0.0.1' }), 0, '127.0.0.1', { delay: { '/jsonapi/node/recipe': 200 } })
+    try {
+      expect(await timed(`${url}/languages/es/jsonapi/node/recipe`)).toBeGreaterThanOrEqual(190)
+      expect(await timed(`${url}/languages/jsonapi/node/recipe`)).toBeLessThan(190)
+    } finally {
+      await close()
+    }
+  })
+
+  it('drops the timer of a request whose client leaves, and answers the rest when it closes', async () => {
+    const set = vi.spyOn(globalThis, 'setTimeout')
+    const cleared = vi.spyOn(globalThis, 'clearTimeout')
+    const { url, close } = await listen(createDrupal(dump, { baseUrl: 'http://127.0.0.1' }), 0, '127.0.0.1', { delay: 60000 })
+    // The timers the server set for a request's delay.
+    const delays = () => set.mock.calls.flatMap(([, ms], index) => (ms === 60000 ? [set.mock.results[index]!.value as NodeJS.Timeout] : []))
+    try {
+      const left = new AbortController()
+      const leaving = fetch(`${url}/jsonapi`, { signal: left.signal }).catch(() => undefined)
+      await vi.waitFor(() => expect(delays()).toHaveLength(1))
+      left.abort()
+      await leaving
+      await vi.waitFor(() => expect(cleared).toHaveBeenCalledWith(delays()[0]))
+      const waiting = fetch(`${url}/jsonapi`)
+      await vi.waitFor(() => expect(delays()).toHaveLength(2))
+      const started = performance.now()
+      await close()
+      expect(performance.now() - started).toBeLessThan(5000)
+      expect((await waiting).status).toBe(200)
+      expect(cleared).toHaveBeenCalledWith(delays()[1])
+    } finally {
+      set.mockRestore()
+      cleared.mockRestore()
+    }
+  })
+
   it('sets and clears a delay over the control route, which reset() puts back', async () => {
     const { url, close } = await listen(createDrupal(dump, { baseUrl: 'http://127.0.0.1' }), 0, '127.0.0.1', { control: true, delay: { '/jsonapi/node/article': 200 } })
     try {
@@ -115,6 +157,8 @@ describe('serving', () => {
       expect(await timed(`${url}/jsonapi/node/article`)).toBeGreaterThanOrEqual(190)
       await expect(client.delay(-1)).rejects.toThrow('A delay is a number of milliseconds')
       await expect(client.delay(10, 'jsonapi')).rejects.toThrow('not 10 for jsonapi')
+      // Past the largest delay a timer takes, Node fires at once, so the request would not wait.
+      await expect(client.delay(2147483648)).rejects.toThrow('not 2147483648 for /')
       await expect(cypressTasks(url)['drupal:delay']({ ms: 200, path: '/jsonapi' })).resolves.toBeNull()
       expect(await timed(`${url}/jsonapi`)).toBeGreaterThanOrEqual(190)
     } finally {
