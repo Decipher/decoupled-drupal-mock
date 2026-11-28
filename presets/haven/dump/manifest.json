@@ -79,7 +79,7 @@
       "yoast_seo": "2.2.0"
     }
   },
-  "built": "2026-11-28T09:30:07.156Z",
+  "built": "2026-11-28T13:14:32.171Z",
   "origin": "https://drupal.invalid",
   "languages": {
     "en": ""
@@ -139,14 +139,14 @@
     "resources/en/symfony_mailer_lite_transport--symfony_mailer_lite_transport.json.gz": "b9dfb4b148baa273d86447da6f706c995d6fd37f19788df27c59a80ec4ee6d26",
     "resources/en/taxonomy_term--tags.json.gz": "d17dc8709bd1effc5ec13ff4c0c35f2db7039939c28833439516bf572f45ff70",
     "resources/en/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "929b72f432810c5da8d6e262767d1cc0db942c7368f2a1ee4d97ddc9906b66e4",
-    "resources/en/user--user.json.gz": "437af8d26952aec68cf3cf48a7481e43905b00e0ce371f68c36322731cb68fbe",
+    "resources/en/user--user.json.gz": "ac9afe0af7a0a696f7099bff0f535d480dfd63859448721c5981beec6f1d00f8",
     "resources/en/user_role--user_role.json.gz": "acf0e450e604a11c0c365006926b5e4144a2ec4d18fca9a0a14816e716abdc18",
     "resources/en/view--view.json.gz": "8aeab7aef2036416e9631d6e68af7f4ba3dc2bbe1ea1611292c3c9f129b65627",
     "resources/en/webform--webform.json.gz": "ce07b58286cfe80fde59775c09f6e109c2d1a509124f580ff758ba8aa7f059ff",
     "resources/en/workflow--workflow.json.gz": "dcbfe89f88ab6d1d9c3dea6d7ec1f5d3757f18a1d005b6bd7b3205a69b073f65",
     "access/en.json.gz": "45da2599792458ed57aae75c77335848726c5c10d21ba424bd10d88474ca5e40",
     "filters.json.gz": "a792fcbe96dacb4260c426765e7aea64fd103248b711859b95aead926f58cde1",
-    "recorded/routes.json.gz": "f1f2773e0a5d6e7c4f5ae3cf06dfcc728d3e9add3da4f8fe2a8fa264f8e20e57",
+    "recorded/routes.json.gz": "00fdc70330b32037566c9436ac70a40101ea1c89d97c8dd6e37593177a9dd76d",
     "files/login-wallpaper.png": "54332ee6319ad13d167201acd484f5656679cf6a462cbe6b5d6da301c3602f7f",
     "files/avatars/default-avatar.svg": "c55e779964208bd6a80b27f8b3dd8251c4140a2358283fbed1f7bce8a75c764c",
     "files/2026-03/matt-palmer-kbTp7dBzHyY-unsplash.avif": "efb07e457dfb73a485d2cd4dcee92aac15c72d25f139be591908b1135484fbf5",
