@@ -1,5 +1,6 @@
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
+import { bannerLines } from './banner.js'
 import { daemonCommand, daemonCommands } from './daemon.js'
 import type { DaemonCommand } from './daemon.js'
 import type { Extension } from './extend.js'
@@ -9,7 +10,7 @@ import { presetDir } from './preset.js'
 import { listen } from './serve.js'
 
 /** The options `serve` takes after the preset, which a preset package's own command takes too. */
-export const serveOptions = '[--port 3005] [--host 127.0.0.1] [--base-url <url>] [--no-cors] [--cors-credentials [--cors-origin <origin>]] [--control] [--extension <file>] [--overlay <file>]'
+export const serveOptions = '[--port 3005] [--host 127.0.0.1] [--base-url <url>] [--quiet] [--no-cors] [--cors-credentials [--cors-origin <origin>]] [--control] [--extension <file>] [--overlay <file>]'
 
 /**
  * Serves a preset over HTTP until the process ends, and says where. `decoupled-drupal-mock serve` calls it, and so does
@@ -20,12 +21,15 @@ export const serveOptions = '[--port 3005] [--host 127.0.0.1] [--base-url <url>]
  * `supportsCredentials` does, so a browser on another origin can send the session cookie. It names only a loopback
  * origin, unless `--cors-origin` lists the origins to name, once for each. `--extension` loads a module whose default
  * export is an extension, and can be given more than once. `--overlay` adds a recorded overlay, such as your site's
- * patch or module, by its file, and can too. A mistake is printed and ends the process with status 1.
+ * patch or module, by its file, and can too. Once it listens it prints where, then the URLs the preset answers and the
+ * accounts it signs in, unless `--quiet` asks for the first line only. A mistake is printed and ends the process with
+ * status 1.
  *
  * @param target - The preset: a directory, a preset package or its short name.
  * @param rest - The options.
+ * @returns A function that closes the server, for a caller that runs it in its own process.
  */
-export const serveCommand = async (target: string, rest: string[]): Promise<void> => {
+export const serveCommand = async (target: string, rest: string[]): Promise<() => Promise<void>> => {
   const option = (name: string, fallback: string): string => {
     const index = rest.indexOf(`--${name}`)
     return index >= 0 && rest[index + 1] ? rest[index + 1]! : fallback
@@ -99,11 +103,15 @@ export const serveCommand = async (target: string, rest: string[]): Promise<void
     process.exit(1)
   }
   const drupal = createMock(dump, { baseUrl, extensions })
-  const { url } = await listen(drupal, port, host, { files: dir, cors: !rest.includes('--no-cors'), credentials: rest.includes('--cors-credentials'), origins, control: rest.includes('--control') }).catch((error: NodeJS.ErrnoException) => {
+  const { url, close } = await listen(drupal, port, host, { files: dir, cors: !rest.includes('--no-cors'), credentials: rest.includes('--cors-credentials'), origins, control: rest.includes('--control') }).catch((error: NodeJS.ErrnoException) => {
     console.error(error.code === 'EADDRINUSE' ? `Port ${port} is in use: name another with --port.` : error.message)
     process.exit(1)
   })
-  console.log(`${dump.manifest.preset} from Drupal ${dump.manifest.drupal.core}, listening on ${url}`)
+  // The first line is the one `start` waits for, so it stays as it is. The rest go out with it, in one write.
+  const said = `${dump.manifest.preset} from Drupal ${dump.manifest.drupal.core}, listening on ${url}`
+  const color = !!process.stdout.isTTY && !process.env.NO_COLOR
+  console.log(rest.includes('--quiet') ? said : [said, '', ...bannerLines(dump, baseUrl, color), ''].join('\n'))
+  return close
 }
 
 /**
@@ -118,5 +126,5 @@ export const serveCommand = async (target: string, rest: string[]): Promise<void
 export const presetCommand = async (dir: string, argv: string[], entry: string): Promise<void> => {
   const [command, ...rest] = argv
   if (daemonCommands.includes(command as DaemonCommand)) return daemonCommand(command as DaemonCommand, [entry], rest)
-  return serveCommand(dir, command === 'serve' ? rest : argv)
+  await serveCommand(dir, command === 'serve' ? rest : argv)
 }

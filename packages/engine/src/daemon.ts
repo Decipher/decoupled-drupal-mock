@@ -305,12 +305,12 @@ const openLog = (log: string): number => {
 }
 
 /**
- * Starts the server in the background and returns once it answers HTTP, with the line `serve` prints. A server that
- * exits, or does not answer in time, is stopped, and the error carries its log.
+ * Starts the server in the background and returns once it answers HTTP, with the line `serve` prints and all it
+ * printed from that line on. A server that exits, or does not answer in time, is stopped, and the error carries its log.
  *
  * @param options - What to run and where.
  */
-export const start = async (options: StartOptions): Promise<{ line: string, instance: Instance }> => {
+export const start = async (options: StartOptions): Promise<{ line: string, said: string, instance: Instance }> => {
   const { entry, args, port, host, pidFile, readyTimeout } = options
   const found = current(pidFile)
   if (found) throw new Error(`A mock is already running on port ${found.instance.port}, pid ${found.instance.pid}: stop it first.`)
@@ -391,7 +391,8 @@ export const start = async (options: StartOptions): Promise<{ line: string, inst
         }
         update(pidFile, text, JSON.stringify(instance))
         text = JSON.stringify(instance)
-        return { line: line.trim(), instance }
+        // What the server printed with that line, which start prints as serve does.
+        return { line: line.trim(), said: output.slice(output.indexOf(line)).trimEnd(), instance }
       }
       if (exited !== undefined) fail(`The mock ${exited} before it listened.`)
       if (Date.now() > deadline) fail(`The mock did not listen within ${readyTimeout} seconds.`)
@@ -505,6 +506,6 @@ export const daemonCommand = async (command: DaemonCommand, entry: string[], res
   }
   // The server is given the options serve takes, and none of these.
   const args = rest.filter((argument, index) => !['--pid-file', '--ready-timeout'].includes(argument) && !['--pid-file', '--ready-timeout'].includes(rest[index - 1]!))
-  const { line } = await orExit(() => start({ entry, args, port, host: option('host', '127.0.0.1'), pidFile, readyTimeout }))
-  console.log(line)
+  const { said } = await orExit(() => start({ entry, args, port, host: option('host', '127.0.0.1'), pidFile, readyTimeout }))
+  console.log(said)
 }

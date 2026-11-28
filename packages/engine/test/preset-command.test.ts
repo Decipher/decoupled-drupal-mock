@@ -33,16 +33,20 @@ describe.each(presets)('the %s preset package', (preset) => {
     onTestFinished(() => {
       child.kill()
     })
-    const line = await new Promise<string>((resolve, reject) => {
+    const said = await new Promise<string>((resolve, reject) => {
       let output = ''
       child.stdout.on('data', (chunk: Buffer) => {
         output += chunk.toString('utf8')
+        // serve prints its line and the URLs under it at once.
         if (output.includes('listening on')) resolve(output.trim())
       })
       child.stderr.on('data', (chunk: Buffer) => reject(new Error(chunk.toString('utf8'))))
       child.on('exit', (code) => reject(new Error(`exited with ${code}`)))
     })
+    const [line = '', ...listed] = said.split('\n')
     expect(line).toMatch(new RegExp(`listening on http://127\\.0\\.0\\.1:${port}$`))
+    // Under it, the URLs a developer opens first.
+    expect(listed.join('\n')).toMatch(new RegExp(`JSON:API \\(en\\) +http://127\\.0\\.0\\.1:${port}(/en)?/jsonapi`))
     // The build it serves is this package's, not another preset's.
     const build = JSON.parse(readFileSync(join(dir, 'dump', 'manifest.json'), 'utf8')) as { preset: string }
     expect(line.startsWith(`${build.preset} from Drupal `)).toBe(true)
@@ -66,8 +70,9 @@ describe.each(presets)('the %s preset package', (preset) => {
     expect(run('status')).toEqual({ status: 1, output: `No mock is running on port ${port}.` })
     const started = run('start', '--cors-credentials', '--cors-origin', 'https://frontend.test')
     expect(started.status).toBe(0)
-    // The same line serve prints, so the logs read the same.
-    expect(started.output).toMatch(new RegExp(`^${build.preset} from Drupal .+, listening on http://127\\.0\\.0\\.1:${port}$`))
+    // What serve prints, so the logs read the same: the line that says where, then the URLs under it.
+    expect(started.output.split('\n')[0]).toMatch(new RegExp(`^${build.preset} from Drupal .+, listening on http://127\\.0\\.0\\.1:${port}$`))
+    expect(started.output).toMatch(new RegExp(`JSON:API \\(en\\) +http://127\\.0\\.0\\.1:${port}(/en)?/jsonapi`))
     const response = await fetch(`http://127.0.0.1:${port}/jsonapi`, { headers: { Origin: 'https://frontend.test' } })
     expect(response.status).toBe(200)
     // The serve options reached the server in the background too.
