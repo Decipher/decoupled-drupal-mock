@@ -161,6 +161,22 @@ describe('the crawl', () => {
     expect(routes['GET /jsonapi/node/secret']!.headers).toEqual({ 'content-type': 'application/vnd.api+json', vary: 'Cookie, X-Consumer-ID, Authorization' })
   })
 
+  it('records a refusal answered apart from the site against the pair the engine replays it with', async () => {
+    const shared = { 'cache-control': 'max-age=300, public', vary: 'Cookie, X-Consumer-ID', expires: 'Sun, 19 Nov 1978 05:00:00 GMT' }
+    const kept = { 'cache-control': 'must-revalidate, no-cache, private', vary: 'X-Consumer-ID', expires: 'Sun, 19 Nov 1978 05:00:00 GMT' }
+    const stock = site({ admin: [], visitor: [] })
+    const oracleOut = mkdtempSync(join(tmpdir(), 'oracle-'))
+    const { out } = await build((path, admin) => {
+      if (path === '/jsonapi') return { ...stock(path, admin)!, headers: shared }
+      if (path === '/session/token') return { headers: { 'content-type': 'text/plain', ...kept }, body: 't', raw: true }
+      // A route of its own that sends no Vary or Expires, asked with no query.
+      if (path === '/jsonapi/node/locked') return { status: 403, headers: { 'cache-control': 'no-store, private' }, body: {} }
+      return stock(path, admin)
+    }, { oracleOut, oracle: ['/jsonapi/node/locked'] })
+    const routes = read(out, 'recorded/routes.json.gz') as Record<string, { headers: Record<string, string> }>
+    expect(routes['GET /jsonapi/node/locked']!.headers).toEqual({ 'content-type': 'application/vnd.api+json', 'cache-control': 'no-store, private', vary: '', expires: '' })
+  })
+
   it('records no cache headers from a site that sends no Cache-Control', async () => {
     const oracleOut = mkdtempSync(join(tmpdir(), 'oracle-'))
     const { manifest, out } = await build(site({ admin: [], visitor: [] }, (path) => (path.startsWith('/jsonapi/node/secret') ? { status: 403, headers: { vary: 'Authorization' }, body: {} } : undefined)), { oracleOut, oracle: ['/jsonapi/node/secret?filter=1'] })

@@ -79,6 +79,18 @@ describe('the cache headers Drupal sends', () => {
     expect(Object.keys(plain.handle('GET', `${BASE}/session/token`).headers)).not.toContain('vary')
   })
 
+  it('replays a recorded route that sent no Vary with none, as the build recorded it', () => {
+    const locked: Dump = { ...dump, recorded: { ...dump.recorded, 'GET /jsonapi/decoupled/settings': { status: 403, headers: { 'content-type': 'application/vnd.api+json', 'cache-control': 'no-store, private', vary: '', expires: '' }, body: {} } } }
+    const own = createDrupal(locked, { baseUrl: BASE })
+    expect(cacheOf(own.handle('GET', `${BASE}/jsonapi/decoupled/settings`).headers)).toEqual({ 'cache-control': 'no-store, private', vary: undefined, expires: undefined })
+  })
+
+  it('answers a signed-in logout privately, as the session it ends was open when it was asked', () => {
+    const login = drupal.handle('POST', `${BASE}/user/login?_format=json`, { 'content-type': 'application/json' }, JSON.stringify({ name: 'umami', pass: 'secret' }))
+    const cookie = login.headers['set-cookie']!.split(';')[0]!
+    expect(get('/user/logout', { cookie }).headers['cache-control']).toBe(PRIVATE)
+  })
+
   it('sends none from a dump built before the build recorded them', () => {
     const { cache: _cache, ...manifest } = dump.manifest
     const older = createDrupal({ ...dump, manifest }, { baseUrl: BASE })
@@ -95,6 +107,7 @@ describe('the cache headers on an extension\'s answer', () => {
         'GET /own': () => ({ body: { own: true } }),
         'GET /kept': () => ({ headers: { 'Cache-Control': 'max-age=60, public' }, body: {} }),
         'GET /never': () => ({ headers: { 'cache-control': 'no-store' }, body: {} }),
+        'GET /shared': () => ({ headers: { 'cache-control': 's-maxage=600' }, body: {} }),
       },
     }],
   })
@@ -111,5 +124,14 @@ describe('the cache headers on an extension\'s answer', () => {
     const authorization = `Bearer ${mock.tokenFor('umami').access}`
     expect(mock.handle('GET', `${BASE}/kept`, { authorization }).headers['cache-control']).toBe(PRIVATE)
     expect(mock.handle('GET', `${BASE}/never`, { authorization }).headers['cache-control']).toBe('no-store')
+    // A shared cache may keep an answer to a request with a token when it says s-maxage, so that is not kept either.
+    expect(mock.handle('GET', `${BASE}/shared`, { authorization }).headers['cache-control']).toBe(PRIVATE)
+    expect(mock.handle('GET', `${BASE}/shared`).headers['cache-control']).toBe('s-maxage=600')
+  })
+
+  it('answers a signed-in logout privately through the mock too', () => {
+    const login = mock.handle('POST', `${BASE}/user/login?_format=json`, { 'content-type': 'application/json' }, JSON.stringify({ name: 'umami', pass: 'secret' }))
+    const cookie = login.headers['set-cookie']!.split(';')[0]!
+    expect(mock.handle('GET', `${BASE}/user/logout`, { cookie }).headers['cache-control']).toBe(PRIVATE)
   })
 })

@@ -35,7 +35,8 @@ describe.skipIf(!available)('the engine against the oracle', () => {
     // consumer, so the fields are compared as a set.
     for (const name of ['cache-control', 'expires']) if (entry.headers?.[name]) expect(answer.headers[name]).toBe(entry.headers[name])
     const fields = (vary?: string) => [...new Set((vary || '').split(',').map((field) => field.trim().toLowerCase()).filter(Boolean))].sort()
-    if (entry.headers?.vary) expect(fields(answer.headers.vary)).toEqual(fields(entry.headers.vary))
+    // A read the build kept the cache headers of sent no Vary when it has none, and the engine sends none either.
+    if (entry.headers?.['cache-control']) expect(fields(answer.headers.vary)).toEqual(fields(entry.headers.vary))
     // Drupal's HTML pages are themed; the engine's are not. The status is what a client reads.
     if (typeof entry.body !== 'string') expect(comparable(answer.body)).toEqual(comparable(entry.body))
   })

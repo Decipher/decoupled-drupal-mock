@@ -4,12 +4,15 @@ import type { Manifest } from './types.js'
 export const CACHE_HEADERS = ['cache-control', 'vary', 'expires'] as const
 
 const PUBLIC = /\bpublic\b/i
+/** What keeps a shared cache from storing an answer to a request with a token or a session (RFC 9111, 3.5). */
+const UNSHARED = /\b(private|no-store)\b/i
 
 /**
  * An answer with the cache headers Drupal's FinishResponseSubscriber gives it. A request the page cache may keep, and
  * an answer that is no server error, takes the site's public pair: a JSON:API 400 or 404 for a visitor is kept too.
- * Anything else takes the private pair. A header the answer sets itself stays, unless it lets a private request be
- * kept by a shared cache: the page cache keeps no request with a token or a session, whatever its route said.
+ * Anything else takes the private pair. A header the answer sets itself stays. For a request with a token or a session,
+ * its Cache-Control stays only when it says `private` or `no-store`: anything else, such as `public` or `s-maxage`,
+ * lets a shared cache store one user's answer for another.
  *
  * @param cache - The site's pair, from the manifest. Without one the answer is left as it is.
  * @param cacheable - Whether the page cache may keep the request: a GET or HEAD with no token and no session.
@@ -29,7 +32,7 @@ export const withCache = <T extends { status: number, headers: Record<string, st
   const pair = kept ? cache.public : cache.private
   const headers: Record<string, string> = {
     ...rest,
-    'cache-control': control !== undefined && (kept || !PUBLIC.test(control)) ? control : pair['cache-control']!,
+    'cache-control': control !== undefined && ((cacheable && answer.status < 500) || UNSHARED.test(control)) ? control : pair['cache-control']!,
     vary: own.vary ?? pair.vary!,
     expires: own.expires ?? pair.expires!,
   }

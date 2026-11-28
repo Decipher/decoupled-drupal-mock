@@ -354,9 +354,11 @@ export const createDrupal = (dump: Dump, options: DrupalOptions = {}): Drupal =>
   // Drupal names the language it answered in on every response: the prefix's, or the default language without one.
   // It sets the cache headers on every response too, by whether its page cache may keep the request.
   const handle: Drupal['handle'] = (method, input, requestHeaders = {}, requestBody) => {
+    // Asked before the answer, as a logout ends the session it was asked with.
+    const cacheable = pageCacheable(method, requestHeaders)
     const answer = respond(method, input, requestHeaders, requestBody)
     const langcode = answeredIn(languages, dump.manifest.defaultLanguage, new URL(input, baseUrl).pathname)
-    return withCache(cache, pageCacheable(method, requestHeaders), { ...answer, headers: { ...answer.headers, 'content-language': langcode } })
+    return withCache(cache, cacheable, { ...answer, headers: { ...answer.headers, 'content-language': langcode } })
   }
 
   /** Whether Drupal's page cache may keep a request: a GET or HEAD with no token and no signed-in session. */

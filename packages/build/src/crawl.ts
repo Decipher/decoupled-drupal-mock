@@ -160,8 +160,19 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
   const pairOf = (headers: Record<string, string>): Record<string, string> => Object.fromEntries(CACHED.flatMap((name) => (headers[name] ? [[name, headers[name]!]] : [])))
   const shared = pairOf((await get(indexPath(indexOrder[0]![1]), {}, CACHED)).headers)
   const cache = shared['cache-control'] ? { public: shared, private: pairOf((await get('/session/token', {}, CACHED)).headers) } : undefined
-  /** A recorded route keeps the cache headers it sends apart from the site's, as Canvas's content API varies by token. */
-  const apart = (entry: Recorded): Recorded => ({ ...entry, headers: Object.fromEntries(Object.entries(entry.headers).filter(([name, value]) => !CACHED.includes(name) || (cache && value !== cache.public[name]))) })
+  /**
+   * A recorded route keeps the cache headers it sends apart from the pair the engine replays it with, as Canvas's content
+   * API varies by token. That is the public pair for an answer a visitor's page cache may keep, and the private one
+   * for any other. A header the route did not send, which the pair has, is kept empty, so the replay sends none.
+   */
+  const apart = (entry: Recorded): Recorded => {
+    const others = Object.entries(entry.headers).filter(([name]) => !CACHED.includes(name))
+    if (!cache) return { ...entry, headers: Object.fromEntries(others) }
+    const control = entry.headers['cache-control']
+    const pair = entry.status < 500 && (control === undefined || /\bpublic\b/i.test(control)) ? cache.public : cache.private
+    const own = CACHED.flatMap((name) => ((entry.headers[name] ?? '') !== (pair[name] ?? '') ? [[name, entry.headers[name] ?? '']] : []))
+    return { ...entry, headers: Object.fromEntries([...others, ...own]) }
+  }
 
   const recorded: Record<string, Recorded> = {}
   /** The ids of what the crawl excluded, so a recorded document listing one by id alone drops it too. */
@@ -545,7 +556,8 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
         // for what it asks, such as a filter on a field, says nothing of the plain path, so that is asked too.
         if (entry.status === 403 || entry.status === 405) {
           const [pathname, search] = resolved.split('?') as [string, string?]
-          const plain = search ? apart(await get(pathname, {}, CACHED)) : { ...entry, headers: { 'content-type': entry.headers['content-type']! } }
+          // The language stays with the oracle's read, which is the one the engine names it from.
+          const plain = apart(search ? await get(pathname, {}, CACHED) : { ...entry, headers: Object.fromEntries(Object.entries(entry.headers).filter(([name]) => name !== 'content-language')) })
           if (plain.status === 403 || plain.status === 405) recorded[`GET ${pathname}`] = recorded[`GET ${pathname}`] || plain
         }
       }
