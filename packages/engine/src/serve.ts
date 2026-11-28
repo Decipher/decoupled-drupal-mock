@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { extname, join, normalize } from 'node:path'
 import { CONTROL_PATH } from './control.js'
 import type { Drupal } from './engine.js'
@@ -131,6 +132,8 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
   let origin = ''
   const server = createServer((request, response) => {
     const method = request.method || 'GET'
+    // An http.Server's request always has its target. Only a client's request has none.
+    const target = request.url!
     const cors = corsHeaders(options, typeof request.headers.origin === 'string' ? request.headers.origin : undefined)
     if (method === 'OPTIONS' && options.cors !== false) {
       response.writeHead(204, cors)
@@ -139,7 +142,7 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
     }
     let file: ReturnType<typeof publicFile>
     try {
-      if (options.files) file = publicFile(options.files, new URL(request.url || '/', origin).pathname)
+      if (options.files) file = publicFile(options.files, new URL(target, origin).pathname)
     } catch {
       // A target or an escape that does not parse names no file, and the engine answers it.
     }
@@ -157,13 +160,13 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
       // A request target no URL can be made of fails this request and not the server.
       try {
         const requestBody = chunks.length ? Buffer.concat(chunks).toString('utf8') : undefined
-        if (options.control && method === 'POST' && request.url?.startsWith(`${CONTROL_PATH}/`)) {
-          const answer = control(drupal, request.url.slice(CONTROL_PATH.length + 1), requestBody)
+        if (options.control && method === 'POST' && target.startsWith(`${CONTROL_PATH}/`)) {
+          const answer = control(drupal, target.slice(CONTROL_PATH.length + 1), requestBody)
           response.writeHead(answer.status, { ...cors, 'content-type': 'application/json' })
           response.end(answer.text)
           return
         }
-        const { status, headers: responseHeaders, body } = drupal.handle(method, `${origin}${request.url || '/'}`, headers, requestBody)
+        const { status, headers: responseHeaders, body } = drupal.handle(method, `${origin}${target}`, headers, requestBody)
         const text = status === 204 || body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body)
         response.writeHead(status, { ...withCors(cors, responseHeaders), ...(status === 204 ? {} : { 'content-length': Buffer.byteLength(text) }) })
         response.end(method === 'HEAD' || status === 204 ? undefined : text)
@@ -175,8 +178,8 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
   })
   server.on('error', reject)
   server.listen(port, host, () => {
-    const address = server.address()
-    origin = `http://${urlHost(host)}:${typeof address === 'object' && address ? address.port : port}`
+    // A TCP server's address, once it listens, is always its interface and port.
+    origin = `http://${urlHost(host)}:${(server.address() as AddressInfo).port}`
     if (options.rebase) drupal.rebase(origin)
     resolve({ server, url: origin, close: () => new Promise((done) => server.close(() => done())) })
   })
