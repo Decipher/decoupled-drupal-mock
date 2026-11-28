@@ -37,7 +37,7 @@ Functions cannot be passed to a server in another process. Give the server an ex
 
 A handler gets `method`, `url`, `path`, `route`, `prefix`, `params`, `query`, `headers`, `body`, `json`, `state`, `drupal` and `now`. `state` is a `Map` shared across requests until `reset()`. `now()` gives the mock's time in milliseconds, which `advanceTime` moves and `reset()` puts back, so a token or a draft an extension expires runs on the same clock as the mock's own tokens. `drupal.handle(...)` sends a request to the mock with the fixtures applied and every extension skipped. A handler can use it to read its own URL without calling itself. An `onWrite` handler runs after a JSON:API write that the mock itself carried out succeeds. If the handler throws, the error is recorded on that request in `requests()`, and the write is kept.
 
-An answer has `status`, `headers` and `body`. A body that is not a string is sent as JSON. It gets the `Content-Language` and the cache headers Drupal would send, as every answer does. A `Cache-Control` the handler sets itself is kept, except that a request with a token or a session is never answered as `public`, because Drupal's page cache doesn't keep one.
+An answer has `status`, `headers` and `body`. A body that is not a string is sent as JSON. It gets the `Content-Language` and the cache headers Drupal would send, as every answer does. A `Cache-Control` the handler sets itself is kept for a visitor's GET or HEAD. For a request with a token or a session, a write, or an answer of 500 or more, it is kept only when it says `no-store` or `private`, and otherwise the answer gets the site's private headers, as Drupal's would.
 
 ## Answers are synchronous
 

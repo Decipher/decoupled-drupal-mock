@@ -120,6 +120,7 @@ describe('the cache headers on an extension\'s answer', () => {
         'GET /named': () => ({ headers: { 'cache-control': 's-maxage=600, x-private=1' }, body: {} }),
         'GET /cookie': () => ({ headers: { 'cache-control': 'private="Set-Cookie", s-maxage=600' }, body: {} }),
         'GET /mine': () => ({ headers: { 'cache-control': 'private, max-age=60' }, body: {} }),
+        'GET /aged': () => ({ headers: { 'cache-control': 'max-age=60' }, body: {} }),
       },
     }],
   })
@@ -143,6 +144,8 @@ describe('the cache headers on an extension\'s answer', () => {
     expect(mock.handle('GET', `${BASE}/named`, { authorization }).headers['cache-control']).toBe(PRIVATE)
     expect(mock.handle('GET', `${BASE}/cookie`, { authorization }).headers['cache-control']).toBe(PRIVATE)
     expect(mock.handle('GET', `${BASE}/mine`, { authorization }).headers['cache-control']).toBe('private, max-age=60')
+    // A bare max-age says nothing of who may keep it, so a shared cache could.
+    expect(mock.handle('GET', `${BASE}/aged`, { authorization }).headers['cache-control']).toBe(PRIVATE)
   })
 
   it('answers a signed-in logout privately through the mock too', () => {
