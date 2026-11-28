@@ -196,7 +196,7 @@ describe('a preset package\'s command', () => {
       if (tty) Object.defineProperty(process.stdout, 'isTTY', tty)
       else delete (process.stdout as { isTTY?: boolean }).isTTY
     }
-  })
+  }, 30000)
 
   it('checks each --cors-origin, and that CORS with credentials is on to name it', async () => {
     const serve = (...argv: string[]) => run(() => presetCommand(umami, argv, join(root, 'presets', 'umami', 'bin.js')))

@@ -452,7 +452,7 @@ export const stop = async (pidFile: string): Promise<Instance | undefined> => {
 }
 
 /**
- * Runs `start`, `status` or `stop` from a command line and ends the process with its status. `start` prints the line
+ * Runs `start`, `status` or `stop` from a command line and ends the process with its status. `start` prints what
  * `serve` prints and exits 0 once the server answers. `status` exits 0 when a server is running and 1 when none is.
  * `stop` exits 0 either way, so it is safe to call twice. A mistake is printed and ends the process with status 1.
  *
