@@ -22,9 +22,8 @@ export const serveOptions = '[--port 3005] [--host 127.0.0.1] [--base-url <url>]
  * `supportsCredentials` does, so a browser on another origin can send the session cookie. It names only a loopback
  * origin, unless `--cors-origin` lists the origins to name, once for each. `--extension` loads a module whose default
  * export is an extension, and can be given more than once. `--overlay` adds a recorded overlay, such as your site's
- * patch or module, by its file, and can too. Once it listens it prints where, then the URLs the preset answers and the
- * accounts it signs in, as its overlays and extensions leave them, unless `--quiet` asks for the first line only. A mistake is printed and ends the process with
- * status 1.
+ * patch or module, by its file, and can too. Once it listens it prints where, and the URLs and accounts it serves
+ * unless `--quiet` is given. A mistake is printed and ends the process with status 1.
  *
  * @param target - The preset: a directory, a preset package or its short name.
  * @param rest - The options.
@@ -108,7 +107,7 @@ export const serveCommand = async (target: string, rest: string[]): Promise<() =
     console.error(error.code === 'EADDRINUSE' ? `Port ${port} is in use: name another with --port.` : error.message)
     process.exit(1)
   })
-  // The first line is the one `start` waits for, so it stays as it is. The rest go out with it, in one write.
+  // `start` waits for the first line, so it stays as it was. The rest go out with it.
   const said = `${dump.manifest.preset} from Drupal ${dump.manifest.drupal.core}, listening on ${url}`
   const color = !!process.stdout.isTTY && !process.env.NO_COLOR
   console.log(rest.includes('--quiet') ? said : [said, '', ...bannerLines(withFixtures(dump, extensions), baseUrl, color), ''].join('\n'))
