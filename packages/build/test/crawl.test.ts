@@ -171,10 +171,28 @@ describe('the crawl', () => {
       if (path === '/session/token') return { headers: { 'content-type': 'text/plain', ...kept }, body: 't', raw: true }
       // A route of its own that sends no Vary or Expires, asked with no query.
       if (path === '/jsonapi/node/locked') return { status: 403, headers: { 'cache-control': 'no-store, private' }, body: {} }
+      // One that sends the site's private pair exactly, which the replay would take for a public answer without it.
+      if (path === '/jsonapi/node/closed') return { status: 403, headers: kept, body: {} }
       return stock(path, admin)
-    }, { oracleOut, oracle: ['/jsonapi/node/locked'] })
+    }, { oracleOut, oracle: ['/jsonapi/node/locked', '/jsonapi/node/closed'] })
     const routes = read(out, 'recorded/routes.json.gz') as Record<string, { headers: Record<string, string> }>
     expect(routes['GET /jsonapi/node/locked']!.headers).toEqual({ 'content-type': 'application/vnd.api+json', 'cache-control': 'no-store, private', vary: '', expires: '' })
+    expect(routes['GET /jsonapi/node/closed']!.headers).toEqual({ 'content-type': 'application/vnd.api+json', 'cache-control': kept['cache-control'] })
+  })
+
+  it('records a Vary a site without Consumers leaves off its private answers as nothing to keep', async () => {
+    const shared = { 'cache-control': 'max-age=300, public', vary: 'Cookie' }
+    const kept = { 'cache-control': 'must-revalidate, no-cache, private' }
+    const stock = site({ admin: [], visitor: [] })
+    const oracleOut = mkdtempSync(join(tmpdir(), 'oracle-'))
+    const { out } = await build((path, admin) => {
+      if (path === '/jsonapi') return { ...stock(path, admin)!, headers: shared }
+      if (path === '/session/token') return { headers: { 'content-type': 'text/plain', ...kept }, body: 't', raw: true }
+      if (path === '/jsonapi/node/closed') return { status: 403, headers: kept, body: {} }
+      return stock(path, admin)
+    }, { oracleOut, oracle: ['/jsonapi/node/closed'] })
+    const routes = read(out, 'recorded/routes.json.gz') as Record<string, { headers: Record<string, string> }>
+    expect(routes['GET /jsonapi/node/closed']!.headers).toEqual({ 'content-type': 'application/vnd.api+json', 'cache-control': kept['cache-control'] })
   })
 
   it('records no cache headers from a site that sends no Cache-Control', async () => {

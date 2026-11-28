@@ -249,7 +249,8 @@ export const extend = (drupal: Drupal, extensions: Extension[] = [], clock?: Moc
     const others = Object.entries(answered.headers).filter(([name]) => name.toLowerCase() !== 'content-language')
     answered.headers = { ...Object.fromEntries(others), 'content-language': answeredIn(drupal.manifest.languages, drupal.manifest.defaultLanguage, url.pathname) }
     // And the cache headers, which keep what the extension set unless it lets a private request be shared.
-    Object.assign(answered, withCache(drupal.manifest.cache, shareable, answered))
+    // An answer that came from the engine has its own already, so only an extension's own answer is given the defaults.
+    Object.assign(answered, withCache(drupal.manifest.cache, shareable, answered, !fromStore))
     const errors = fromStore ? notify(upper, route, path, answered) : []
     requests.push({ method: upper, path, search: url.search, headers, ...(body !== undefined ? { body } : {}), status: answered.status, ...(errors.length ? { errors } : {}) })
     return answered

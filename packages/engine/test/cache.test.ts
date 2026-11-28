@@ -85,6 +85,15 @@ describe('the cache headers Drupal sends', () => {
     expect(cacheOf(own.handle('GET', `${BASE}/jsonapi/decoupled/settings`).headers)).toEqual({ 'cache-control': 'no-store, private', vary: undefined, expires: undefined })
   })
 
+  it('keeps a recorded route\'s omissions through the mock too, which answers it twice over', () => {
+    const bare = { 'content-type': 'application/vnd.api+json', vary: '', expires: '' }
+    const locked: Dump = { ...dump, recorded: { ...dump.recorded, 'GET /jsonapi/decoupled/settings': { status: 403, headers: { ...bare, 'cache-control': 'no-store, private' }, body: {} }, 'GET /jsonapi/decoupled/none': { status: 200, headers: { ...bare, 'cache-control': '' }, body: {} } } }
+    const mocked = createMock(locked, { baseUrl: BASE, extensions: [{ name: 'passing', answer: (_request, next) => next() }] })
+    expect(cacheOf(mocked.handle('GET', `${BASE}/jsonapi/decoupled/settings`).headers)).toEqual({ 'cache-control': 'no-store, private', vary: undefined, expires: undefined })
+    // A route that sent no Cache-Control at all is replayed with none, through the mock as well.
+    expect(cacheOf(mocked.handle('GET', `${BASE}/jsonapi/decoupled/none`).headers)).toEqual({ 'cache-control': undefined, vary: undefined, expires: undefined })
+  })
+
   it('answers a signed-in logout privately, as the session it ends was open when it was asked', () => {
     const login = drupal.handle('POST', `${BASE}/user/login?_format=json`, { 'content-type': 'application/json' }, JSON.stringify({ name: 'umami', pass: 'secret' }))
     const cookie = login.headers['set-cookie']!.split(';')[0]!
@@ -108,6 +117,9 @@ describe('the cache headers on an extension\'s answer', () => {
         'GET /kept': () => ({ headers: { 'Cache-Control': 'max-age=60, public' }, body: {} }),
         'GET /never': () => ({ headers: { 'cache-control': 'no-store' }, body: {} }),
         'GET /shared': () => ({ headers: { 'cache-control': 's-maxage=600' }, body: {} }),
+        'GET /named': () => ({ headers: { 'cache-control': 's-maxage=600, x-private=1' }, body: {} }),
+        'GET /cookie': () => ({ headers: { 'cache-control': 'private="Set-Cookie", s-maxage=600' }, body: {} }),
+        'GET /mine': () => ({ headers: { 'cache-control': 'private, max-age=60' }, body: {} }),
       },
     }],
   })
@@ -127,6 +139,10 @@ describe('the cache headers on an extension\'s answer', () => {
     // A shared cache may keep an answer to a request with a token when it says s-maxage, so that is not kept either.
     expect(mock.handle('GET', `${BASE}/shared`, { authorization }).headers['cache-control']).toBe(PRIVATE)
     expect(mock.handle('GET', `${BASE}/shared`).headers['cache-control']).toBe('s-maxage=600')
+    // Only a whole private or no-store keeps it: a directive that only names one, or names one header, does not.
+    expect(mock.handle('GET', `${BASE}/named`, { authorization }).headers['cache-control']).toBe(PRIVATE)
+    expect(mock.handle('GET', `${BASE}/cookie`, { authorization }).headers['cache-control']).toBe(PRIVATE)
+    expect(mock.handle('GET', `${BASE}/mine`, { authorization }).headers['cache-control']).toBe('private, max-age=60')
   })
 
   it('answers a signed-in logout privately through the mock too', () => {

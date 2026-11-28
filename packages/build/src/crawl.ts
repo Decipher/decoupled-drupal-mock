@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import type { Answer, RecordedWrite, WriteScript } from 'decoupled-drupal-mock/recorded-writes'
 import type { Document, Dump, Manifest, Recorded, Resource, TypeFilters } from 'decoupled-drupal-mock'
-import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND, DUMP_FORMAT, relinker, sortedSearch } from 'decoupled-drupal-mock'
+import { CANVAS_BAD_REQUEST, CANVAS_NOT_FOUND, DUMP_FORMAT, isPublic, relinker, sortedSearch } from 'decoupled-drupal-mock'
 import { KEPT_HEADERS, resolve } from 'decoupled-drupal-mock/recorded-writes'
 
 export interface CrawlOptions {
@@ -169,8 +169,10 @@ export const crawl = async (options: CrawlOptions): Promise<Manifest> => {
     const others = Object.entries(entry.headers).filter(([name]) => !CACHED.includes(name))
     if (!cache) return { ...entry, headers: Object.fromEntries(others) }
     const control = entry.headers['cache-control']
-    const pair = entry.status < 500 && (control === undefined || /\bpublic\b/i.test(control)) ? cache.public : cache.private
-    const own = CACHED.flatMap((name) => ((entry.headers[name] ?? '') !== (pair[name] ?? '') ? [[name, entry.headers[name] ?? '']] : []))
+    const pair = entry.status < 500 && (control === undefined || isPublic(control)) ? cache.public : cache.private
+    // Below 500, an answer with no Cache-Control of its own replays with the public pair, so one that took the private
+    // pair keeps its Cache-Control even where it is the pair's.
+    const own = CACHED.flatMap((name) => ((entry.headers[name] ?? '') !== (pair[name] ?? '') || (name === 'cache-control' && pair === cache.private && entry.status < 500) ? [[name, entry.headers[name] ?? '']] : []))
     return { ...entry, headers: Object.fromEntries([...others, ...own]) }
   }
 
