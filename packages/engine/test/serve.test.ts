@@ -7,6 +7,7 @@ import { http } from 'msw'
 import { setupServer } from 'msw/node'
 import { createDrupal, createMock, handlers } from '../src'
 import { connectMock } from '../src/control'
+import { cypressTasks } from '../src/runner'
 import { listen } from '../src/serve'
 import { dump } from './dump'
 
@@ -20,6 +21,22 @@ const bind = async (host = '127.0.0.1') => {
       if (attempt === 4) throw error
     }
   }
+}
+
+/** The status a request line gets, sent as it is, with no URL parser between. */
+const raw = (port: number, line: string): Promise<number> => new Promise((resolve, reject) => {
+  const socket = connect(port, '127.0.0.1', () => socket.write(`${line} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`))
+  let reply = ''
+  socket.on('data', (chunk) => { reply += chunk.toString() })
+  socket.on('end', () => resolve(Number(reply.split(' ')[1])))
+  socket.on('error', reject)
+})
+
+/** How long a GET takes to answer, in milliseconds. */
+const timed = async (url: string): Promise<number> => {
+  const start = performance.now()
+  await (await fetch(url)).arrayBuffer()
+  return performance.now() - start
 }
 
 describe('serving', () => {
@@ -43,6 +60,65 @@ describe('serving', () => {
       if (accounts[0]) expect((await client.tokenFor(accounts[0])).access.split('.')).toHaveLength(3)
     } finally {
       await on.close()
+    }
+  })
+
+  it('delays the answers under a path, and only those', async () => {
+    const { url, close } = await listen(createDrupal(dump, { baseUrl: 'http://127.0.0.1' }), 0, '127.0.0.1', { delay: { '/jsonapi/node/recipe': 200 } })
+    try {
+      const [slow, fast] = await Promise.all([timed(`${url}/jsonapi/node/recipe?page[limit]=1`), timed(`${url}/jsonapi`)])
+      expect(slow).toBeGreaterThanOrEqual(190)
+      expect(fast).toBeLessThan(slow)
+      // A path under it waits too, and one that only starts with the same letters does not.
+      expect(await timed(`${url}/jsonapi/node/recipe/r-1`)).toBeGreaterThanOrEqual(190)
+      expect(await timed(`${url}/es/jsonapi/node/recipe`)).toBeGreaterThanOrEqual(190)
+      expect(await timed(`${url}/jsonapi/node/recipes`)).toBeLessThan(190)
+    } finally {
+      await close()
+    }
+  })
+
+  it('delays every answer, and the longest matching path decides', async () => {
+    const { url, close } = await listen(createDrupal(dump, { baseUrl: 'http://127.0.0.1' }), 0, '127.0.0.1', { delay: 200 })
+    try {
+      expect(await timed(`${url}/jsonapi`)).toBeGreaterThanOrEqual(190)
+      // A target no URL can be made of is answered at once, as the engine answers it.
+      const start = performance.now()
+      expect(await raw(Number(new URL(url).port), 'GET //')).toBeLessThan(500)
+      expect(performance.now() - start).toBeLessThan(190)
+    } finally {
+      await close()
+    }
+    const both = await listen(createDrupal(dump, { baseUrl: 'http://127.0.0.1' }), 0, '127.0.0.1', { delay: { '/': 200, '/jsonapi': 0 } })
+    try {
+      expect(await timed(`${both.url}/jsonapi`)).toBeLessThan(190)
+      expect(await timed(`${both.url}/router/translate-path?path=/`)).toBeGreaterThanOrEqual(190)
+    } finally {
+      await both.close()
+    }
+  })
+
+  it('sets and clears a delay over the control route, which reset() puts back', async () => {
+    const { url, close } = await listen(createDrupal(dump, { baseUrl: 'http://127.0.0.1' }), 0, '127.0.0.1', { control: true, delay: { '/jsonapi/node/article': 200 } })
+    try {
+      const client = connectMock(url)
+      expect(await timed(`${url}/jsonapi/node/recipe`)).toBeLessThan(190)
+      await client.delay(200, '/jsonapi/node/recipe')
+      expect(await timed(`${url}/jsonapi/node/recipe`)).toBeGreaterThanOrEqual(190)
+      await client.delay(0, '/jsonapi/node/recipe')
+      expect(await timed(`${url}/jsonapi/node/recipe`)).toBeLessThan(190)
+      await client.delay(200)
+      expect(await timed(`${url}/jsonapi`)).toBeGreaterThanOrEqual(190)
+      await client.reset()
+      expect(await timed(`${url}/jsonapi`)).toBeLessThan(190)
+      // reset() puts back the delay the server started with.
+      expect(await timed(`${url}/jsonapi/node/article`)).toBeGreaterThanOrEqual(190)
+      await expect(client.delay(-1)).rejects.toThrow('A delay is a number of milliseconds')
+      await expect(client.delay(10, 'jsonapi')).rejects.toThrow('not 10 for jsonapi')
+      await expect(cypressTasks(url)['drupal:delay']({ ms: 200, path: '/jsonapi' })).resolves.toBeNull()
+      expect(await timed(`${url}/jsonapi`)).toBeGreaterThanOrEqual(190)
+    } finally {
+      await close()
     }
   })
 
@@ -71,14 +147,7 @@ describe('serving', () => {
     const { url, close } = await bind()
     try {
       const { port } = new URL(url)
-      const status = await new Promise<number>((resolve, reject) => {
-        const socket = connect(Number(port), '127.0.0.1', () => socket.write('OPTIONS * HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n'))
-        let reply = ''
-        socket.on('data', (chunk) => { reply += chunk.toString() })
-        socket.on('end', () => resolve(Number(reply.split(' ')[1])))
-        socket.on('error', reject)
-      })
-      expect(status).toBeLessThan(500)
+      expect(await raw(Number(port), 'OPTIONS *')).toBeLessThan(500)
       expect((await fetch(`${url}/jsonapi`)).status).toBe(200)
     } finally {
       await close()

@@ -23,6 +23,11 @@ export interface MockClient {
   sent: () => Promise<SentRequest[]>
   /** Moves the mock's clock on, for a token's expiry. */
   advanceTime: (seconds: number) => Promise<void>
+  /**
+   * Waits `ms` milliseconds before each answer under `path`, or every answer without one, until the next `reset()`.
+   * `0` ends it. A path takes the paths under it, and the longest matching path decides.
+   */
+  delay: (ms: number, path?: string) => Promise<void>
 }
 
 // node:http and not fetch: Node 16 has no fetch, and neither has Jest's jsdom environment on any Node.
@@ -57,5 +62,6 @@ export const connectMock = (url: string | undefined = process.env[URL_VARIABLE])
     requests: async () => JSON.parse(await order(url, 'requests')) as RecordedRequest[],
     sent: async () => JSON.parse(await order(url, 'sent')) as SentRequest[],
     advanceTime: async (seconds) => { await order(url, 'time', { seconds }) },
+    delay: async (ms, path) => { await order(url, 'delay', { ms, ...(path === undefined ? {} : { path }) }) },
   }
 }
