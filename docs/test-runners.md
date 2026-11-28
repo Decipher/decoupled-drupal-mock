@@ -124,8 +124,13 @@ Every runner's client has the same calls, in-process or over `--control`:
 | `requests()`             | The requests the mock answered, for assertions                                  |
 | `sent()`                 | What an extension's `onWrite` called                                            |
 | `advanceTime(seconds)`   | Moves the clock on, for a token's expiry                                        |
+| `delay(ms, path)`        | Over HTTP only: waits before each answer under a path, or every one without     |
 
-In Cypress these are the tasks `drupal:reset`, `drupal:token`, `drupal:scenario`, `drupal:requests`, `drupal:sent` and `drupal:time`.
+An in-process engine has no `delay`, because the HTTP server does the waiting and the engine answers at once. A server from `spawnMock`, `globalSetup` or `startMock` has it, and so does `connectMock()` against any server started with `--control`.
+
+In Cypress these are the tasks `drupal:reset`, `drupal:token`, `drupal:scenario`, `drupal:requests`, `drupal:sent`, `drupal:time` and `drupal:delay`, which takes `{ ms, path }`.
+
+A delay keeps a request in flight, for a test of what a frontend does while it waits. It covers the paths under the one given, with or without a language prefix, and the longest matching path decides. So `delay(200, '/jsonapi/node/recipe')` slows the recipes and leaves `/jsonapi` as it was. `delay(0, path)` ends one, and `reset()` puts back the delay the server started with. A server started in your own code takes one from the start: `listen(drupal, 3005, '127.0.0.1', { delay: { '/jsonapi/node/recipe': 200 } })`, or a number to delay every answer. The control routes are never delayed. A delay is at most 2147483647 milliseconds, the longest a timer waits, and closing the server answers any request still waiting.
 
 ## Next.js
 

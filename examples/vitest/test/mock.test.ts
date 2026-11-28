@@ -24,4 +24,16 @@ describe('a server per suite', () => {
     expect(((await anonymous.json()) as { data: unknown[] }).data).toEqual([])
     expect(((await signedIn.json()) as { data: unknown[] }).data.length).toBeGreaterThan(0)
   })
+
+  it('keeps a request in flight, until reset() ends the delay', async () => {
+    const timed = async (path: string) => {
+      const start = performance.now()
+      await (await fetch(`${mock.url}${path}`)).arrayBuffer()
+      return performance.now() - start
+    }
+    await mock.delay(500, '/jsonapi/node/recipe')
+    expect(await timed('/en/jsonapi/node/recipe')).toBeGreaterThanOrEqual(490)
+    await mock.reset()
+    expect(await timed('/en/jsonapi/node/recipe')).toBeLessThan(490)
+  })
 })

@@ -45,7 +45,8 @@ export const startMock = async (preset: string, options: { extensions?: Extensio
     const drupal = createMock(dump, { baseUrl: url, extensions })
     try {
       const { close } = await listen(drupal, port, '127.0.0.1', { files: dir, control: true })
-      return { ...connectMock(url), reset: async () => drupal.reset(), tokenFor: async (name, scopes) => drupal.tokenFor(name, scopes), scenario: async (name) => drupal.scenario(name), requests: async () => drupal.requests(), sent: async () => drupal.sent(), advanceTime: async (seconds) => drupal.advanceTime(seconds), drupal, close }
+      // reset() goes over the control route, which puts the server's delay back as well as the engine.
+      return { ...connectMock(url), tokenFor: async (name, scopes) => drupal.tokenFor(name, scopes), scenario: async (name) => drupal.scenario(name), requests: async () => drupal.requests(), sent: async () => drupal.sent(), advanceTime: async (seconds) => drupal.advanceTime(seconds), drupal, close }
     } catch (error) {
       // Another process can take the port between finding it free and binding it.
       if (attempt === 4) throw error

@@ -117,7 +117,7 @@ export const globalTeardown = async (): Promise<void> => {
 }
 
 /**
- * Cypress tasks over a running server: `drupal:reset`, `drupal:token`, `drupal:scenario`, `drupal:requests`, `drupal:sent` and `drupal:time`. In `setupNodeEvents`,
+ * Cypress tasks over a running server: `drupal:reset`, `drupal:token`, `drupal:scenario`, `drupal:requests`, `drupal:sent`, `drupal:time` and `drupal:delay`. In `setupNodeEvents`,
  * `on('task', cypressTasks(url))`.
  *
  * @param url - The server's URL, started with `--control`.
@@ -133,5 +133,6 @@ export const cypressTasks = (url?: string) => {
     'drupal:requests': () => mock.requests(),
     'drupal:sent': () => mock.sent(),
     'drupal:time': async (seconds: number) => { await mock.advanceTime(seconds); return null },
+    'drupal:delay': async ({ ms, path }: { ms: number, path?: string }) => { await mock.delay(ms, path); return null },
   }
 }

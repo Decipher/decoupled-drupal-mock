@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
-import type { Server } from 'node:http'
+import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { CONTROL_PATH } from './control.js'
 import type { Drupal } from './engine.js'
@@ -23,6 +23,12 @@ export interface ListenOptions {
   origins?: string[]
   /** The routes a test uses from another process, to reset the writes and to sign in. Off unless asked for, and only for a test's server. */
   control?: boolean
+  /**
+   * Milliseconds to wait before an answer, for a test that needs a request still in flight: a number for every request,
+   * or by path, such as `{ '/jsonapi/node/recipe': 200 }`. A path takes the paths under it too, with or without a
+   * language prefix, and the longest matching path decides. The control routes are never delayed.
+   */
+  delay?: number | Record<string, number>
 }
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.avif': 'image/avif', '.pdf': 'application/pdf', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.txt': 'text/plain', '.json': 'application/json', '.css': 'text/css', '.js': 'text/javascript' }
@@ -50,6 +56,32 @@ export const publicFile = (dir: string, pathname: string): { path: string, mime:
   return { path, mime: MIME[extname(path).toLowerCase()] || 'application/octet-stream' }
 }
 
+/** The longest delay a timer takes: past it, Node fires at once. */
+const LONGEST = 2147483647
+
+/** Sets a path's delay: `/` is every path. */
+const setDelay = (map: Map<string, number>, ms: unknown, path: unknown = '/'): void => {
+  if (typeof ms !== 'number' || !(ms >= 0 && ms <= LONGEST) || typeof path !== 'string' || path[0] !== '/') throw new Error(`A delay is a number of milliseconds up to ${LONGEST} for a path that starts with /, not ${String(ms)} for ${String(path)}.`)
+  map.set(path, ms)
+}
+
+/** The delays a server starts with, by path: a number is one for every path. */
+const delays = (delay: ListenOptions['delay']): Map<string, number> => {
+  const map = new Map<string, number>()
+  for (const [path, ms] of Object.entries(typeof delay === 'number' ? { '/': delay } : delay || {})) setDelay(map, ms, path)
+  return map
+}
+
+/** The delay for a path: the longest path named that it is or is under, with or without its language prefix. */
+const delayFor = (map: Map<string, number>, prefixes: string[], path: string): number => {
+  // A prefix is matched whole, as the engine matches it, so `/languages/es` is one. `/es` alone is under `/` already,
+  // so the path after its prefix is only asked when there is one.
+  const prefix = prefixes.find((candidate) => path === `/${candidate}` || path.startsWith(`/${candidate}/`))
+  const paths = prefix ? [path, path.slice(prefix.length + 1)] : [path]
+  const named = [...map.keys()].filter((key) => paths.some((candidate) => candidate === key || candidate.startsWith(key.endsWith('/') ? key : `${key}/`)))
+  return map.get(named.sort((a, b) => b.length - a.length)[0] ?? '') || 0
+}
+
 /**
  * An HTTP server answering as the Drupal would, for a frontend pointed at it, an end-to-end suite or a developer's
  * browser.
@@ -59,12 +91,15 @@ export const publicFile = (dir: string, pathname: string): { path: string, mime:
  * @param host - The interface to listen on: `0.0.0.0` for a devpod with the port forwarded.
  * @param options - The public files directory and CORS.
  */
-/** A test's order to a server: reset, or a token for a user. */
-const control = (drupal: Drupal | ExtendedDrupal, order: string, body: string | undefined): { status: number, text: string } => {
+/** A test's order to a server: reset, a token for a user, or a delay. */
+const control = (drupal: Drupal | ExtendedDrupal, delay: { now: Map<string, number>, start: ListenOptions['delay'] }, order: string, body: string | undefined): { status: number, text: string } => {
   const extended = 'scenario' in drupal ? drupal : undefined
   try {
-    const given = JSON.parse(body || '{}') as { name?: string, scopes?: string[], seconds?: number }
-    if (order === 'reset') drupal.reset()
+    const given = JSON.parse(body || '{}') as { name?: string, scopes?: string[], seconds?: number, ms?: number, path?: string }
+    if (order === 'reset') {
+      drupal.reset()
+      delay.now = delays(delay.start)
+    } else if (order === 'delay') setDelay(delay.now, given.ms, given.path)
     else if (order === 'token') return { status: 200, text: JSON.stringify(drupal.tokenFor(given.name || '', given.scopes)) }
     else if (extended && order === 'scenario') extended.scenario(given.name || '')
     else if (extended && order === 'requests') return { status: 200, text: JSON.stringify(extended.requests()) }
@@ -122,7 +157,34 @@ const withCors = (cors: Record<string, string>, answer: Record<string, string>):
 }
 
 export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: ListenOptions = {}): Promise<{ server: Server, url: string, close: () => Promise<void> }> => new Promise((resolve, reject) => {
+  const delay = { now: delays(options.delay), start: options.delay }
+  // The longest prefix first, so one that starts another is not taken for it.
+  const prefixes = Object.values(drupal.manifest.languages).filter(Boolean).sort((a, b) => b.length - a.length)
+  // The requests still waiting, answered at once when the server closes.
+  const waiting = new Map<NodeJS.Timeout, () => void>()
   const server = createServer((request, response) => {
+    let ms = 0
+    try {
+      // An http.Server's request always has its target. Only a client's request has none.
+      const { pathname } = new URL(request.url!, 'http://localhost')
+      if (!(options.control && pathname.startsWith(`${CONTROL_PATH}/`))) ms = delayFor(delay.now, prefixes, pathname)
+    } catch {
+      // A target no URL can be made of is not delayed, and the engine answers it.
+    }
+    if (!ms) return answer(request, response)
+    const run = (): void => {
+      waiting.delete(timer)
+      answer(request, response)
+    }
+    const timer = setTimeout(run, ms)
+    waiting.set(timer, run)
+    // A client that leaves before its answer takes its timer with it.
+    response.on('close', () => {
+      clearTimeout(timer)
+      waiting.delete(timer)
+    })
+  })
+  const answer = (request: IncomingMessage, response: ServerResponse): void => {
     const method = request.method || 'GET'
     const cors = corsHeaders(options, typeof request.headers.origin === 'string' ? request.headers.origin : undefined)
     if (method === 'OPTIONS' && options.cors !== false) {
@@ -151,9 +213,9 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
       try {
         const requestBody = chunks.length ? Buffer.concat(chunks).toString('utf8') : undefined
         if (options.control && method === 'POST' && request.url?.startsWith(`${CONTROL_PATH}/`)) {
-          const answer = control(drupal, request.url.slice(CONTROL_PATH.length + 1), requestBody)
-          response.writeHead(answer.status, { ...cors, 'content-type': 'application/json' })
-          response.end(answer.text)
+          const ordered = control(drupal, delay, request.url.slice(CONTROL_PATH.length + 1), requestBody)
+          response.writeHead(ordered.status, { ...cors, 'content-type': 'application/json' })
+          response.end(ordered.text)
           return
         }
         const { status, headers: responseHeaders, body } = drupal.handle(method, `http://${urlHost(host)}:${port}${request.url || '/'}`, headers, requestBody)
@@ -165,11 +227,18 @@ export const listen = (drupal: Drupal, port = 0, host = '127.0.0.1', options: Li
         response.end('Bad Request')
       }
     })
-  })
+  }
   server.on('error', reject)
   server.listen(port, host, () => {
     const address = server.address()
     const bound = typeof address === 'object' && address ? address.port : port
-    resolve({ server, url: `http://${urlHost(host)}:${bound}`, close: () => new Promise((done) => server.close(() => done())) })
+    const close = (): Promise<void> => new Promise((done) => {
+      server.close(() => done())
+      for (const [timer, run] of waiting) {
+        clearTimeout(timer)
+        run()
+      }
+    })
+    resolve({ server, url: `http://${urlHost(host)}:${bound}`, close })
   })
 })
