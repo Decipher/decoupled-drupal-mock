@@ -71,7 +71,7 @@
       "yoast_seo": "2.2.0"
     }
   },
-  "built": "2026-11-26T06:22:38.647Z",
+  "built": "2026-11-28T11:04:38.778Z",
   "origin": "https://drupal.invalid",
   "languages": {
     "en": ""
@@ -89,7 +89,7 @@
     "resources/en/crop_type--crop_type.json.gz": "2a56152f231b44ac4eaf8f9cb5e7422103b19e428c93528138c23150dc48fe6d",
     "resources/en/dashboard--dashboard.json.gz": "7f5a935596bccc6a8a34cec9ed45d30d34a59be1caeb1f8a7ff39d09a863c309",
     "resources/en/date_format--date_format.json.gz": "a605aa76f1adad12e2e50067642d7d2f17c8bce22cf91903a840c1de88e3ae71",
-    "resources/en/easy_email--default.json.gz": "ebbbc369e3e3b06d03f515dcd3dd475ba73f661d808d6775dc69caf3a87d6478",
+    "resources/en/easy_email--default.json.gz": "88154accaf472a44fab14a4509274acff84d2285bda5ed8ce31f580c290b4266",
     "resources/en/easy_email_override--easy_email_override.json.gz": "57a4f038e75383680b8599c2a467e29fc05c788d5d6e616a82064480dababa36",
     "resources/en/easy_email_type--easy_email_type.json.gz": "e713990450de8f490f58911fa93dadd85b70c296d511ae8a177bbba773cb209f",
     "resources/en/eca--eca.json.gz": "02bdb5a325d07b6137beeca1761135b6deacca833b6648f10c45e3921249bcf8",
@@ -126,13 +126,13 @@
     "resources/en/simple_sitemap_type--simple_sitemap_type.json.gz": "f496819641645c158c9b5a6b122519d9fdde4e023ca996ed6daab7816ace428d",
     "resources/en/symfony_mailer_lite_transport--symfony_mailer_lite_transport.json.gz": "3b83fcd8eb14ee8903a934fc000eb08d94d93611a313344be2ed7299d23a6d97",
     "resources/en/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "7e0d50bd2252ea423ba5c9309c210ce3e80df6b77b271b40a34040c469ce68cb",
-    "resources/en/user--user.json.gz": "646fd70353e4716c05f11df608557b79a66e87eae6ac841cc4c36cc2cc20c44e",
+    "resources/en/user--user.json.gz": "249e7077a2061a1da47e0afc570278d51cb6003cd267d16c2c65bd46bbf894ce",
     "resources/en/user_role--user_role.json.gz": "24f70f2553738b9e7bb0f4d96f0a30033e5f818527fa3a82e8ea119a03e576dd",
     "resources/en/view--view.json.gz": "94aa3870455328387a61941625c4ec2376a86fa742eee239ee0038c7a55653a7",
     "resources/en/workflow--workflow.json.gz": "6d1f79cd142bf0680a8b93ca3b17caefb76fed1b13f8c16270f7a150b13b99a9",
     "access/en.json.gz": "634414426303daf2702d043f9e9addaec8fe9efc08ef457851b59af69a2abe44",
     "filters.json.gz": "5b0aa087ae944026b533682d775eb6b101da41c1ee27887ad7d8126c2347c37c",
-    "recorded/routes.json.gz": "5a0c5ef516d55182659716e4833965ff62cad4aa646008e0cac86e3a5ac77659",
+    "recorded/routes.json.gz": "da49acae85a2abad2e6254539c329b4274852fbd9f7bd0ec18996a7cbfcbae63",
     "files/login-wallpaper.png": "54332ee6319ad13d167201acd484f5656679cf6a462cbe6b5d6da301c3602f7f",
     "files/avatars/default-avatar.svg": "c55e779964208bd6a80b27f8b3dd8251c4140a2358283fbed1f7bce8a75c764c",
     "files/2026-04/Hero.jpg": "481d8f9107324aafb8bba26a4c738d0536fdaa205c38afc863769b26b98c2b20",
@@ -146,7 +146,19 @@
     "files/2026-04/Canvas-editor.png": "b37171a2421f751b556bfd25227d26a873c29d1c2f6041695ad5d44c63c6cc63",
     "identities.json": "090412264627badf4f605d859d2f8dbb4c9389ab198921faa3ec467e5142d130"
   },
+  "cache": {
+    "public": {
+      "cache-control": "must-revalidate, no-cache, private",
+      "vary": "X-Consumer-ID",
+      "expires": "Sun, 19 Nov 1978 05:00:00 GMT"
+    },
+    "private": {
+      "cache-control": "must-revalidate, no-cache, private",
+      "vary": "X-Consumer-ID",
+      "expires": "Sun, 19 Nov 1978 05:00:00 GMT"
+    }
+  },
   "oracle": {
-    "reads.json.gz": "f3627df85cdfb7348bc85c150e107d45d5c67c64fb6ec9ea2f55429672ac706e"
+    "reads.json.gz": "c76f58efab390a4b009aae71cca93f933cb345a8f84559122816c90ea2c57736"
   }
 }

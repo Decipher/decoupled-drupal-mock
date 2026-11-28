@@ -79,7 +79,7 @@
       "yoast_seo": "2.2.0"
     }
   },
-  "built": "2026-11-26T06:28:52.641Z",
+  "built": "2026-11-28T09:30:07.156Z",
   "origin": "https://drupal.invalid",
   "languages": {
     "en": ""
@@ -98,7 +98,7 @@
     "resources/en/crop_type--crop_type.json.gz": "be3e6a85906e7680caffcf79e2b4d89133b4cc7ad4e165601a4a97a2bcdcee62",
     "resources/en/dashboard--dashboard.json.gz": "528d75bc20612c5e3d617baa80852d2dc4caef86905f2d1027e7e7e8c0bee0ac",
     "resources/en/date_format--date_format.json.gz": "35920db9b43e9a8854c2a1e77ec7aa5bc626a579e1a342e865e0e17ad52f38d9",
-    "resources/en/easy_email--default.json.gz": "bc6fb89eda638143f2b4559c35e73ecc0900479a8f798f8741e072b8c72d51ec",
+    "resources/en/easy_email--default.json.gz": "fafaaee6f311d5e393318047b3cb13999fc896ec0807c188f66a3e37af20c147",
     "resources/en/easy_email_override--easy_email_override.json.gz": "1e6fcf8ca271cde382cb3f38680b23dd493470b42805d0c3c3905efc813eff0d",
     "resources/en/easy_email_type--easy_email_type.json.gz": "28bb78c2b101143cd1d9b51006ec7548da93393ce864650b9f404d0fa9f7ee47",
     "resources/en/eca--eca.json.gz": "ec9c4211f8dc5f581634aae4cae77ed9ee21845c1e868c82d03cac6ef82840d5",
@@ -139,14 +139,14 @@
     "resources/en/symfony_mailer_lite_transport--symfony_mailer_lite_transport.json.gz": "b9dfb4b148baa273d86447da6f706c995d6fd37f19788df27c59a80ec4ee6d26",
     "resources/en/taxonomy_term--tags.json.gz": "d17dc8709bd1effc5ec13ff4c0c35f2db7039939c28833439516bf572f45ff70",
     "resources/en/taxonomy_vocabulary--taxonomy_vocabulary.json.gz": "929b72f432810c5da8d6e262767d1cc0db942c7368f2a1ee4d97ddc9906b66e4",
-    "resources/en/user--user.json.gz": "b0fce7575c86913a42123a7415cba1eb679acd522b17116bb3ee9043dbdc3274",
+    "resources/en/user--user.json.gz": "437af8d26952aec68cf3cf48a7481e43905b00e0ce371f68c36322731cb68fbe",
     "resources/en/user_role--user_role.json.gz": "acf0e450e604a11c0c365006926b5e4144a2ec4d18fca9a0a14816e716abdc18",
     "resources/en/view--view.json.gz": "8aeab7aef2036416e9631d6e68af7f4ba3dc2bbe1ea1611292c3c9f129b65627",
     "resources/en/webform--webform.json.gz": "ce07b58286cfe80fde59775c09f6e109c2d1a509124f580ff758ba8aa7f059ff",
     "resources/en/workflow--workflow.json.gz": "dcbfe89f88ab6d1d9c3dea6d7ec1f5d3757f18a1d005b6bd7b3205a69b073f65",
     "access/en.json.gz": "45da2599792458ed57aae75c77335848726c5c10d21ba424bd10d88474ca5e40",
     "filters.json.gz": "a792fcbe96dacb4260c426765e7aea64fd103248b711859b95aead926f58cde1",
-    "recorded/routes.json.gz": "72930c8f9b8c6a1a948c82aeea9f907137ea67acd90968a5e4030ec89e6dad37",
+    "recorded/routes.json.gz": "f1f2773e0a5d6e7c4f5ae3cf06dfcc728d3e9add3da4f8fe2a8fa264f8e20e57",
     "files/login-wallpaper.png": "54332ee6319ad13d167201acd484f5656679cf6a462cbe6b5d6da301c3602f7f",
     "files/avatars/default-avatar.svg": "c55e779964208bd6a80b27f8b3dd8251c4140a2358283fbed1f7bce8a75c764c",
     "files/2026-03/matt-palmer-kbTp7dBzHyY-unsplash.avif": "efb07e457dfb73a485d2cd4dcee92aac15c72d25f139be591908b1135484fbf5",
@@ -173,7 +173,19 @@
     "files/2026-03/naja-bertolt-jensen-ovgWaprcWQM-unsplash.avif": "17863e8c3defcafb2ad2c88890a6e127eed5539ed6cad725104512c58d132ec8",
     "identities.json": "090412264627badf4f605d859d2f8dbb4c9389ab198921faa3ec467e5142d130"
   },
+  "cache": {
+    "public": {
+      "cache-control": "max-age=900, public",
+      "vary": "Cookie, X-Consumer-ID",
+      "expires": "Sun, 19 Nov 1978 05:00:00 GMT"
+    },
+    "private": {
+      "cache-control": "must-revalidate, no-cache, private",
+      "vary": "X-Consumer-ID",
+      "expires": "Sun, 19 Nov 1978 05:00:00 GMT"
+    }
+  },
   "oracle": {
-    "reads.json.gz": "6d9f199067f55a5d307b0520895af42b3ad7a3da3e0e1d63a855227691cb4ce8"
+    "reads.json.gz": "b399974b5e13ca39a581599406a92958bb3b79453d2a429b2e367806161cec5e"
   }
 }
