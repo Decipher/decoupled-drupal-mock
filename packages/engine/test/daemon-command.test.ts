@@ -170,16 +170,19 @@ describe('a preset package\'s command', () => {
       await close()
       return printed.join('\n')
     }
-    const listed = await served('--base-url', 'https://mock.example.com')
-    expect(listed.split('\n')[0]).toMatch(/^umami from Drupal .+, listening on http:\/\/127\.0\.0\.1:\d+$/)
-    // The links name the base URL the answers name.
-    expect(listed).toContain('  JSON:API (es)     https://mock.example.com/es/jsonapi')
-    expect(listed).toContain('  Accounts          editor, author, reader')
-    expect((await served('--quiet')).split('\n')).toHaveLength(1)
+    // Whatever runs the suite, each check says whether it is a terminal.
     const tty = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
-    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+    const terminal = (on: boolean) => Object.defineProperty(process.stdout, 'isTTY', { value: on, configurable: true })
     try {
       vi.stubEnv('NO_COLOR', '')
+      terminal(false)
+      const listed = await served('--base-url', 'https://mock.example.com')
+      expect(listed.split('\n')[0]).toMatch(/^umami from Drupal .+, listening on http:\/\/127\.0\.0\.1:\d+$/)
+      // The links name the base URL the answers name.
+      expect(listed).toContain('  JSON:API (es)     https://mock.example.com/es/jsonapi')
+      expect(listed).toContain('  Accounts          editor, author, reader')
+      expect((await served('--quiet')).split('\n')).toHaveLength(1)
+      terminal(true)
       expect(await served()).toContain('\x1b[2mJSON:API (en)')
       vi.stubEnv('NO_COLOR', '1')
       expect(await served()).not.toContain('\x1b[')

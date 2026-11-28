@@ -20,6 +20,17 @@ describe('what serve prints under the line that says where it listens', () => {
     expect(bannerLines(bare, 'https://mock.example.com')).toEqual(['  JSON:API (en)  https://mock.example.com/jsonapi'])
   })
 
+  it('drops a trailing slash from the base URL, as the engine does', () => {
+    expect(bannerLines(dump, 'https://mock.example.com/')[1]).toBe('  JSON:API (es)     https://mock.example.com/es/jsonapi')
+  })
+
+  it('names a main menu recorded with a query, and the plain recording when there is one', () => {
+    const queried = { ...dump, recorded: { 'GET /jsonapi/menu_items/main?filter%5Benabled%5D=1': dump.recorded['GET /jsonapi/menu_items/main']! } }
+    expect(bannerLines(queried, 'http://127.0.0.1:3005')).toContain('  Main menu         http://127.0.0.1:3005/jsonapi/menu_items/main?filter%5Benabled%5D=1')
+    const both = { ...dump, recorded: { ...queried.recorded, ...dump.recorded } }
+    expect(bannerLines(both, 'http://127.0.0.1:3005')).toContain('  Main menu         http://127.0.0.1:3005/jsonapi/menu_items/main')
+  })
+
   it('leaves out the accounts when the preset signs in none', () => {
     const lines = bannerLines({ ...dump, identities: { ...dump.identities!, accounts: [] } }, 'http://127.0.0.1:3005')
     expect(lines.at(-1)).toContain('OAuth token')
